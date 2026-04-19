@@ -9,7 +9,7 @@ type AuthShowcaseProps = {
 const stats = [
   { value: "19", label: "Phòng nội trú" },
   { value: "14", label: "Giường mỗi phòng" },
-  { value: "Online", label: "Đăng ký và theo dõi" },
+  { value: "Hotline", label: "(028)38753588" },
 ];
 
 export default function AuthShowcase({

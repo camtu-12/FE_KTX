@@ -1,23 +1,26 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AdminLayout from "../layouts/AdminLayout";
+import PublicLayout from "../layouts/PublicLayout";
 import StudentLayout from "../layouts/StudentLayout";
+import AdminDashboardPage from "../modules/admin/pages/AdminDashboardPage";
 import LoginPage from "../modules/auth/pages/LoginPage";
 import RegisterPage from "../modules/auth/pages/RegisterPage";
+import AboutPage from "../modules/public/pages/AboutPage";
+import ContactPage from "../modules/public/pages/ContactPage";
+import HomePage from "../modules/public/pages/HomePage";
+import StudentDashboardPage from "../modules/student/pages/StudentDashboardPage";
 import ProtectedRoute from "./ProtectedRoute";
-
-function AdminDashboard() {
-  return <h1>Admin Dashboard</h1>;
-}
-
-function StudentDashboard() {
-  return <h1>Student Dashboard</h1>;
-}
 
 export default function AppRoutes() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/" element={<PublicLayout />}>
+          <Route index element={<HomePage />} />
+          <Route path="about" element={<AboutPage />} />
+          <Route path="contact" element={<ContactPage />} />
+        </Route>
+
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
 
@@ -29,7 +32,7 @@ export default function AppRoutes() {
             </ProtectedRoute>
           }
         >
-          <Route path="dashboard" element={<AdminDashboard />} />
+          <Route path="dashboard" element={<AdminDashboardPage />} />
         </Route>
 
         <Route
@@ -40,8 +43,10 @@ export default function AppRoutes() {
             </ProtectedRoute>
           }
         >
-          <Route path="dashboard" element={<StudentDashboard />} />
+          <Route path="dashboard" element={<StudentDashboardPage />} />
         </Route>
+
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
