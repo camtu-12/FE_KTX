@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { Building2, Home } from "lucide-react";
+import { Home } from "lucide-react";
 import { Link } from "react-router-dom";
+import AppBrand from "../../../components/AppBrand";
 import AuthShowcase from "./AuthShowcase";
 
 type AuthShellProps = {
@@ -20,26 +21,18 @@ export default function AuthShell({
     <div className="auth-font flex min-h-screen flex-col bg-[radial-gradient(circle_at_top_left,#f7faff_0%,#edf2f8_42%,#e8eef7_100%)]">
       <header className="border-b border-[#dbe4f0] bg-white/92 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 sm:px-6 lg:px-8">
-          <Link to="/login" className="flex items-center gap-3 text-[#14377b]">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#14377b_0%,#2d58c4_100%)] shadow-[0_12px_24px_rgba(20,55,123,0.18)]">
-              <Building2 size={24} strokeWidth={2.2} className="text-white" />
-            </div>
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#6d7ea6]">
-                STU Dormitory
-              </div>
-              <div className="auth-display text-xl font-extrabold text-[#14377b]">
-                Hệ thống quản lý ký túc xá
-              </div>
-            </div>
+          <Link to="/login">
+            <AppBrand />
           </Link>
 
           <Link
             to="/"
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-[#c7d6ee] bg-[#f8fbff] text-[#244cb8] shadow-[0_8px_22px_rgba(36,76,184,0.12)] transition hover:-translate-y-0.5 hover:text-[#173d97]"
+            title="Về trang chủ"
+            className="inline-flex h-11 cursor-pointer items-center justify-center gap-2.5 rounded-full border border-[#c7d6ee] bg-[#f8fbff] px-5 text-[0.95rem] font-semibold text-[#244cb8] shadow-[0_8px_22px_rgba(36,76,184,0.12)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-[#b8caea] hover:bg-[#eef4ff] hover:text-[#173d97] focus-visible:border-[#b8caea] focus-visible:bg-[#eef4ff] focus-visible:text-[#173d97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#244cb8]/18"
             aria-label="Về trang chủ"
           >
-            <Home size={22} strokeWidth={2.2} />
+            <Home size={19} strokeWidth={2.2} />
+            <span>Trang chủ</span>
           </Link>
         </div>
       </header>

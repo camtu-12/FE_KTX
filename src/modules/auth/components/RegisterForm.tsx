@@ -56,13 +56,13 @@ function InputShell({
   trailing,
   children,
 }: {
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon?: React.ComponentType<{ size?: number; className?: string }>;
   trailing?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <div className={inputShellClassName}>
-      <Icon size={18} className="text-[#4666ab]" />
+      {Icon && <Icon size={18} className="text-[#4666ab]" />}
       {children}
       {trailing}
     </div>
