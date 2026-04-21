@@ -1,59 +1,35 @@
 import { NavLink, Outlet } from "react-router-dom";
-import topbarLogo from "../assets/STU-topbar.png";
-
-const navItems = [
-  { label: "Trang chủ", to: "/" },
-  { label: "Giới thiệu", to: "/about" },
-  { label: "Liên hệ", to: "/contact" },
-];
+import AppBrand from "../components/AppBrand";
 
 export default function PublicLayout() {
   return (
-    <div className="min-h-screen bg-[var(--color-bg)] text-[var(--color-content)]">
-      <header className="sticky top-0 z-20 border-b border-[var(--color-border)] bg-white shadow-sm">
-        <div className="mx-auto flex h-20 w-full max-w-7xl items-center justify-between px-6">
-          <NavLink to="/" className="inline-flex items-center">
-            <img
-              src={topbarLogo}
-              alt="STU Dormitory"
-              className="h-12 w-auto object-contain"
-            />
+    <div className="auth-font min-h-screen bg-[radial-gradient(circle_at_top_left,#f7faff_0%,#edf2f8_42%,#e8eef7_100%)] text-[var(--color-content)]">
+      <header className="sticky top-0 z-30 border-b border-white/70 bg-white/82 backdrop-blur-xl shadow-[0_18px_40px_rgba(15,23,42,0.09)]">
+        <div className="mx-auto flex min-h-[5.5rem] w-full max-w-7xl items-center justify-between gap-6 px-6 py-4">
+          <NavLink
+            to="/"
+            className="inline-flex items-center transition-transform duration-300 ease-out hover:-translate-y-0.5"
+          >
+            <AppBrand />
           </NavLink>
 
-          <nav className="flex items-center gap-12">
-            {navItems.map((item) => (
+          <div className="flex items-center gap-4 lg:gap-8">
+            <div className="flex items-center gap-3">
               <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === "/"}
-                className={({ isActive }) =>
-                  [
-                      "text-base font-semibold transition-colors",
-                    isActive
-                      ? "text-[var(--color-primary-hover)]"
-                      : "text-slate-600 hover:text-[var(--color-primary)]",
-                  ].join(" ")
-                }
+                to="/login"
+                className="inline-flex h-11 items-center justify-center rounded-full border border-[#c9d8f1] bg-white/78 px-5 text-base font-semibold text-[var(--color-primary-hover)] shadow-[0_10px_24px_rgba(17,40,97,0.06)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-[var(--color-primary)] hover:bg-[var(--color-primary-soft)] hover:shadow-[0_18px_34px_rgba(36,76,184,0.16)]"
               >
-                {item.label}
+                Đăng nhập
               </NavLink>
-            ))}
 
-            <NavLink
-              to="/login"
-              className="rounded-lg border border-[var(--color-primary)] px-3 py-2 text-base font-semibold text-[var(--color-primary-hover)] transition hover:bg-[var(--color-primary-soft)]"
-            >
-              Đăng nhập
-            </NavLink>
-
-            <NavLink
-              to="/register"
-              className="rounded-lg bg-[var(--color-primary)] px-5 py-2 text-base font-semibold text-white shadow-sm transition hover:bg-[var(--color-primary-hover)]"
-
-            >
-              Đăng ký
-            </NavLink>
-          </nav>
+              <NavLink
+                to="/register"
+                className="inline-flex h-11 items-center justify-center rounded-full bg-[linear-gradient(135deg,var(--color-primary)_0%,#2d58c4_70%,#31b7d4_100%)] px-5 text-base font-semibold text-white shadow-[0_16px_32px_rgba(36,76,184,0.24)] transition-all duration-300 ease-out hover:-translate-y-1 hover:brightness-110 hover:shadow-[0_22px_40px_rgba(36,76,184,0.30)]"
+              >
+                Đăng ký
+              </NavLink>
+            </div>
+          </div>
         </div>
       </header>
 
