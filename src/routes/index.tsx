@@ -8,6 +8,7 @@ import RegisterPage from "../modules/auth/pages/RegisterPage";
 import AboutPage from "../modules/public/pages/AboutPage";
 import ContactPage from "../modules/public/pages/ContactPage";
 import HomePage from "../modules/public/pages/HomePage";
+import RegistrationPage from "../modules/registration/pages/RegistrationPage";
 import StudentDashboardPage from "../modules/student/pages/StudentDashboardPage";
 import ProtectedRoute from "./ProtectedRoute";
 
@@ -44,6 +45,7 @@ export default function AppRoutes() {
           }
         >
           <Route path="dashboard" element={<StudentDashboardPage />} />
+          <Route path="registration" element={<RegistrationPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
