@@ -11,18 +11,8 @@ export type LoginRequest = {
 
 export type RegisterRequest = {
   studentCode: string;
-  fullName: string;
-  gender: "male" | "female";
-  className: string;
-  faculty: string;
-  phone: string;
   email: string;
-  cccd: string;
-  permanentAddress: string;
   password: string;
-  parentName: string;
-  parentPhone: string;
-  parentRelationship: string;
 };
 
 export type LoginResponse = {

@@ -1,16 +1,8 @@
-import { BedDouble, Building2 } from "lucide-react";
-
 type AuthShowcaseProps = {
   eyebrow: string;
   title: string;
   description: string;
 };
-
-const stats = [
-  { value: "19", label: "Phòng nội trú" },
-  { value: "14", label: "Giường mỗi phòng" },
-  { value: "Online", label: "Đăng ký và theo dõi" },
-];
 
 export default function AuthShowcase({
   eyebrow,
@@ -18,52 +10,24 @@ export default function AuthShowcase({
   description,
 }: AuthShowcaseProps) {
   return (
-    <div className="relative flex h-full min-h-[360px] flex-col justify-between overflow-hidden bg-[linear-gradient(180deg,#63C7D3_0%,#42B7C7_52%,#249FB0_100%)] px-8 py-9 text-white lg:px-12 lg:py-12 ">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.18),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_24%)]" />
+    <div className="relative flex h-full flex-col justify-center overflow-hidden bg-[linear-gradient(160deg,#102b66_0%,#1c46a7_45%,#0a1f58_100%)] px-4 py-5 text-white sm:px-5 sm:py-6 lg:px-6 lg:py-8">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.18),transparent_28%),radial-gradient(circle_at_80%_18%,rgba(120,166,255,0.18),transparent_18%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.12),transparent_24%)]" />
+      <div className="absolute -left-14 top-10 h-52 w-52 rounded-full border border-white/10" />
+      <div className="absolute right-[-3rem] top-[-2rem] h-36 w-36 rounded-full bg-white/10 blur-3xl" />
+      <div className="absolute bottom-[-3rem] left-[20%] h-40 w-40 rounded-full bg-[#9fc0ff]/20 blur-3xl" />
 
-      <div className="absolute left-[-8%] top-[8%] h-[28rem] w-[28rem] rounded-full border border-white/14 opacity-50" />
-      <div className="absolute left-[10%] top-[2%] h-[34rem] w-[34rem] rounded-full border border-white/8 opacity-40" />
-
-      <div className="relative z-10 flex flex-1 flex-col justify-center pl-8">
-        <div className="flex items-center gap-4">
-          <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#FDE68A_0%,#FB7185_48%,#8B5CF6_100%)] shadow-[0_14px_30px_rgba(15,23,42,0.20)]">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/18 backdrop-blur-sm">
-              <Building2 size={28} className="text-white" strokeWidth={2.4} />
-            </div>
-            <div className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-[linear-gradient(135deg,#FFFFFF_0%,#DFF8FB_100%)] text-[#249FB0] shadow-lg ring-2 ring-white/30">
-              <BedDouble size={16} strokeWidth={2.3} />
-            </div>
+      <div className="relative z-10 mx-auto w-full max-w-[23rem]">
+        <div>
+          <div className="relative -translate-y-2.5 inline-flex items-center rounded-full bg-[#8be8df] px-4 py-2 text-[0.7rem] font-bold uppercase tracking-[0.13em] text-[#0d5f67] shadow-[0_10px_28px_rgba(139,232,223,0.18)] sm:text-xs">
+            {eyebrow}
           </div>
-
-          <div>
-            <div className="text-3xl font-extrabold leading-none tracking-tight">
-              STU Dormitory
-            </div>
-            <div className="mt-2 text-xl font-medium text-white/88">
-              {eyebrow}
-            </div>
-          </div>
+          <h1 className="auth-display mt-4 max-w-[19rem] text-[clamp(1.35rem,1.9vw,2rem)] font-semibold leading-[1.34] tracking-[-0.02em] sm:max-w-[20rem]">
+            {title}
+          </h1>
+          <p className="mt-5 max-w-[21rem] text-[0.94rem] leading-7 text-white/82 sm:text-[0.98rem]">
+            {description}
+          </p>
         </div>
-
-        <h1 className="mt-12 text-3xl font-extrabold leading-tight lg:max-w-none ">
-          {title}
-        </h1>
-
-        <p className="mt-5 text-lg leading-8 text-white/90">
-          {description}
-        </p>
-      </div>
-
-      <div className="relative z-10 mt-10 grid gap-4 sm:grid-cols-3">
-        {stats.map((item) => (
-          <div
-            key={item.label}
-            className="rounded-3xl border border-white/12 bg-white/10 px-5 py-6 backdrop-blur-sm"
-          >
-            <div className="text-xl font-extrabold">{item.value}</div>
-            <div className="mt-2 text-sm text-white/86">{item.label}</div>
-          </div>
-        ))}
       </div>
     </div>
   );

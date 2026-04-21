@@ -1,15 +1,20 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap");
 @import "tailwindcss";
 
 :root {
-  --color-primary: #38b8c8;
-  --color-primary-hover: #249fb0;
-  --color-primary-light: #d5f3f7;
-  --color-primary-soft: #edf8fa;
-  --color-bg: #eef7f9;
+  --font-auth: "Manrope", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-auth-display: "Manrope", "Segoe UI", "Helvetica Neue", Arial,
+    sans-serif;
+  --color-primary: #244cb8;
+  --color-primary-hover: #173d97;
+  --color-primary-light: rgba(76, 112, 214, 0.18);
+  --color-primary-soft: #eef3ff;
+  --color-bg: #ebf0f7;
   --color-card: #ffffff;
-  --color-border: #cfe2e7;
-  --color-title: #0f172a;
-  --color-content: #526277;
+  --color-border: #d9e3f1;
+  --color-input: #f4f7fc;
+  --color-title: #15213d;
+  --color-content: #5f6f8d;
 }
 
 html,
@@ -23,6 +28,20 @@ body {
   margin: 0;
   background: var(--color-bg);
   color: var(--color-content);
+  font-family:
+    "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.auth-font {
+  font-family: var(--font-auth);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+.auth-display {
+  font-family: var(--font-auth-display);
+  letter-spacing: -0.045em;
 }
 
 .auth-scrollbar {
@@ -41,7 +60,7 @@ body {
 .auth-scrollbar::-webkit-scrollbar-thumb {
   background: linear-gradient(
     180deg,
-    var(--color-primary-light) 0%,
+    rgba(143, 170, 240, 0.6) 0%,
     var(--color-primary) 100%
   );
   border-radius: 9999px;

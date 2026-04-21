@@ -4,9 +4,9 @@ import RegisterForm from "../components/RegisterForm";
 export default function RegisterPage() {
   return (
     <AuthShell
-      eyebrow="Student Account Registration"
-      title="Thiết lập tài khoản để bắt đầu đăng ký nội trú."
-      description="Dữ liệu đăng ký đồng bộ với hồ sơ sinh viên, hỗ trợ xét duyệt và quản lý hợp đồng."
+      eyebrow="Đăng ký hồ sơ sinh viên"
+      title="Bắt đầu với tài khoản STU để đăng ký nội trú nhanh chóng."
+      description="Dữ liệu bạn nhập sẽ được dùng cho hồ sơ, xét duyệt và phân phòng."
     >
       <RegisterForm />
     </AuthShell>

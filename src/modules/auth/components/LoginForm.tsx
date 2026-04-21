@@ -1,7 +1,19 @@
 import { useState } from "react";
-import { LoaderCircle, Lock, Mail } from "lucide-react";
+import {
+  Eye,
+  EyeOff,
+  LoaderCircle,
+  Lock,
+  Mail,
+} from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+
+const fieldClassName =
+  "group flex h-14 items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-input)] px-4 transition duration-200 focus-within:border-[var(--color-primary)] focus-within:bg-white focus-within:ring-4 focus-within:ring-[var(--color-primary-light)]";
+
+const inputClassName =
+  "h-full w-full bg-transparent text-base text-[var(--color-title)] outline-none placeholder:text-[#8b97ad]";
 
 export default function LoginForm() {
   const { login } = useAuth();
@@ -12,6 +24,7 @@ export default function LoginForm() {
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -25,15 +38,15 @@ export default function LoginForm() {
     setPasswordError("");
 
     if (!trimmedEmail) {
-      setEmailError("Vui lòng nhập email");
+      setEmailError("Vui lòng nhập email đăng nhập.");
       hasError = true;
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      setEmailError("Email không hợp lệ");
+      setEmailError("Email không hợp lệ.");
       hasError = true;
     }
 
     if (!trimmedPassword) {
-      setPasswordError("Vui lòng nhập mật khẩu");
+      setPasswordError("Vui lòng nhập mật khẩu.");
       hasError = true;
     }
 
@@ -56,121 +69,147 @@ export default function LoginForm() {
 
       navigate(nextPath);
     } catch {
-      setGeneralError("Tài khoản hoặc mật khẩu không đúng");
+      setGeneralError("Tài khoản hoặc mật khẩu không đúng.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="w-full max-w-[460px] rounded-[32px] border border-[var(--color-border)] bg-white p-7 shadow-[0_22px_60px_rgba(79,199,212,0.10)] sm:p-9">
-      <div>
-        <h2 className="text-2xl font-heading font-extrabold text-[var(--color-title)]">
-          Đăng nhập
-        </h2>
-        <p className="mt-3 leading-8 text-[var(--color-content)]">
-          Nhập email và mật khẩu để tiếp tục sử dụng hệ thống ký túc xá.
-        </p>
-      </div>
-
-      <form
-        onSubmit={handleSubmit}
-        className="mt-8 space-y-5"
-        aria-busy={isSubmitting}
-        autoComplete="off"
-      >
-        {/* Hidden dummy inputs to mitigate browser autofill */}
-        <input type="text" name="fake-username" autoComplete="username" className="hidden" />
-        <input type="password" name="fake-password" autoComplete="current-password" className="hidden" />
+    <div className="mx-auto w-full max-w-[400px]">
+      <div className="rounded-[24px] border border-[var(--color-border)] bg-white p-4 shadow-[0_14px_42px_rgba(36,76,184,0.10)] sm:p-5">
         <div>
-          <label className="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-[var(--color-content)]">
-            Email
-          </label>
-          <div className="flex h-15 items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-primary-soft)] px-4 transition focus-within:border-[var(--color-primary)] focus-within:ring-4 focus-within:ring-[var(--color-primary-light)]">
-            <Mail size={18} className="text-[var(--color-primary-hover)]" />
-            <input
-              name="email"
-              autoComplete="email"
-              readOnly
-              onFocus={(e) => ((e.target as HTMLInputElement).readOnly = false)}
-              type="email"
-              placeholder="example@email.com"
-              className="h-full w-full bg-transparent text-lg text-[var(--color-title)] outline-none placeholder:text-slate-400"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                if (emailError) setEmailError("");
-                if (generalError) setGeneralError("");
-              }}
-              disabled={isSubmitting}
-            />
+          <div className="max-w-[315px]">
+            <h2 className="auth-display text-[2.08rem] font-bold text-[var(--color-title)] sm:text-[1.78rem]">
+              Đăng nhập
+            </h2>
+            <p className="mt-1.5 text-[0.92rem] leading-7 text-[var(--color-content)]">
+              Nhập thông tin tài khoản của bạn để tiếp tục.
+            </p>
           </div>
-          {emailError ? (
-            <p className="mt-2 text-sm font-medium text-red-500">{emailError}</p>
-          ) : null}
         </div>
 
-        <div>
-          <label className="mb-2 block text-xs font-bold uppercase tracking-[0.18em] text-[var(--color-content)]">
-            Mật khẩu
-          </label>
-          <div className="flex h-15 items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-primary-soft)] px-4 transition focus-within:border-[var(--color-primary)] focus-within:ring-4 focus-within:ring-[var(--color-primary-light)]">
-            <Lock size={18} className="text-[var(--color-primary-hover)]" />
-            <input
-              name="password"
-              autoComplete="current-password"
-              readOnly
-              onFocus={(e) => ((e.target as HTMLInputElement).readOnly = false)}
-              type="password"
-              placeholder="Nhập mật khẩu"
-              className="h-full w-full bg-transparent text-lg text-[var(--color-title)] outline-none placeholder:text-slate-400"
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                if (passwordError) setPasswordError("");
-                if (generalError) setGeneralError("");
-              }}
-              disabled={isSubmitting}
-            />
+        <form
+          onSubmit={handleSubmit}
+          className="mt-4 space-y-3"
+          aria-busy={isSubmitting}
+          autoComplete="off"
+        >
+          <input
+            type="text"
+            name="fake-username"
+            autoComplete="username"
+            className="hidden"
+          />
+          <input
+            type="password"
+            name="fake-password"
+            autoComplete="current-password"
+            className="hidden"
+          />
+
+          <div>
+            <label className="mb-2 block text-xs font-bold uppercase tracking-[0.16em] text-[var(--color-content)] sm:text-sm">
+              Email
+            </label>
+            <div className={fieldClassName}>
+              <Mail size={18} className="text-[var(--color-primary)]" />
+              <input
+                name="email"
+                autoComplete="email"
+                readOnly
+                onFocus={(e) => ((e.target as HTMLInputElement).readOnly = false)}
+                type="email"
+                placeholder="example@email.com"
+                className={inputClassName}
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (emailError) setEmailError("");
+                  if (generalError) setGeneralError("");
+                }}
+                disabled={isSubmitting}
+              />
+            </div>
+            {emailError ? (
+              <p className="mt-2 text-sm font-medium text-[#d14343]">
+                {emailError}
+              </p>
+            ) : null}
           </div>
-          {passwordError ? (
-            <p className="mt-2 text-sm font-medium text-red-500">
-              {passwordError}
+
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <label className="block text-xs font-bold uppercase tracking-[0.16em] text-[var(--color-content)] sm:text-sm">
+                Mật khẩu
+              </label>
+            </div>
+            <div className={fieldClassName}>
+              <Lock size={18} className="text-[var(--color-primary)]" />
+              <input
+                name="password"
+                autoComplete="current-password"
+                readOnly
+                onFocus={(e) => ((e.target as HTMLInputElement).readOnly = false)}
+                type={showPassword ? "text" : "password"}
+                placeholder="Nhập mật khẩu"
+                className={inputClassName}
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (passwordError) setPasswordError("");
+                  if (generalError) setGeneralError("");
+                }}
+                disabled={isSubmitting}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="text-[#7c88a0] transition hover:text-[var(--color-primary-hover)]"
+                aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+            {passwordError ? (
+              <p className="mt-2 text-sm font-medium text-[#d14343]">
+                {passwordError}
+              </p>
+            ) : null}
+          </div>
+
+          {generalError ? (
+            <p className="rounded-2xl border border-[#f4caca] bg-[#fff3f3] px-4 py-3 text-sm font-medium text-[#c53c3c]">
+              {generalError}
             </p>
           ) : null}
-        </div>
 
-        {generalError ? (
-          <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
-            {generalError}
-          </p>
-        ) : null}
-
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="flex h-15 w-full items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#58CAD8_0%,#32B4C2_100%)] px-4 text-lg font-bold text-white shadow-[0_16px_30px_rgba(79,199,212,0.22)] transition-all duration-200 hover:scale-[1.02] hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-80"
-        >
-          {isSubmitting ? (
-            <>
-              <LoaderCircle size={20} className="animate-spin" />
-              <span>Đang đăng nhập...</span>
-            </>
-          ) : (
-            <span>Đăng nhập</span>
-          )}
-        </button>
-
-        <p className="pt-2 text-center text-lg text-[var(--color-content)]">
-          Chưa có tài khoản?{" "}
-          <Link
-            to="/register"
-            className="font-bold text-[var(--color-primary-hover)] transition hover:text-[var(--color-primary)]"
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="mt-4 flex h-10 w-full items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,var(--color-primary)_0%,#31b7d4_100%)] px-4 text-[1rem] font-extrabold text-white shadow-[0_14px_28px_rgba(36,76,184,0.22)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_32px_rgba(36,76,184,0.28)] disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-80"
           >
-            Đăng ký ngay
-          </Link>
-        </p>
-      </form>
+            {isSubmitting ? (
+              <>
+                <LoaderCircle size={20} className="animate-spin" />
+                <span>Đang đăng nhập...</span>
+              </>
+            ) : (
+              <span>Đăng nhập</span>
+            )}
+          </button>
+
+          <p className="pt-1 text-center text-[0.9rem] text-[var(--color-content)]">
+            Chưa có tài khoản?{" "}
+            <Link
+              to="/register"
+              className="font-extrabold text-[var(--color-primary)] transition hover:text-[var(--color-primary-hover)]"
+            >
+              Đăng ký ngay
+            </Link>
+          </p>
+        </form>
+      </div>
     </div>
   );
 }
