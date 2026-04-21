@@ -5,41 +5,27 @@ import type {
   RegisterResponse,
 } from "../types/auth.type";
 
-const mockUsers = [
+type MockUser = {
+  id: number;
+  studentCode: string;
+  email: string;
+  password: string;
+  role: "admin" | "student";
+};
+
+const mockUsers: MockUser[] = [
   {
     id: 1,
     studentCode: "ADMIN001",
-    fullName: "Quản trị viên",
-    gender: "male",
-    className: "QTHT",
-    faculty: "Ban quản lý",
-    phone: "0900000001",
     email: "admin@gmail.com",
-    username: "admin",
-    cccd: "001099000001",
-    permanentAddress: "TP. Hồ Chí Minh",
     password: "123",
-    parentName: "Nguyễn Văn B",
-    parentPhone: "0900000009",
-    parentRelationship: "Phụ huynh",
     role: "admin",
   },
   {
     id: 2,
     studentCode: "SV001",
-    fullName: "Sinh viên 001",
-    gender: "female",
-    className: "D21_TH01",
-    faculty: "Công nghệ thông tin",
-    phone: "0900000002",
     email: "student@gmail.com",
-    username: "sv001",
-    cccd: "001099000002",
-    permanentAddress: "Đà Nẵng",
     password: "123",
-    parentName: "Trần Văn C",
-    parentPhone: "0900000008",
-    parentRelationship: "Cha",
     role: "student",
   },
 ];
@@ -80,34 +66,19 @@ export const registerApi = async (
       const existedUser = mockUsers.find(
         (user) =>
           user.email === normalizedEmail ||
-          user.studentCode === normalizedStudentCode ||
-          user.phone === data.phone.trim() ||
-          user.cccd === data.cccd.trim()
+          user.studentCode === normalizedStudentCode
       );
 
       if (existedUser) {
-        reject(
-          new Error("Email, MSSV, CCCD hoặc số điện thoại đã tồn tại trong hệ thống")
-        );
+        reject(new Error("Email hoặc MSSV đã tồn tại trong hệ thống"));
         return;
       }
 
-      const newUser = {
+      const newUser: MockUser = {
         id: mockUsers.length + 1,
         studentCode: normalizedStudentCode,
-        fullName: data.fullName.trim(),
-        gender: data.gender,
-        className: data.className.trim(),
-        faculty: data.faculty.trim(),
-        phone: data.phone.trim(),
         email: normalizedEmail,
-        username: normalizedStudentCode.toLowerCase(),
-        cccd: data.cccd.trim(),
-        permanentAddress: data.permanentAddress.trim(),
         password: data.password,
-        parentName: data.parentName.trim(),
-        parentPhone: data.parentPhone.trim(),
-        parentRelationship: data.parentRelationship.trim(),
         role: "student",
       };
 
