@@ -1,5 +1,7 @@
 export type AuthUser = {
   id: number;
+  fullName?: string;
+  studentCode?: string;
   email: string;
   role: string;
 };
@@ -10,6 +12,7 @@ export type LoginRequest = {
 };
 
 export type RegisterRequest = {
+  fullName: string;
   studentCode: string;
   email: string;
   password: string;
