@@ -1,0 +1,276 @@
+import { motion } from "framer-motion";
+import { ArrowLeft, CalendarClock, CheckCircle2, CircleAlert, Clock3, Mail, ShieldCheck, UserCircle2, Users } from "lucide-react";
+import { useMemo } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import {
+  departmentOptions,
+  documentLabels,
+  getRegistrationRequestById,
+  relationshipOptions,
+  statusMap,
+  type RegistrationRequest,
+  type RegistrationStatus,
+} from "../data/registrationRequests";
+
+const statusIconMap: Record<RegistrationStatus, typeof Clock3> = {
+  pending: Clock3,
+  approved: CheckCircle2,
+  rejected: CircleAlert,
+};
+
+const readOnlyFieldClassName =
+  "mt-1 h-11 w-full rounded-xl border border-[#D6E2F1] bg-[#F6F9FD] px-4 text-sm text-[#1F3152] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]";
+
+const readOnlySelectClassName = `${readOnlyFieldClassName} appearance-none`;
+
+export default function AdminRegistrationDetailPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { registrationId } = useParams();
+
+  const request = useMemo(() => {
+    const requestFromState = (location.state as { request?: RegistrationRequest } | null)?.request;
+    if (requestFromState) {
+      return requestFromState;
+    }
+
+    const id = Number(registrationId);
+    return Number.isNaN(id) ? null : getRegistrationRequestById(id);
+  }, [location.state, registrationId]);
+
+  if (!request) {
+    return (
+      <section className="flex h-full items-center justify-center px-6 py-10">
+        <div className="w-full max-w-xl rounded-[28px] border border-[#d4e1f2] bg-white p-8 text-center shadow-[0_18px_42px_rgba(15,23,42,0.10)]">
+          <h1 className="text-2xl font-bold text-[#1a2d52]">Không tìm thấy đơn đăng ký</h1>
+          <p className="mt-3 text-sm leading-7 text-[#5c7094]">
+            Hồ sơ này có thể không tồn tại hoặc dữ liệu mẫu chưa được cấu hình.
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate("/admin/registrations")}
+            className="mt-6 rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(36,76,184,0.24)]"
+          >
+            Quay lại danh sách
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  const statusUi = statusMap[request.status];
+  const StatusIcon = statusIconMap[request.status];
+  const relationshipLabel =
+    relationshipOptions.find((option) => option.value === request.formData.relationship)?.label ?? "Khác";
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
+      className="h-full flex-col space-y-6 overflow-y-auto rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
+    >
+      <motion.div
+        transition={{ duration: 0.2 }}
+        className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm sm:px-8"
+      >
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <Link
+              to="/admin/registrations"
+              className="inline-flex items-center gap-2 rounded-full border border-[#c4d7f2] bg-white/80 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-[#40619a] transition hover:border-[#9cb9e7] hover:text-[#244cb8]"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Quay lại
+            </Link>
+            <h1 className="mt-4 text-[28px] font-bold tracking-tight text-[#1a2d52]">
+              Đơn đăng ký nội trú
+            </h1>
+            <p className="mt-2 max-w-3xl text-sm leading-7 text-[#5c7094]">
+              Đây là bản xem chi tiết hồ sơ sinh viên đã nộp. Quản trị viên chỉ có thể xem thông tin và tài liệu
+              đính kèm, không thể chỉnh sửa trực tiếp trên trang này.
+            </p>
+          </div>
+
+          <div className="grid gap-3 rounded-[22px] border border-[#d2dff2] bg-white/90 p-4 shadow-[0_14px_30px_rgba(36,76,184,0.10)] sm:min-w-[280px]">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#6f84ad]">Trạng thái</span>
+              <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold ${statusUi.className}`}>
+                <StatusIcon className="h-3.5 w-3.5" />
+                <span>{statusUi.label}</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-3 text-sm text-[#506789]">
+              <Mail className="h-4 w-4 text-[#244cb8]" />
+              <span>{request.email}</span>
+            </div>
+            <div className="flex items-center gap-3 text-sm text-[#506789]">
+              <CalendarClock className="h-4 w-4 text-[#244cb8]" />
+              <span>Nộp lúc {request.submittedAt}</span>
+            </div>
+          </div>
+        </div>
+
+        {request.rejectionReason ? (
+          <div className="mt-5 rounded-2xl border border-[#f1c2c8] bg-[#fff4f6] px-4 py-3 text-sm text-[#b13d51]">
+            <span className="font-semibold">Lý do từ chối:</span> {request.rejectionReason}
+          </div>
+        ) : null}
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, delay: 0.06, ease: "easeOut" }}
+        className="space-y-6 rounded-[24px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_75%,#deebff_100%)] px-5 pb-6 pt-5 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm sm:px-6 sm:pt-6"
+      >
+        <motion.div
+          transition={{ duration: 0.22 }}
+          className="space-y-4 rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] sm:p-7"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-[#2d58c4] bg-[radial-gradient(circle_at_30%_30%,#2347a8_0%,#1b3e97_58%,#17347e_100%)] text-[#b7ccff] shadow-[inset_0_1px_0_rgba(132,166,244,0.30),0_12px_24px_rgba(36,76,184,0.18)]">
+              <UserCircle2 className="h-5 w-5 stroke-[2.2]" />
+            </div>
+            <div>
+              <span className="text-xs font-semibold uppercase tracking-wide text-[#2F83C9]">Bước 1</span>
+              <h2 className="text-lg font-semibold text-[#1F3152]">Thông tin cơ bản</h2>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-[#5A7094]">MSSV</label>
+              <input readOnly value={request.formData.mssv} className={readOnlyFieldClassName} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[#5A7094]">Họ và tên</label>
+              <input readOnly value={request.formData.fullName} className={readOnlyFieldClassName} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[#5A7094]">Giới tính</label>
+              <select disabled value={request.formData.gender} className={readOnlySelectClassName}>
+                <option value="">Chọn giới tính</option>
+                <option value="male">Nam</option>
+                <option value="female">Nữ</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[#5A7094]">Lớp</label>
+              <input readOnly value={request.formData.class} className={readOnlyFieldClassName} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[#5A7094]">Khoa</label>
+              <select disabled value={request.formData.department} className={readOnlySelectClassName}>
+                <option value="">Chọn khoa</option>
+                {departmentOptions.map((department) => (
+                  <option key={department} value={department}>
+                    {department}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[#5A7094]">Số điện thoại</label>
+              <input readOnly value={request.formData.phone} className={readOnlyFieldClassName} />
+            </div>
+          </div>
+        </motion.div>
+
+        <motion.div
+          transition={{ duration: 0.22 }}
+          className="space-y-4 rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] sm:p-7"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-[#3a67cf] bg-[radial-gradient(circle_at_30%_30%,#2b63da_0%,#244cb8_58%,#1c3f99_100%)] text-[#9ee5ff] shadow-[inset_0_1px_0_rgba(136,181,255,0.28),0_12px_24px_rgba(36,76,184,0.20)]">
+              <ShieldCheck className="h-5 w-5 stroke-[2.2]" />
+            </div>
+            <div>
+              <span className="text-xs font-semibold uppercase tracking-wide text-[#2F83C9]">Bước 2</span>
+              <h2 className="text-lg font-semibold text-[#1F3152]">Chứng thực</h2>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label className="block text-sm font-semibold uppercase tracking-wide text-[#5A7094]">Số CCCD</label>
+              <input readOnly value={request.formData.cccd} className={readOnlyFieldClassName} />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold uppercase tracking-wide text-[#5A7094]">
+                Địa chỉ thường trú
+              </label>
+              <input readOnly value={request.formData.address} className={readOnlyFieldClassName} />
+            </div>
+          </div>
+
+          <div className="rounded-[22px] border border-[#c9d8ef] bg-[linear-gradient(180deg,#eef5ff_0%,#e7f0ff_42%,#edf4fd_100%)] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] sm:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-base font-semibold uppercase tracking-wide text-[#5578AC]">Hồ sơ ảnh đính kèm</h3>
+                <p className="mt-1 text-sm text-[#6981aa]">Bản xem tài liệu sinh viên đã tải lên.</p>
+              </div>
+              <span className="w-fit rounded-full bg-[linear-gradient(135deg,#244CB8_0%,#4F7FF1_100%)] px-3 py-1 text-xs font-semibold text-white shadow-[0_8px_16px_rgba(36,76,184,0.22)]">
+                Chỉ xem
+              </span>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2 lg:[grid-template-columns:repeat(3,minmax(0,15rem))] lg:justify-between lg:gap-8">
+              {Object.entries(request.documents).map(([field, src]) => (
+                <div
+                  key={field}
+                  className="rounded-3xl border border-[#bfd2ec] bg-[linear-gradient(180deg,#f5f9ff_0%,#edf4ff_100%)] p-3 shadow-[inset_0_0_0_1px_rgba(185,205,234,0.24)]"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-[#204178]">
+                        {documentLabels[field as keyof typeof documentLabels]}
+                      </p>
+                    </div>
+                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(180deg,#eef4ff_0%,#e2ecff_100%)] text-[#244CB8]">
+                      <CheckCircle2 className="h-5 w-5" />
+                    </div>
+                  </div>
+
+                  <div className="mt-4 overflow-hidden rounded-2xl border border-[#cfdbef] bg-white">
+                    <img src={src} alt={documentLabels[field as keyof typeof documentLabels]} className="h-48 w-full object-cover" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+
+        <motion.div
+          transition={{ duration: 0.22 }}
+          className="space-y-4 rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] sm:p-7"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-[#315ec7] bg-[radial-gradient(circle_at_30%_30%,#2558c7_0%,#214cb3_55%,#193d8f_100%)] text-[#9fd4ff] shadow-[inset_0_1px_0_rgba(120,169,255,0.26),0_12px_24px_rgba(36,76,184,0.18)]">
+              <Users className="h-5 w-5 stroke-[2.2]" />
+            </div>
+            <div>
+              <span className="text-xs font-semibold uppercase tracking-wide text-[#2F83C9]">Bước 3</span>
+              <h2 className="text-lg font-semibold text-[#1F3152]">Người thân</h2>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-[#5A7094]">Tên người thân</label>
+              <input readOnly value={request.formData.relationName} className={readOnlyFieldClassName} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[#5A7094]">Số điện thoại</label>
+              <input readOnly value={request.formData.relationPhone} className={readOnlyFieldClassName} />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-[#5A7094]">Quan hệ</label>
+              <input readOnly value={relationshipLabel} className={readOnlyFieldClassName} />
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
+    </motion.section>
+  );
+}

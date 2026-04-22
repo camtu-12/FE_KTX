@@ -1,88 +1,24 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useMemo, useState } from "react";
 import { CheckCircle2, CircleAlert, Clock3, Funnel, X } from "lucide-react";
-import { useOutletContext } from "react-router-dom";
+import { Link, useOutletContext } from "react-router-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
+import {
+  registrationRequests,
+  statusMap,
+  type RegistrationFilterStatus,
+  type RegistrationStatus,
+} from "../data/registrationRequests";
 
-type RegistrationStatus = "pending" | "approved" | "rejected";
-type RegistrationFilterStatus = "all" | RegistrationStatus;
-
-type RegistrationRequest = {
-  id: number;
-  mssv: string;
-  fullName: string;
-  email: string;
-  status: RegistrationStatus;
-  rejectionReason?: string;
-};
-
-const initialRequests: RegistrationRequest[] = [
-  {
-    id: 1,
-    mssv: "DH52201699",
-    fullName: "Nguyễn Minh Anh",
-    email: "minhanh@stu.edu.vn",
-    status: "pending",
-  },
-  {
-    id: 2,
-    mssv: "DH52201701",
-    fullName: "Trần Quốc Bảo",
-    email: "quocbao@stu.edu.vn",
-    status: "approved",
-  },
-  {
-    id: 3,
-    mssv: "DH52201715",
-    fullName: "Lê Hoàng Nam",
-    email: "hoangnam@stu.edu.vn",
-    status: "rejected",
-    rejectionReason: "Thiếu ảnh CCCD mặt sau.",
-  },
-  {
-    id: 4,
-    mssv: "DH52201723",
-    fullName: "Phạm Gia Hân",
-    email: "giahan@stu.edu.vn",
-    status: "pending",
-  },
-  {
-    id: 5,
-    mssv: "DH52201740",
-    fullName: "Võ Khánh Linh",
-    email: "khanhlinh@stu.edu.vn",
-    status: "approved",
-  },
-];
-
-const statusMap: Record<
-  RegistrationStatus,
-  {
-    label: string;
-    className: string;
-    icon: typeof Clock3;
-  }
-> = {
-  pending: {
-    label: "Chờ duyệt",
-    className: "border border-[#f3dd9c] bg-[#fff8df] text-[#9b6b00]",
-    icon: Clock3,
-  },
-  approved: {
-    label: "Đã duyệt",
-    className: "border border-[#b9e6c7] bg-[#effcf3] text-[#16784b]",
-    icon: CheckCircle2,
-  },
-  rejected: {
-    label: "Từ chối",
-    className: "border border-[#f1c2c8] bg-[#fff3f5] text-[#bf3e53]",
-    icon: CircleAlert,
-  },
+const statusIconMap: Record<RegistrationStatus, typeof Clock3> = {
+  pending: Clock3,
+  approved: CheckCircle2,
+  rejected: CircleAlert,
 };
 
 export default function AdminRegistrationsPage() {
   const { headerSearchValue } = useOutletContext<AdminLayoutOutletContext>();
-  const [requests, setRequests] = useState(initialRequests);
+  const [requests, setRequests] = useState(registrationRequests);
   const [statusFilter, setStatusFilter] = useState<RegistrationFilterStatus>("all");
   const [draftStatusFilter, setDraftStatusFilter] = useState<RegistrationFilterStatus>("all");
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
@@ -95,7 +31,10 @@ export default function AdminRegistrationsPage() {
     return requests.filter((request) => {
       const matchesKeyword =
         !normalized ||
-        [request.mssv, request.fullName, request.email].join(" ").toLowerCase().includes(normalized);
+        [request.formData.mssv, request.formData.fullName, request.email]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalized);
       const matchesStatus = statusFilter === "all" || request.status === statusFilter;
 
       return matchesKeyword && matchesStatus;
@@ -108,19 +47,19 @@ export default function AdminRegistrationsPage() {
 
   const summaryCards = [
     {
-      label: "Chờ duyệt",
+      label: "Ch\u1edd duy\u1ec7t",
       value: pendingCount,
       valueClassName: "text-[#9b6b00]",
       delay: 0.12,
     },
     {
-      label: "Đã duyệt",
+      label: "\u0110\u00e3 duy\u1ec7t",
       value: approvedCount,
       valueClassName: "text-[#16784b]",
       delay: 0.18,
     },
     {
-      label: "Từ chối",
+      label: "T\u1eeb ch\u1ed1i",
       value: rejectedCount,
       valueClassName: "text-[#bf3e53]",
       delay: 0.24,
@@ -128,10 +67,10 @@ export default function AdminRegistrationsPage() {
   ];
 
   const statusFilterOptions: Array<{ value: RegistrationFilterStatus; label: string }> = [
-    { value: "all", label: "Tất cả" },
-    { value: "pending", label: "Chờ duyệt" },
-    { value: "approved", label: "Đã duyệt" },
-    { value: "rejected", label: "Từ chối" },
+    { value: "all", label: "T\u1ea5t c\u1ea3" },
+    { value: "pending", label: "Ch\u1edd duy\u1ec7t" },
+    { value: "approved", label: "\u0110\u00e3 duy\u1ec7t" },
+    { value: "rejected", label: "T\u1eeb ch\u1ed1i" },
   ];
 
   const handleApprove = (id: number) => {
@@ -193,22 +132,21 @@ export default function AdminRegistrationsPage() {
       <motion.section
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.55, ease: "easeOut" }}
-        className="h-full min-h-0 space-y-5 overflow-y-auto pb-6 pt-1 pr-1"
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="h-full flex-col space-y-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
       >
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.42, delay: 0.04, ease: "easeOut" }}
-          className="rounded-[24px] border border-[#c8daf4] bg-[linear-gradient(180deg,#f8fbff_0%,#edf4ff_72%,#e5efff_100%)] px-5 py-5 shadow-[0_14px_32px_rgba(15,23,42,0.08)] backdrop-blur-sm sm:px-6 sm:py-5"
+          transition={{ duration: 0.2 }}
+          className="auth-reveal is-visible rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm transition-all duration-300 ease-out hover:shadow-[0_24px_56px_rgba(36,76,184,0.14)] sm:px-8"
         >
           <div>
             <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">
-              Quản lý đơn đăng ký
+              {"Qu\u1ea3n l\u00fd \u0111\u01a1n \u0111\u0103ng k\u00fd"}
             </h1>
             <p className="mt-1 max-w-3xl text-[13px] leading-6 text-[#62789f] sm:text-sm">
-              Theo dõi danh sách hồ sơ đăng ký ký túc xá, phê duyệt nhanh và phản hồi rõ lý do khi
-              cần từ chối.
+              {
+                "Theo d\u00f5i danh s\u00e1ch h\u1ed3 s\u01a1 \u0111\u0103ng k\u00fd k\u00fd t\u00fac x\u00e1, ph\u00ea duy\u1ec7t nhanh v\u00e0 ph\u1ea3n h\u1ed3i r\u00f5 l\u00fd do khi c\u1ea7n t\u1eeb ch\u1ed1i."
+              }
             </p>
           </div>
         </motion.div>
@@ -236,14 +174,9 @@ export default function AdminRegistrationsPage() {
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.46, delay: 0.16, ease: "easeOut" }}
-          className="rounded-[28px] border border-[#cfdbef] bg-[linear-gradient(180deg,#ffffff_0%,#f4f8ff_100%)] p-5 shadow-[0_18px_44px_rgba(15,23,42,0.10)] sm:p-6"
+          className="p-0"
         >
-          <div>
-            <h2 className="text-lg font-bold text-[#1f3152]">Danh sách đăng ký</h2>
-            <p className="mt-1 text-sm text-[#6981ad]">Tổng cộng {filteredRequests.length} hồ sơ hiển thị.</p>
-          </div>
-
-          <div className="mt-5 overflow-x-auto rounded-[24px] border border-[#d6e2f1] bg-white">
+          <div className="mt-1 overflow-x-auto rounded-[24px] border border-[#d6e2f1] bg-white">
             <table className="min-w-[920px] w-full border-separate border-spacing-0">
               <thead>
                 <tr className="bg-[linear-gradient(180deg,#f7faff_0%,#eef4ff_100%)]">
@@ -251,14 +184,14 @@ export default function AdminRegistrationsPage() {
                     MSSV
                   </th>
                   <th className="px-5 py-4 text-center text-xs font-bold uppercase tracking-[0.14em] text-[#6f84ad]">
-                    Họ tên
+                    {"H\u1ecd t\u00ean"}
                   </th>
                   <th className="px-5 py-4 text-center text-xs font-bold uppercase tracking-[0.14em] text-[#6f84ad]">
                     Email
                   </th>
                   <th className="relative px-5 py-4 text-center text-xs font-bold uppercase tracking-[0.14em] text-[#6f84ad]">
                     <div className="inline-flex items-center justify-center gap-2">
-                      <span>Trạng thái</span>
+                      <span>{"Tr\u1ea1ng th\u00e1i"}</span>
                       <button
                         type="button"
                         onClick={isStatusFilterOpen ? () => setIsStatusFilterOpen(false) : handleOpenStatusFilter}
@@ -324,14 +257,17 @@ export default function AdminRegistrationsPage() {
                     ) : null}
                   </th>
                   <th className="px-5 py-4 text-center text-xs font-bold uppercase tracking-[0.14em] text-[#6f84ad]">
-                    Hành động
+                    {"H\u00e0nh \u0111\u1ed9ng"}
+                  </th>
+                  <th className="px-5 py-4 text-center text-xs font-bold uppercase tracking-[0.14em] text-[#6f84ad]">
+                    {"X\u1eed l\u00fd"}
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {filteredRequests.map((request, index) => {
                   const statusUi = statusMap[request.status];
-                  const StatusIcon = statusUi.icon;
+                  const StatusIcon = statusIconMap[request.status];
                   const isPending = request.status === "pending";
 
                   return (
@@ -347,16 +283,16 @@ export default function AdminRegistrationsPage() {
                       className="group transition duration-200 hover:bg-[#f8fbff]"
                     >
                       <td className="border-t border-[#e8eef8] px-5 py-4 text-center text-sm font-semibold text-[#24407f]">
-                        {request.mssv}
+                        {request.formData.mssv}
                       </td>
                       <td className="border-t border-[#e8eef8] px-5 py-4 text-center text-sm font-semibold text-[#1f3152]">
-                        {request.fullName}
+                        {request.formData.fullName}
                       </td>
                       <td className="border-t border-[#e8eef8] px-5 py-4 text-center text-sm text-[#5d7299]">
                         {request.email}
                         {request.status === "rejected" && request.rejectionReason ? (
                           <p className="mt-1 text-xs leading-6 text-[#bf3e53]">
-                            Lý do: {request.rejectionReason}
+                            {"L\u00fd do"}: {request.rejectionReason}
                           </p>
                         ) : null}
                       </td>
@@ -369,6 +305,15 @@ export default function AdminRegistrationsPage() {
                         </span>
                       </td>
                       <td className="border-t border-[#e8eef8] px-5 py-4 text-center">
+                        <Link
+                          to={`/registration-detail/${request.id}`}
+                          state={{ request }}
+                          className="inline-flex rounded-xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-4 py-2 text-sm font-semibold text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.12)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white"
+                        >
+                          {"Xem \u0111\u01a1n"}
+                        </Link>
+                      </td>
+                      <td className="border-t border-[#e8eef8] px-5 py-4 text-center">
                         <div className="flex flex-wrap items-center justify-center gap-2">
                           <button
                             type="button"
@@ -376,7 +321,7 @@ export default function AdminRegistrationsPage() {
                             onClick={() => handleApprove(request.id)}
                             className="rounded-xl bg-[linear-gradient(135deg,#1f9a60_0%,#35bf7a_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_18px_rgba(31,154,96,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
                           >
-                            Duyệt
+                            {"Duy\u1ec7t"}
                           </button>
                           <button
                             type="button"
@@ -384,7 +329,7 @@ export default function AdminRegistrationsPage() {
                             onClick={() => handleOpenRejectModal(request.id)}
                             className="rounded-xl bg-[linear-gradient(135deg,#e25569_0%,#cc3c4f_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_18px_rgba(204,60,79,0.20)] transition duration-200 hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
                           >
-                            Từ chối
+                            {"T\u1eeb ch\u1ed1i"}
                           </button>
                         </div>
                       </td>
@@ -416,11 +361,15 @@ export default function AdminRegistrationsPage() {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#7d90b5]">
-                    Phản hồi hồ sơ
+                    {"Ph\u1ea3n h\u1ed3i h\u1ed3 s\u01a1"}
                   </p>
-                  <h3 className="mt-2 text-2xl font-bold text-[#1a2d52]">Từ chối đơn đăng ký</h3>
+                  <h3 className="mt-2 text-2xl font-bold text-[#1a2d52]">
+                    {"T\u1eeb ch\u1ed1i \u0111\u01a1n \u0111\u0103ng k\u00fd"}
+                  </h3>
                   <p className="mt-2 text-sm leading-7 text-[#61779d]">
-                    Nhập lý do để sinh viên biết cần bổ sung hoặc chỉnh sửa thông tin nào.
+                    {
+                      "Nh\u1eadp l\u00fd do \u0111\u1ec3 sinh vi\u00ean bi\u1ebft c\u1ea7n b\u1ed5 sung ho\u1eb7c ch\u1ec9nh s\u1eeda th\u00f4ng tin n\u00e0o."
+                    }
                   </p>
                 </div>
                 <button
@@ -434,12 +383,12 @@ export default function AdminRegistrationsPage() {
 
               <div className="mt-5">
                 <label className="mb-2 block text-xs font-bold uppercase tracking-[0.16em] text-[#667ca8]">
-                  Lý do từ chối
+                  {"L\u00fd do t\u1eeb ch\u1ed1i"}
                 </label>
                 <textarea
                   value={rejectionReason}
                   onChange={(e) => setRejectionReason(e.target.value)}
-                  placeholder="Ví dụ: Ảnh CCCD chưa rõ nét, thiếu thông tin người thân..."
+                  placeholder={"V\u00ed d\u1ee5: \u1ea2nh CCCD ch\u01b0a r\u00f5 n\u00e9t, thi\u1ebfu th\u00f4ng tin ng\u01b0\u1eddi th\u00e2n..."}
                   rows={5}
                   className="w-full rounded-2xl border border-[#d6e2f1] bg-[#f8fbff] px-4 py-3 text-sm text-[#1f3152] outline-none transition placeholder:text-[#8ea1c0] focus:border-[#244cb8] focus:bg-white focus:ring-4 focus:ring-[#244cb8]/12"
                 />
@@ -451,7 +400,7 @@ export default function AdminRegistrationsPage() {
                   onClick={handleCloseRejectModal}
                   className="rounded-2xl border border-[#c9d8ef] bg-white px-5 py-2.5 text-sm font-semibold text-[#4b6494] transition hover:border-[#adc3e8] hover:text-[#244cb8]"
                 >
-                  Hủy
+                  {"H\u1ee7y"}
                 </button>
                 <button
                   type="button"
@@ -459,7 +408,7 @@ export default function AdminRegistrationsPage() {
                   onClick={handleConfirmReject}
                   className="rounded-2xl bg-[linear-gradient(135deg,#e25569_0%,#cc3c4f_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_20px_rgba(204,60,79,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
                 >
-                  Xác nhận từ chối
+                  {"X\u00e1c nh\u1eadn t\u1eeb ch\u1ed1i"}
                 </button>
               </div>
             </motion.div>
