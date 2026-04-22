@@ -3,6 +3,9 @@ import AdminLayout from "../layouts/AdminLayout";
 import PublicLayout from "../layouts/PublicLayout";
 import StudentLayout from "../layouts/StudentLayout";
 import AdminDashboardPage from "../modules/admin/pages/AdminDashboardPage";
+import AdminRegistrationsPage from "../modules/admin/pages/AdminRegistrationsPage";
+import AdminRoomsPage from "../modules/admin/pages/AdminRoomsPage";
+import AdminStudentsPage from "../modules/admin/pages/AdminStudentsPage";
 import LoginPage from "../modules/auth/pages/LoginPage";
 import RegisterPage from "../modules/auth/pages/RegisterPage";
 import AboutPage from "../modules/public/pages/AboutPage";
@@ -34,6 +37,9 @@ export default function AppRoutes() {
           }
         >
           <Route path="dashboard" element={<AdminDashboardPage />} />
+          <Route path="registrations" element={<AdminRegistrationsPage />} />
+          <Route path="students" element={<AdminStudentsPage />} />
+          <Route path="rooms" element={<AdminRoomsPage />} />
         </Route>
 
         <Route

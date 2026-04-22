@@ -327,14 +327,14 @@ export default function RegistrationPage() {
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
-      className="auth-font relative flex h-full flex-col space-y-6 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#f4f8ff_0%,#eaf1fb_38%,#e3ebf7_100%)] p-4 sm:p-6"
+      className="auth-font relative flex h-full flex-col space-y-6 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
     >
-      <div className="pointer-events-none absolute -left-24 -top-24 h-56 w-56 rounded-full bg-[#244CB8]/10 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-28 right-0 h-60 w-60 rounded-full bg-[#4F7FF1]/10 blur-3xl" />
+      <div className="pointer-events-none absolute -left-24 -top-24 h-56 w-56 rounded-full bg-[#244CB8]/14 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-28 right-0 h-60 w-60 rounded-full bg-[#4F7FF1]/14 blur-3xl" />
 
       <motion.div
         transition={{ duration: 0.2 }}
-        className="auth-reveal is-visible rounded-[20px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f2f7ff_72%,#edf4ff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm transition-all duration-300 ease-out hover:shadow-[0_24px_56px_rgba(36,76,184,0.14)] sm:px-8"
+        className="auth-reveal is-visible rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm transition-all duration-300 ease-out hover:shadow-[0_24px_56px_rgba(36,76,184,0.14)] sm:px-8"
       >
         <h1 className="text-[30px] font-bold tracking-tight text-[#1A2D52]">Đăng ký nội trú</h1>
         <p className="mt-1.5 text-sm text-[#5C7094]">
@@ -395,7 +395,7 @@ export default function RegistrationPage() {
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, delay: 0.08, ease: "easeOut" }}
-          className="auth-reveal is-visible mt-2 flex-1 overflow-hidden rounded-[24px] border border-[#cfdbef] bg-[linear-gradient(180deg,#ffffff_0%,#f1f6ff_75%,#edf4ff_100%)] px-5 pb-6 pt-5 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm sm:mt-3 sm:px-6 sm:pt-6"
+          className="auth-reveal is-visible mt-2 flex-1 overflow-hidden rounded-[24px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_75%,#deebff_100%)] px-5 pb-6 pt-5 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm sm:mt-3 sm:px-6 sm:pt-6"
         >
           <form
             ref={formRef}

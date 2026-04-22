@@ -1,138 +1,69 @@
-import {
-  LayoutDashboard,
-  UserCog,
-  LogOut,
-  BellRing,
-  type LucideIcon,
-} from "lucide-react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { AnimatePresence, motion } from "framer-motion";
+import { useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import Header from "../components/Header";
+import Sidebar from "../components/Sidebar";
+import { clearAuthStorage, getStoredAuth } from "../modules/auth/utils/authStorage";
 
-type MenuItem = {
-  label: string;
-  to?: string;
-  icon: LucideIcon;
+export type AdminLayoutOutletContext = {
+  headerSearchValue: string;
+  setHeaderSearchValue: Dispatch<SetStateAction<string>>;
 };
 
-const adminMenu: MenuItem[] = [
-  {
-    label: "Dashboard",
-    to: "/admin/dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    label: "Quản lý sinh viên",
-    to: "/admin/students",
-    icon: UserCog,
-  },
-];
-
-function getInitials(name: string) {
-  const trimmed = name.trim();
-  if (!trimmed) {
-    return "U";
-  }
-
-  const parts = trimmed.split(/\s+/).slice(0, 2);
-  return parts.map((part) => part.charAt(0).toUpperCase()).join("");
-}
-
 export default function AdminLayout() {
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [headerSearchValue, setHeaderSearchValue] = useState("");
   const navigate = useNavigate();
-  const rawUser = localStorage.getItem("user");
-  const user = rawUser ? JSON.parse(rawUser) : null;
+  const location = useLocation();
+  const user = getStoredAuth()?.user ?? null;
   const userName = user?.fullName || user?.email || "Admin User";
-  const initials = getInitials(userName);
+  const userEmail = user?.email || "admin@stu.edu.vn";
+  const isRegistrationsPage = location.pathname === "/admin/registrations";
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    clearAuthStorage();
     navigate("/login");
   };
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg)]">
-      <div className="flex min-h-screen">
-        <aside className="w-[240px] border-r border-[var(--color-border)] bg-white px-4 py-6">
-          <div className="mb-8">
-            <img
-              src="/STU-topbar.png"
-              alt="STU Dormitory"
-              className="h-auto w-full object-contain"
-            />
-          </div>
+    <div className="h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,#f7faff_0%,#edf2f8_42%,#e8eef7_100%)]">
+      <Header
+        role="admin"
+        userName={userName}
+        userEmail={userEmail}
+        searchValue={isRegistrationsPage ? headerSearchValue : undefined}
+        searchPlaceholder={isRegistrationsPage ? "Tìm theo MSSV, họ tên hoặc email" : undefined}
+        onSearchChange={isRegistrationsPage ? setHeaderSearchValue : undefined}
+        onLogout={handleLogout}
+        isSidebarOpen={isSidebarOpen}
+        onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
+      />
 
-          <nav className="space-y-1.5">
-            {adminMenu.map((item) => {
-              const Icon = item.icon;
-              const baseClassName =
-                "group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition";
+      <div className="relative z-0 flex h-[calc(100vh-5rem)]">
+        <AnimatePresence initial={false}>
+          {isSidebarOpen && (
+            <motion.div
+              initial={{ x: -36, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -36, opacity: 0 }}
+              transition={{ duration: 0.28, ease: "easeOut" }}
+              className="flex"
+            >
+              <Sidebar role="admin" />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-              if (!item.to) {
-                return (
-                  <button
-                    key={item.label}
-                    type="button"
-                    className={`${baseClassName} text-[var(--color-content)] hover:bg-[var(--color-primary-soft)] hover:text-[var(--color-title)]`}
-                  >
-                    <Icon className="h-5 w-5" />
-                    <span>{item.label}</span>
-                  </button>
-                );
-              }
-
-              return (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  className={({ isActive }) =>
-                    [
-                      baseClassName,
-                      isActive
-                        ? "bg-[var(--color-primary-light)] text-[var(--color-primary-hover)]"
-                        : "text-[var(--color-content)] hover:bg-[var(--color-primary-soft)] hover:text-[var(--color-title)]",
-                    ].join(" ")
-                  }
-                >
-                  <Icon className="h-5 w-5" />
-                  <span>{item.label}</span>
-                </NavLink>
-              );
-            })}
-          </nav>
-        </aside>
-
-        <div className="flex min-h-screen flex-1 flex-col">
-          <header className="flex h-16 items-center justify-end border-b border-[var(--color-border)] bg-white px-6 shadow-sm">
-            <div className="flex items-center gap-4">
-              <button
-                type="button"
-                className="relative rounded-lg p-2 text-[var(--color-content)] transition hover:bg-[var(--color-primary-soft)] hover:text-[var(--color-primary-hover)]"
-              >
-                <BellRing className="h-5 w-5" />
-                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500"></span>
-              </button>
-
-              <div className="flex items-center gap-3 rounded-full border border-[var(--color-border)] bg-[var(--color-primary-soft)] px-2 py-1 pr-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-primary)] text-xs font-semibold text-white">
-                  {initials}
-                </div>
-                <span className="text-sm font-medium text-[var(--color-content)]">{userName}</span>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="inline-flex items-center gap-2 rounded-lg bg-[var(--color-primary)] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[var(--color-primary-hover)]"
-              >
-                <LogOut className="h-4 w-4" />
-                <span>Logout</span>
-              </button>
-            </div>
-          </header>
-
-          <div className="flex-1 p-6">
-            <Outlet />
-          </div>
+        <div className="flex h-full flex-1 flex-col">
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.08, ease: "easeOut" }}
+            className="flex-1 overflow-hidden bg-white/35 px-6 pt-1"
+          >
+            <Outlet context={{ headerSearchValue, setHeaderSearchValue }} />
+          </motion.div>
         </div>
       </div>
     </div>

@@ -1,12 +1,12 @@
 import { loginApi, registerApi } from "../services/auth.api";
 import type { LoginRequest, RegisterRequest } from "../types/auth.type";
+import { setAuthStorage } from "../utils/authStorage";
 
 export const useAuth = () => {
   const login = async (data: LoginRequest) => {
     const res = await loginApi(data);
 
-    localStorage.setItem("token", res.token);
-    localStorage.setItem("user", JSON.stringify(res.user));
+    setAuthStorage(res.token, res.user);
 
     return res;
   };
