@@ -3,6 +3,7 @@ import {
   BookOpen,
   Eye,
   EyeOff,
+  IdCard,
   LoaderCircle,
   Lock,
   Mail,
@@ -11,6 +12,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 
 type RegisterFields = {
+  fullName: string;
   studentCode: string;
   email: string;
   password: string;
@@ -19,6 +21,7 @@ type RegisterFields = {
 type FieldErrors = Partial<Record<keyof RegisterFields, string>>;
 
 const initialFields: RegisterFields = {
+  fullName: "",
   studentCode: "",
   email: "",
   password: "",
@@ -93,10 +96,15 @@ export default function RegisterForm() {
 
     const nextErrors: FieldErrors = {};
     const trimmed = {
+      fullName: fields.fullName.trim(),
       studentCode: fields.studentCode.trim(),
       email: fields.email.trim(),
       password: fields.password.trim(),
     };
+
+    if (!trimmed.fullName) {
+      nextErrors.fullName = "Vui lòng nhập họ và tên.";
+    }
 
     if (!trimmed.studentCode) {
       nextErrors.studentCode = "Vui lòng nhập MSSV.";
@@ -126,6 +134,7 @@ export default function RegisterForm() {
 
     try {
       await register({
+        fullName: trimmed.fullName,
         studentCode: trimmed.studentCode,
         email: trimmed.email,
         password: trimmed.password,
@@ -171,13 +180,28 @@ export default function RegisterForm() {
           </div>
 
           <div className="mt-4 grid gap-3">
+            <FormField label="Họ và tên" error={errors.fullName}>
+              <InputShell icon={IdCard}>
+                <input
+                  name="fullName"
+                  autoComplete="name"
+                  type="text"
+                  placeholder="Nhập họ và tên"
+                  className={inputClassName}
+                  value={fields.fullName}
+                  onChange={(e) => setField("fullName", e.target.value)}
+                  disabled={isSubmitting}
+                />
+              </InputShell>
+            </FormField>
+
             <FormField label="MSSV" error={errors.studentCode}>
               <InputShell icon={BookOpen}>
                 <input
                   name="studentCode"
                   autoComplete="off"
                   type="text"
-                  placeholder="Ví dụ: DH52100001"
+                  placeholder="Nhập MSSV"
                   className={inputClassName}
                   value={fields.studentCode}
                   onChange={(e) => setField("studentCode", e.target.value)}
@@ -194,7 +218,7 @@ export default function RegisterForm() {
                   readOnly
                   onFocus={(e) => ((e.target as HTMLInputElement).readOnly = false)}
                   type="email"
-                  placeholder="sv001@stu.edu.vn"
+                  placeholder="Nhập email"
                   className={inputClassName}
                   value={fields.email}
                   onChange={(e) => setField("email", e.target.value)}

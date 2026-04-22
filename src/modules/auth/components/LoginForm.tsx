@@ -120,7 +120,7 @@ export default function LoginForm() {
                 readOnly
                 onFocus={(e) => ((e.target as HTMLInputElement).readOnly = false)}
                 type="email"
-                placeholder="example@email.com"
+                placeholder="Nhập email của bạn"
                 className={inputClassName}
                 value={email}
                 onChange={(e) => {

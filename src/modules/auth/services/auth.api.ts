@@ -7,6 +7,7 @@ import type {
 
 type MockUser = {
   id: number;
+  fullName: string;
   studentCode: string;
   email: string;
   password: string;
@@ -16,6 +17,7 @@ type MockUser = {
 const mockUsers: MockUser[] = [
   {
     id: 1,
+    fullName: "Admin STU",
     studentCode: "ADMIN001",
     email: "admin@gmail.com",
     password: "123",
@@ -23,6 +25,7 @@ const mockUsers: MockUser[] = [
   },
   {
     id: 2,
+    fullName: "Student User",
     studentCode: "SV001",
     email: "student@gmail.com",
     password: "123",
@@ -44,6 +47,8 @@ export const loginApi = async (data: LoginRequest): Promise<LoginResponse> => {
           token: `fake_token_${foundUser.role}_${foundUser.id}`,
           user: {
             id: foundUser.id,
+            fullName: foundUser.fullName,
+            studentCode: foundUser.studentCode,
             email: foundUser.email,
             role: foundUser.role,
           },
@@ -76,6 +81,7 @@ export const registerApi = async (
 
       const newUser: MockUser = {
         id: mockUsers.length + 1,
+        fullName: data.fullName.trim(),
         studentCode: normalizedStudentCode,
         email: normalizedEmail,
         password: data.password,
@@ -88,6 +94,8 @@ export const registerApi = async (
         message: "Đăng ký thành công",
         user: {
           id: newUser.id,
+          fullName: newUser.fullName,
+          studentCode: newUser.studentCode,
           email: newUser.email,
           role: newUser.role,
         },
