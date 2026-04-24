@@ -327,7 +327,7 @@ export default function RegistrationPage() {
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
-      className="h-full flex-col space-y-6 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
+      className="relative flex h-full min-h-0 flex-col space-y-6 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
     >
       <div className="pointer-events-none absolute -left-24 -top-24 h-56 w-56 rounded-full bg-[#244CB8]/14 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-28 right-0 h-60 w-60 rounded-full bg-[#4F7FF1]/14 blur-3xl" />
@@ -395,7 +395,7 @@ export default function RegistrationPage() {
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, delay: 0.08, ease: "easeOut" }}
-          className="auth-reveal is-visible mt-2 flex-1 overflow-hidden rounded-[24px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_75%,#deebff_100%)] px-5 pb-6 pt-5 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm sm:mt-3 sm:px-6 sm:pt-6"
+          className="auth-reveal is-visible mt-2 flex-1 min-h-0 overflow-hidden rounded-[24px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_75%,#deebff_100%)] px-5 pb-6 pt-5 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm sm:mt-3 sm:px-6 sm:pt-6"
         >
           <form
             ref={formRef}
