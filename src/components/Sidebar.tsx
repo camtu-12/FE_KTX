@@ -35,15 +35,16 @@ const adminMenu: MenuItem[] = [
     icon: ClipboardList,
   },
   {
-    label: "Sinh viên",
-    to: "/admin/students",
+    label: "Quản lý phòng",
+    to: "/admin/rooms",
     icon: School,
   },
   {
-    label: "Phòng",
-    to: "/admin/rooms",
-    icon: UserCog,
+    label: "Quản lý sinh viên",
+    to: "/admin/students",
+    icon: UserCog ,
   },
+  
 ];
 
 const studentMenu: MenuItem[] = [

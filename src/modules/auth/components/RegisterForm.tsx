@@ -218,7 +218,8 @@ export default function RegisterForm() {
                   readOnly
                   onFocus={(e) => ((e.target as HTMLInputElement).readOnly = false)}
                   type="email"
-                  placeholder="Nhập email"
+                  placeholder="Nhập email
+                  "
                   className={inputClassName}
                   value={fields.email}
                   onChange={(e) => setField("email", e.target.value)}

@@ -55,12 +55,12 @@ export default function AdminLayout() {
           )}
         </AnimatePresence>
 
-        <div className="flex h-full flex-1 flex-col">
+        <div className="flex h-full min-h-0 flex-1 flex-col">
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, delay: 0.08, ease: "easeOut" }}
-            className="flex-1 overflow-hidden bg-white/35 px-6 pt-1"
+            className="auth-scrollbar flex-1 overflow-y-auto bg-white/35 px-6 pb-6 pt-1"
           >
             <Outlet context={{ headerSearchValue, setHeaderSearchValue }} />
           </motion.div>

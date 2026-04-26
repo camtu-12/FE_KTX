@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
-import { ArrowLeft, CalendarClock, CheckCircle2, CircleAlert, Clock3, Mail, ShieldCheck, UserCircle2, Users } from "lucide-react";
+import { ArrowLeft, CheckCircle2, CircleAlert, Clock3, ShieldCheck, UserCircle2, Users } from "lucide-react";
 import { useMemo } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   departmentOptions,
   documentLabels,
@@ -23,20 +23,35 @@ const readOnlyFieldClassName =
 
 const readOnlySelectClassName = `${readOnlyFieldClassName} appearance-none`;
 
+type DetailRouteState = {
+  request?: RegistrationRequest;
+  returnToModal?: boolean;
+};
+
 export default function AdminRegistrationDetailPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { registrationId } = useParams();
+  const routeState = location.state as DetailRouteState | null;
 
   const request = useMemo(() => {
-    const requestFromState = (location.state as { request?: RegistrationRequest } | null)?.request;
+    const requestFromState = routeState?.request;
     if (requestFromState) {
       return requestFromState;
     }
 
     const id = Number(registrationId);
     return Number.isNaN(id) ? null : getRegistrationRequestById(id);
-  }, [location.state, registrationId]);
+  }, [registrationId, routeState?.request]);
+
+  const handleBack = () => {
+    if (routeState?.returnToModal) {
+      navigate(-1);
+      return;
+    }
+
+    navigate("/admin/registrations");
+  };
 
   if (!request) {
     return (
@@ -48,7 +63,7 @@ export default function AdminRegistrationDetailPage() {
           </p>
           <button
             type="button"
-            onClick={() => navigate("/admin/registrations")}
+            onClick={handleBack}
             className="mt-6 rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(36,76,184,0.24)]"
           >
             Quay lại danh sách
@@ -68,54 +83,42 @@ export default function AdminRegistrationDetailPage() {
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
-      className="h-full flex-col space-y-6 overflow-y-auto rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
+      className="flex min-h-full flex-col space-y-6 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
     >
       <motion.div
         transition={{ duration: 0.2 }}
         className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm sm:px-8"
       >
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <Link
-              to="/admin/registrations"
-              className="inline-flex items-center gap-2 rounded-full border border-[#c4d7f2] bg-white/80 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-[#40619a] transition hover:border-[#9cb9e7] hover:text-[#244cb8]"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Quay lại
-            </Link>
-            <h1 className="mt-4 text-[28px] font-bold tracking-tight text-[#1a2d52]">
-              Đơn đăng ký nội trú
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-7 text-[#5c7094]">
-              Đây là bản xem chi tiết hồ sơ sinh viên đã nộp. Quản trị viên chỉ có thể xem thông tin và tài liệu
-              đính kèm, không thể chỉnh sửa trực tiếp trên trang này.
-            </p>
-          </div>
+        <div className="relative pl-16 sm:pl-20">
+          <button
+            type="button"
+            onClick={handleBack}
+            aria-label="Quay lại popup xem đơn"
+            className="absolute left-0 top-1/2 inline-flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-[#c4d7f2] bg-white/90 text-[#40619a] shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:border-[#9cb9e7] hover:text-[#244cb8]"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
 
-          <div className="grid gap-3 rounded-[22px] border border-[#d2dff2] bg-white/90 p-4 shadow-[0_14px_30px_rgba(36,76,184,0.10)] sm:min-w-[280px]">
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#6f84ad]">Trạng thái</span>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h1 className="text-[28px] font-bold tracking-tight text-[#1a2d52]">
+                Đơn đăng ký nội trú
+              </h1>
+              <p className="mt-1.5 max-w-3xl text-sm leading-7 text-[#5c7094]">
+                Bản xem chi tiết hồ sơ sinh viên đã nộp. Quản trị viên chỉ có thể xem, không thể chỉnh sửa.
+              </p>
+            </div>
+
+            <div className="pt-1 lg:pt-0">
               <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold ${statusUi.className}`}>
                 <StatusIcon className="h-3.5 w-3.5" />
                 <span>{statusUi.label}</span>
               </span>
             </div>
-            <div className="flex items-center gap-3 text-sm text-[#506789]">
-              <Mail className="h-4 w-4 text-[#244cb8]" />
-              <span>{request.email}</span>
-            </div>
-            <div className="flex items-center gap-3 text-sm text-[#506789]">
-              <CalendarClock className="h-4 w-4 text-[#244cb8]" />
-              <span>Nộp lúc {request.submittedAt}</span>
-            </div>
           </div>
         </div>
 
-        {request.rejectionReason ? (
-          <div className="mt-5 rounded-2xl border border-[#f1c2c8] bg-[#fff4f6] px-4 py-3 text-sm text-[#b13d51]">
-            <span className="font-semibold">Lý do từ chối:</span> {request.rejectionReason}
-          </div>
-        ) : null}
+       
       </motion.div>
 
       <motion.div
@@ -210,9 +213,7 @@ export default function AdminRegistrationDetailPage() {
                 <h3 className="text-base font-semibold uppercase tracking-wide text-[#5578AC]">Hồ sơ ảnh đính kèm</h3>
                 <p className="mt-1 text-sm text-[#6981aa]">Bản xem tài liệu sinh viên đã tải lên.</p>
               </div>
-              <span className="w-fit rounded-full bg-[linear-gradient(135deg,#244CB8_0%,#4F7FF1_100%)] px-3 py-1 text-xs font-semibold text-white shadow-[0_8px_16px_rgba(36,76,184,0.22)]">
-                Chỉ xem
-              </span>
+              
             </div>
 
             <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2 lg:[grid-template-columns:repeat(3,minmax(0,15rem))] lg:justify-between lg:gap-8">
@@ -233,7 +234,11 @@ export default function AdminRegistrationDetailPage() {
                   </div>
 
                   <div className="mt-4 overflow-hidden rounded-2xl border border-[#cfdbef] bg-white">
-                    <img src={src} alt={documentLabels[field as keyof typeof documentLabels]} className="h-48 w-full object-cover" />
+                    <img
+                      src={src}
+                      alt={documentLabels[field as keyof typeof documentLabels]}
+                      className="h-48 w-full object-cover"
+                    />
                   </div>
                 </div>
               ))}

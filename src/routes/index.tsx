@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import AdminLayout from "../layouts/AdminLayout";
 import PublicLayout from "../layouts/PublicLayout";
 import StudentLayout from "../layouts/StudentLayout";
@@ -16,6 +16,19 @@ import RegistrationPage from "../modules/registration/pages/RegistrationPage";
 import StudentDashboardPage from "../modules/student/pages/StudentDashboardPage";
 import ProtectedRoute from "./ProtectedRoute";
 
+function LegacyRegistrationDetailRedirect() {
+  const location = useLocation();
+  const { registrationId } = useParams();
+
+  return (
+    <Navigate
+      to={registrationId ? `/admin/registrations/${registrationId}` : "/admin/registrations"}
+      replace
+      state={location.state}
+    />
+  );
+}
+
 export default function AppRoutes() {
   return (
     <BrowserRouter>
@@ -28,7 +41,7 @@ export default function AppRoutes() {
 
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
-        <Route path="/registration-detail/:registrationId" element={<AdminRegistrationDetailPage />} />
+        <Route path="/registration-detail/:registrationId" element={<LegacyRegistrationDetailRedirect />} />
 
         <Route
           path="/admin"

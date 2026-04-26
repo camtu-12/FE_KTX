@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { AlertCircle, CheckCircle, Clock, ImagePlus, ShieldCheck, UserCircle2, Users } from "lucide-react";
+import { getLatestRegistrationByEmail, submitRegistration } from "../../../api/registrationMockApi";
+import { getStoredAuth } from "../../auth/utils/authStorage";
 
 type RegistrationStatus = "unregistered" | "pending" | "approved" | "rejected";
 type DocumentField = "portraitPhoto" | "cccdFrontPhoto" | "cccdBackPhoto";
@@ -98,11 +100,15 @@ function ErrorMessage({ message }: { message: string }) {
 }
 
 export default function RegistrationPage() {
+  const storedAuth = getStoredAuth();
+  const studentEmail = storedAuth?.user.email ?? "";
   const [status, setStatus] = useState<RegistrationStatus>("unregistered");
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [documentFiles, setDocumentFiles] = useState<Record<DocumentField, File | null>>(initialDocumentFiles);
   const [draggingDocumentField, setDraggingDocumentField] = useState<DocumentField | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [documentErrors, setDocumentErrors] = useState<Partial<Record<DocumentField, string>>>({});
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -136,6 +142,93 @@ export default function RegistrationPage() {
       });
     };
   }, [documentPreviewUrls]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadLatestStatus = async () => {
+      if (!studentEmail) {
+        return;
+      }
+
+      const latestRequest = await getLatestRegistrationByEmail(studentEmail);
+      if (!isMounted || !latestRequest) {
+        return;
+      }
+
+      setStatus(latestRequest.status);
+      setRejectionReason(latestRequest.rejectionReason ?? "");
+    };
+
+    void loadLatestStatus();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [studentEmail]);
+
+  const readFileAsDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = () => {
+        if (typeof reader.result === "string") {
+          resolve(reader.result);
+          return;
+        }
+
+        reject(new Error("Không thể đọc tệp ảnh."));
+      };
+
+      reader.onerror = () => {
+        reject(new Error("Không thể đọc tệp ảnh."));
+      };
+
+      reader.readAsDataURL(file);
+    });
+
+  const toDataUrl = async (file: File) => {
+    // Keep tiny files unchanged to avoid unnecessary quality loss.
+    if (file.size <= 350 * 1024) {
+      return readFileAsDataUrl(file);
+    }
+
+    const originalDataUrl = await readFileAsDataUrl(file);
+
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("Không thể xử lý tệp ảnh."));
+      img.src = originalDataUrl;
+    });
+
+    const maxSide = 1280;
+    const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+    const targetWidth = Math.max(1, Math.round(image.width * scale));
+    const targetHeight = Math.max(1, Math.round(image.height * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return originalDataUrl;
+    }
+
+    context.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+    const compressedBlob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, "image/jpeg", 0.72);
+    });
+
+    if (!compressedBlob) {
+      return originalDataUrl;
+    }
+
+    return readFileAsDataUrl(new File([compressedBlob], file.name, { type: "image/jpeg" }));
+  };
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
@@ -242,8 +335,9 @@ export default function RegistrationPage() {
     setDraggingDocumentField(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError("");
 
     const requiredFields = Object.keys(fieldLabels) as Array<keyof FormData>;
     const nextErrors: Partial<Record<keyof FormData, string>> = {};
@@ -289,7 +383,43 @@ export default function RegistrationPage() {
 
     setErrors({});
     setDocumentErrors({});
-    setStatus("pending");
+
+    if (!studentEmail) {
+      setSubmitError("Bạn cần đăng nhập tài khoản sinh viên để gửi đơn.");
+      return;
+    }
+
+    const allDocumentsReady = documentFieldConfigs.every(({ field }) => documentFiles[field]);
+    if (!allDocumentsReady) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const [portraitPhoto, cccdFrontPhoto, cccdBackPhoto] = await Promise.all([
+        toDataUrl(documentFiles.portraitPhoto as File),
+        toDataUrl(documentFiles.cccdFrontPhoto as File),
+        toDataUrl(documentFiles.cccdBackPhoto as File),
+      ]);
+
+      const created = await submitRegistration({
+        email: studentEmail,
+        formData,
+        documents: {
+          portraitPhoto,
+          cccdFrontPhoto,
+          cccdBackPhoto,
+        },
+      });
+
+      setStatus(created.status);
+      setRejectionReason(created.rejectionReason ?? "");
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Không thể gửi đơn. Vui lòng thử lại.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const resetFormState = () => {
@@ -310,8 +440,9 @@ export default function RegistrationPage() {
     resetFormState();
 
     requestAnimationFrame(() => {
-      if (formRef.current) {
-        formRef.current.scrollTo({ top: 0, behavior: "smooth" });
+      const scrollContainer = formRef.current?.closest(".auth-scrollbar");
+      if (scrollContainer instanceof HTMLElement) {
+        scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
       }
     });
   };
@@ -327,7 +458,7 @@ export default function RegistrationPage() {
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
-      className="relative flex h-full min-h-0 flex-col space-y-6 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
+      className="relative flex min-h-full flex-col space-y-6 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
     >
       <div className="pointer-events-none absolute -left-24 -top-24 h-56 w-56 rounded-full bg-[#244CB8]/14 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-28 right-0 h-60 w-60 rounded-full bg-[#4F7FF1]/14 blur-3xl" />
@@ -352,11 +483,18 @@ export default function RegistrationPage() {
           <div>
             <p className="font-semibold text-yellow-900">Đơn của bạn đã được gửi</p>
             <p className="text-sm text-yellow-800/85">
-              Vui lòng chờ kết quả. Chúng tôi sẽ thông báo trong vòng 1-3 ngày làm việc.
+              Vui lòng chờ. Kết quả sẽ có trong vòng 1-3 ngày làm việc.
             </p>
           </div>
         </div>
       )}
+
+      {submitError ? (
+        <div className="auth-reveal is-visible flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50/95 p-4 shadow-[0_12px_24px_rgba(239,68,68,0.16)]">
+          <AlertCircle className="h-5 w-5 text-red-600" />
+          <p className="text-sm font-medium text-red-800">{submitError}</p>
+        </div>
+      ) : null}
 
       {status === "approved" && (
         <div className="auth-reveal is-visible flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/95 p-4 shadow-[0_12px_24px_rgba(16,185,129,0.16)]">
@@ -377,7 +515,7 @@ export default function RegistrationPage() {
             <AlertCircle className="h-5 w-5 text-red-600" />
             <div>
               <p className="font-semibold text-red-900">Đơn đăng ký bị từ chối</p>
-              <p className="text-sm text-red-700">{rejectionReason}</p>
+              <p className="text-sm text-red-700">Lý do: {rejectionReason}</p>
             </div>
           </div>
           <button
@@ -390,17 +528,17 @@ export default function RegistrationPage() {
         </div>
       )}
 
-      {(status === "unregistered" || status === "rejected") && (
+      {status === "unregistered" && (
         <motion.div
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, delay: 0.08, ease: "easeOut" }}
-          className="auth-reveal is-visible mt-2 flex-1 min-h-0 overflow-hidden rounded-[24px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_75%,#deebff_100%)] px-5 pb-6 pt-5 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm sm:mt-3 sm:px-6 sm:pt-6"
+          className="auth-reveal is-visible mt-2 rounded-[24px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_75%,#deebff_100%)] px-5 pb-6 pt-5 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm sm:mt-3 sm:px-6 sm:pt-6"
         >
           <form
             ref={formRef}
             onSubmit={handleSubmit}
-            className="auth-scrollbar h-full space-y-6 overflow-y-auto pr-2"
+            className="space-y-6"
           >
             <motion.div
               transition={{ duration: 0.22 }}
@@ -800,9 +938,10 @@ export default function RegistrationPage() {
               </button>
               <button
                 type="submit"
+                disabled={isSubmitting}
                 className="rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-6 py-2.5 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition-all duration-300 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_22px_40px_rgba(36,76,184,0.34)] active:scale-[0.98]"
               >
-                Gửi đăng ký
+                {isSubmitting ? "Đang gửi..." : "Gửi đăng ký"}
               </button>
             </div>
           </form>
