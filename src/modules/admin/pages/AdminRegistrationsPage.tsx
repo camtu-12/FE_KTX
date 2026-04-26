@@ -516,15 +516,13 @@ export default function AdminRegistrationsPage() {
                 <div className="mt-5 space-y-3 rounded-2xl border border-[#d3e0f2] bg-white/65 p-4">
                   <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
                     <p className="text-[#5570a0]">MSSV: <span className="font-semibold text-[#1b3766]">{selectedRequest.formData.mssv}</span></p>
-                    <p className="text-[#5570a0]">Lớp: <span className="font-semibold text-[#1b3766]">{selectedRequest.formData.class}</span></p>
-                    <p className="text-[#5570a0]">Khoa: <span className="font-semibold text-[#1b3766]">{selectedRequest.formData.department}</span></p>
-                    <p className="text-[#5570a0]">Nộp lúc: <span className="font-semibold text-[#1b3766]">{selectedRequest.submittedAt}</span></p>
                     <p className="text-[#5570a0]">Trạng thái: <span className="font-semibold text-[#1b3766]">{statusMap[selectedRequest.status].label}</span></p>
+                    <p className="text-[#5570a0]">Lớp: <span className="font-semibold text-[#1b3766]">{selectedRequest.formData.class}</span></p>                    <p className="text-[#5570a0]">Nộp lúc: <span className="font-semibold text-[#1b3766]">{selectedRequest.submittedAt}</span></p>
+                    <p className="text-[#5570a0]">Khoa: <span className="font-semibold text-[#1b3766]">{selectedRequest.formData.department}</span></p>
+
                   </div>
                   {selectedRequest.rejectionReason ? (
-                    <p className="rounded-xl border border-[#f1c2c8] bg-[#fff4f6] px-3 py-2 text-sm text-[#bf3e53]">
-                      Lý do từ chối: {selectedRequest.rejectionReason}
-                    </p>
+                    <p className="text-sm text-[#bf3e53]">Lý do từ chối: {selectedRequest.rejectionReason}</p>
                   ) : null}
                   <div>
                     <Link
