@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
-import { Filter, Hotel, Sparkles, UserRound } from "lucide-react";
+import { ArrowLeft, DoorOpen, Star, UserRound } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   registrationRequests,
   type RegistrationRequest,
@@ -32,11 +32,13 @@ type GenderFilter = "student" | "male" | "female" | "all";
 
 type RoomRow = Room & {
   floor: number;
+  roomName: string;
   roomGender: Gender | null;
 };
 
 type RoomRowWithGender = Room & {
   floor: number;
+  roomName: string;
   roomGender: Gender;
 };
 
@@ -59,9 +61,15 @@ const roomsData: Room[] = [
   { id: 1, building_code: "A", room_number: 101, available_beds: 5 },
   { id: 2, building_code: "A", room_number: 102, available_beds: 2 },
   { id: 3, building_code: "A", room_number: 201, available_beds: 7 },
+  { id: 6, building_code: "A", room_number: 202, available_beds: 3 },
+  { id: 7, building_code: "A", room_number: 203, available_beds: 4 },
   { id: 4, building_code: "B", room_number: 103, available_beds: 4 },
   { id: 5, building_code: "B", room_number: 202, available_beds: 6 },
+  { id: 8, building_code: "B", room_number: 203, available_beds: 1 },
+  { id: 9, building_code: "B", room_number: 204, available_beds: 5 },
 ];
+
+const totalBedsPerRoom = 14;
 
 const fallbackStudent: Student = {
   id: 1,
@@ -78,6 +86,7 @@ const getGenderBadgeClass = (gender: Gender) =>
     : "border-[#f7bfd4] bg-[#fff0f6] text-[#bc3f70]";
 
 export default function AssignRoomPage() {
+  const navigate = useNavigate();
   const location = useLocation();
   const { registrationId } = useParams<{ registrationId: string }>();
   const routeState = location.state as AssignRoomRouteState | null;
@@ -147,6 +156,7 @@ export default function AssignRoomPage() {
         return {
           ...room,
           floor,
+          roomName: `${room.building_code}${room.room_number}`,
           roomGender,
         };
       })
@@ -173,8 +183,16 @@ export default function AssignRoomPage() {
       .sort((a, b) => b.available_beds - a.available_beds);
   }, [buildings, buildingFilter, effectiveGenderFilter, floorFilter, rooms]);
 
+  const suggestedRoomId = useMemo<number | null>(() => {
+    return filteredRooms.find((room) => room.roomGender === student.gender)?.id ?? null;
+  }, [filteredRooms, student.gender]);
+
   const handleChooseRoom = () => {
     window.alert("Phân phòng thành công");
+  };
+
+  const handleBack = () => {
+    navigate(-1);
   };
 
   return (
@@ -185,13 +203,24 @@ export default function AssignRoomPage() {
       className="flex min-h-full flex-col space-y-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
     >
       <div className="rounded-[22px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
-        <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">Phân phòng cho sinh viên</h1>
-        <p className="mt-1 text-sm text-[#62789f]">Dữ liệu mock FE-only, chưa kết nối backend.</p>
+        <div className="relative pl-16 sm:pl-20">
+          <button
+            type="button"
+            onClick={handleBack}
+            aria-label="Quay lại"
+            className="absolute left-0 top-1/2 inline-flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-[#c4d7f2] bg-white/90 text-[#40619a] shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:border-[#9cb9e7] hover:text-[#244cb8]"
+          >
+            <ArrowLeft className="h-5 w-5 text-[#2b65c9]" />
+          </button>
+
+          <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">Phân phòng cho sinh viên</h1>
+          <p className="mt-1 text-sm text-[#62789f]">Chọn phòng phù hợp cho từng sinh viên.</p>
+        </div>
       </div>
 
       <div className="rounded-[22px] border border-[#d3e0f2] bg-white/85 p-5 shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
         <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-[#6f84ad]">
-          <UserRound className="h-4 w-4" />
+          <UserRound className="h-4 w-4 text-[#2f83c9]" />
           Thông tin sinh viên
         </div>
 
@@ -220,15 +249,14 @@ export default function AssignRoomPage() {
       <div className="rounded-[22px] border border-[#d3e0f2] bg-white p-5 shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-[#6f84ad]">
-            <Hotel className="h-4 w-4" />
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#e6f0ff_0%,#d4e3ff_100%)] text-[#2f5fd0] shadow-[0_8px_18px_rgba(47,95,208,0.12)]">
+              <DoorOpen className="h-4 w-4 text-[#2f63d8]" />
+            </span>
             Danh sách phòng phù hợp
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-[0.12em] text-[#6f84ad]">
-              <Filter className="h-3.5 w-3.5" />
-              Bộ lọc
-            </span>
+           
 
             <select
               value={buildingFilter}
@@ -261,32 +289,28 @@ export default function AssignRoomPage() {
               onChange={(event) => setGenderFilter(event.target.value as GenderFilter)}
               className="h-10 rounded-xl border border-[#d2def0] bg-white px-3 text-sm text-[#24407f] outline-none transition focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/12"
             >
+              <option value="all">Tất cả</option>
               <option value="student">Theo giới tính sinh viên</option>
               <option value="male">Nam</option>
               <option value="female">Nữ</option>
-              <option value="all">Tất cả</option>
             </select>
           </div>
         </div>
 
         <div className="overflow-x-auto rounded-xl border border-[#dde7f5]">
-          <table className="min-w-[760px] w-full border-separate border-spacing-0">
+          <table className="min-w-[640px] w-full border-separate border-spacing-0">
             <thead>
               <tr className="bg-[linear-gradient(180deg,#f7faff_0%,#eef4ff_100%)]">
-                <th className="px-4 py-3 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Tòa</th>
                 <th className="px-4 py-3 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Phòng</th>
-                <th className="px-4 py-3 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Tầng</th>
                 <th className="px-4 py-3 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Giới tính</th>
                 <th className="px-4 py-3 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Số giường trống</th>
                 <th className="px-4 py-3 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Hành động</th>
               </tr>
             </thead>
             <tbody>
-              {filteredRooms.map((room, index) => (
+              {filteredRooms.map((room) => (
                 <tr key={room.id} className="transition-colors hover:bg-[#f8fbff]">
-                  <td className="border-t border-[#e7eef9] px-4 py-3 text-center text-sm font-semibold text-[#1f3152]">{room.building_code}</td>
-                  <td className="border-t border-[#e7eef9] px-4 py-3 text-center text-sm text-[#35517f]">{room.room_number}</td>
-                  <td className="border-t border-[#e7eef9] px-4 py-3 text-center text-sm text-[#35517f]">{room.floor}</td>
+                  <td className="border-t border-[#e7eef9] px-4 py-3 text-center text-sm font-semibold text-[#1f3152]">{room.roomName}</td>
                   <td className="border-t border-[#e7eef9] px-4 py-3 text-center text-sm">
                     <span
                       className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${getGenderBadgeClass(
@@ -297,21 +321,20 @@ export default function AssignRoomPage() {
                     </span>
                   </td>
                   <td className="border-t border-[#e7eef9] px-4 py-3 text-center text-sm font-semibold text-[#1f7a4e]">
-                    <span>{room.available_beds}</span>
-                    {index === 0 ? (
-                      <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-[#edf9f1] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[#1d8a57]">
-                        <Sparkles className="h-3 w-3" />
-                        Gợi ý
-                      </span>
-                    ) : null}
+                    <span>{room.available_beds}/{totalBedsPerRoom}</span>
                   </td>
                   <td className="border-t border-[#e7eef9] px-4 py-3 text-center">
                     <button
                       type="button"
                       onClick={handleChooseRoom}
-                      className="rounded-lg bg-[linear-gradient(135deg,#1762c3_0%,#2f80ed_100%)] px-3.5 py-1.5 text-sm font-semibold text-white shadow-[0_10px_18px_rgba(23,98,195,0.22)] transition hover:-translate-y-0.5 hover:brightness-110"
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-semibold shadow-[0_10px_18px_rgba(23,98,195,0.22)] transition hover:-translate-y-0.5 hover:brightness-110 ${
+                        room.id === suggestedRoomId
+                          ? "border border-[#9bb9ea] bg-[linear-gradient(135deg,#2558bf_0%,#1f4fae_100%)] text-white shadow-[0_12px_22px_rgba(31,79,174,0.30)] ring-2 ring-[#d9e7ff]"
+                          : "bg-[linear-gradient(135deg,#1762c3_0%,#2f80ed_100%)] text-white"
+                      }`}
                     >
-                      Chọn
+                      {room.id === suggestedRoomId ? <Star className="h-4 w-4 fill-[#ffd34f] text-[#ffd34f]" /> : null}
+                      {room.id === suggestedRoomId ? "Chọn ngay" : "Chọn"}
                     </button>
                   </td>
                 </tr>
@@ -327,14 +350,6 @@ export default function AssignRoomPage() {
         ) : null}
       </div>
 
-      <div className="flex justify-end">
-        <Link
-          to="/admin/registrations"
-          className="rounded-2xl border border-[#c9d8ef] bg-white px-5 py-2.5 text-sm font-semibold text-[#4b6494] transition hover:border-[#adc3e8] hover:text-[#244cb8]"
-        >
-          Quay lại danh sách
-        </Link>
-      </div>
     </motion.section>
   );
 }
