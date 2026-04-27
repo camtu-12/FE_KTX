@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { AlertCircle, CheckCircle, Clock, ImagePlus, ShieldCheck, UserCircle2, Users } from "lucide-react";
-import { getLatestRegistrationByEmail, submitRegistration } from "../../../api/registrationMockApi";
+import {
+  getLatestRegistrationByEmail,
+  getLatestRegistrationByEmailInstant,
+  submitRegistration,
+} from "../../../api/registrationMockApi";
 import { getStoredAuth } from "../../auth/utils/authStorage";
 
 type RegistrationStatus = "unregistered" | "pending" | "approved" | "rejected";
@@ -102,11 +106,14 @@ function ErrorMessage({ message }: { message: string }) {
 export default function RegistrationPage() {
   const storedAuth = getStoredAuth();
   const studentEmail = storedAuth?.user.email ?? "";
-  const [status, setStatus] = useState<RegistrationStatus>("unregistered");
+  const [initialRequestSnapshot] = useState(() =>
+    studentEmail ? getLatestRegistrationByEmailInstant(studentEmail) : null,
+  );
+  const [status, setStatus] = useState<RegistrationStatus>(initialRequestSnapshot?.status ?? "unregistered");
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [documentFiles, setDocumentFiles] = useState<Record<DocumentField, File | null>>(initialDocumentFiles);
   const [draggingDocumentField, setDraggingDocumentField] = useState<DocumentField | null>(null);
-  const [rejectionReason, setRejectionReason] = useState("");
+  const [rejectionReason, setRejectionReason] = useState(initialRequestSnapshot?.rejectionReason ?? "");
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
@@ -148,16 +155,30 @@ export default function RegistrationPage() {
 
     const loadLatestStatus = async () => {
       if (!studentEmail) {
+        if (isMounted) {
+          setStatus("unregistered");
+          setRejectionReason("");
+        }
         return;
       }
 
-      const latestRequest = await getLatestRegistrationByEmail(studentEmail);
-      if (!isMounted || !latestRequest) {
-        return;
-      }
+      try {
+        const latestRequest = await getLatestRegistrationByEmail(studentEmail);
+        if (!isMounted) {
+          return;
+        }
 
-      setStatus(latestRequest.status);
-      setRejectionReason(latestRequest.rejectionReason ?? "");
+        if (!latestRequest) {
+          setStatus("unregistered");
+          setRejectionReason("");
+          return;
+        }
+
+        setStatus(latestRequest.status);
+        setRejectionReason(latestRequest.rejectionReason ?? "");
+      } catch {
+        // Keep current state when fetch fails.
+      }
     };
 
     void loadLatestStatus();
@@ -474,8 +495,6 @@ export default function RegistrationPage() {
         </p>
 
       </motion.div>
-
-     
 
       {status === "pending" && (
         <div className="auth-reveal is-visible flex items-center gap-3 rounded-2xl border border-yellow-200 bg-yellow-50/95 p-4 shadow-[0_12px_24px_rgba(212,175,55,0.18)]">

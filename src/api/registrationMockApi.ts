@@ -194,11 +194,26 @@ export const getRegistrationRequests = async (): Promise<RegistrationRequest[]> 
   return readRequests();
 };
 
+export const getRegistrationRequestsInstant = (): RegistrationRequest[] => {
+  return readRequests();
+};
+
 export const getLatestRegistrationByEmail = async (
   email: string,
 ): Promise<RegistrationRequest | null> => {
   await delay(REQUEST_DELAY_MS);
 
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail) {
+    return null;
+  }
+
+  return readRequests().find((request) => request.email.toLowerCase() === normalizedEmail) ?? null;
+};
+
+export const getLatestRegistrationByEmailInstant = (
+  email: string,
+): RegistrationRequest | null => {
   const normalizedEmail = email.trim().toLowerCase();
   if (!normalizedEmail) {
     return null;

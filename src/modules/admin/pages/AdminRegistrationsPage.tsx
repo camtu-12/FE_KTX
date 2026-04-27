@@ -3,9 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, CircleAlert, Clock3, Funnel, X } from "lucide-react";
 import { Link, useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
-import { getRegistrationRequests, updateRegistrationStatus } from "../../../api/registrationMockApi";
 import {
-  registrationRequests,
+  getRegistrationRequests,
+  getRegistrationRequestsInstant,
+  updateRegistrationStatus,
+} from "../../../api/registrationMockApi";
+import {
   statusMap,
   type RegistrationRequest,
   type RegistrationFilterStatus,
@@ -26,7 +29,7 @@ export default function AdminRegistrationsPage() {
     | { openRequestId?: number; requestModalTab?: "info" | "history" }
     | null;
   const [shouldSkipInitialModalAnimation] = useState(() => Boolean(routeState?.openRequestId));
-  const [requests, setRequests] = useState(registrationRequests);
+  const [requests, setRequests] = useState<RegistrationRequest[]>(() => getRegistrationRequestsInstant());
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [statusFilter, setStatusFilter] = useState<RegistrationFilterStatus>("all");
   const [draftStatusFilter, setDraftStatusFilter] = useState<RegistrationFilterStatus>("all");
