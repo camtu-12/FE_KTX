@@ -1,15 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertCircle, CheckCircle, Clock, ImagePlus, ShieldCheck, UserCircle2, Users } from "lucide-react";
+import { AlertCircle, CheckCircle, Clock, ImagePlus, LoaderCircle, ShieldCheck, UserCircle2, Users, Home } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import {
   getLatestRegistrationByEmail,
   getLatestRegistrationByEmailInstant,
   submitRegistration,
 } from "../../../api/registrationMockApi";
 import { getStoredAuth } from "../../auth/utils/authStorage";
+import type { RegistrationRequest } from "../../admin/data/registrationRequests";
 
 type RegistrationStatus = "unregistered" | "pending" | "approved" | "rejected";
 type DocumentField = "portraitPhoto" | "cccdFrontPhoto" | "cccdBackPhoto";
+type RegistrationWithAssignment = RegistrationRequest & {
+  assigned_room_id?: number | null;
+  building_code?: string;
+  room_number?: number;
+};
 
 interface FormData {
   mssv: string;
@@ -104,11 +111,13 @@ function ErrorMessage({ message }: { message: string }) {
 }
 
 export default function RegistrationPage() {
+  const navigate = useNavigate();
   const storedAuth = getStoredAuth();
   const studentEmail = storedAuth?.user.email ?? "";
   const [initialRequestSnapshot] = useState(() =>
-    studentEmail ? getLatestRegistrationByEmailInstant(studentEmail) : null,
+    (studentEmail ? getLatestRegistrationByEmailInstant(studentEmail) : null) as RegistrationWithAssignment | null,
   );
+  const [registration, setRegistration] = useState<RegistrationWithAssignment | null>(initialRequestSnapshot);
   const [status, setStatus] = useState<RegistrationStatus>(initialRequestSnapshot?.status ?? "unregistered");
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [documentFiles, setDocumentFiles] = useState<Record<DocumentField, File | null>>(initialDocumentFiles);
@@ -116,6 +125,7 @@ export default function RegistrationPage() {
   const [rejectionReason, setRejectionReason] = useState(initialRequestSnapshot?.rejectionReason ?? "");
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckingRegistration, setIsCheckingRegistration] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [documentErrors, setDocumentErrors] = useState<Partial<Record<DocumentField, string>>>({});
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -156,6 +166,7 @@ export default function RegistrationPage() {
     const loadLatestStatus = async () => {
       if (!studentEmail) {
         if (isMounted) {
+          setRegistration(null);
           setStatus("unregistered");
           setRejectionReason("");
         }
@@ -163,17 +174,19 @@ export default function RegistrationPage() {
       }
 
       try {
-        const latestRequest = await getLatestRegistrationByEmail(studentEmail);
+        const latestRequest = (await getLatestRegistrationByEmail(studentEmail)) as RegistrationWithAssignment | null;
         if (!isMounted) {
           return;
         }
 
         if (!latestRequest) {
+          setRegistration(null);
           setStatus("unregistered");
           setRejectionReason("");
           return;
         }
 
+        setRegistration(latestRequest);
         setStatus(latestRequest.status);
         setRejectionReason(latestRequest.rejectionReason ?? "");
       } catch {
@@ -187,6 +200,43 @@ export default function RegistrationPage() {
       isMounted = false;
     };
   }, [studentEmail]);
+
+  const getRegistration = async (): Promise<RegistrationWithAssignment | null> => {
+    if (!studentEmail) {
+      return null;
+    }
+
+    return (await getLatestRegistrationByEmail(studentEmail)) as RegistrationWithAssignment | null;
+  };
+
+  const reloadRegistration = async () => {
+    setIsCheckingRegistration(true);
+
+    try {
+      const data = await getRegistration();
+      setRegistration(data);
+
+      if (!data) {
+        setStatus("unregistered");
+        setRejectionReason("");
+        return;
+      }
+
+      setStatus(data.status);
+      setRejectionReason(data.rejectionReason ?? "");
+    } finally {
+      setIsCheckingRegistration(false);
+    }
+  };
+
+  const registrationForView = registration;
+
+  const statusForView = registrationForView?.status ?? status;
+
+  const assignedRoomName =
+    registrationForView?.assigned_room_id && registrationForView.building_code && registrationForView.room_number
+      ? `${registrationForView.building_code}${registrationForView.room_number}`
+      : null;
 
   const readFileAsDataUrl = (file: File) =>
     new Promise<string>((resolve, reject) => {
@@ -434,6 +484,7 @@ export default function RegistrationPage() {
         },
       });
 
+      setRegistration(created as RegistrationWithAssignment);
       setStatus(created.status);
       setRejectionReason(created.rejectionReason ?? "");
     } catch (error) {
@@ -453,6 +504,7 @@ export default function RegistrationPage() {
 
   const handleReset = () => {
     resetFormState();
+    setRegistration(null);
     setStatus("unregistered");
     setRejectionReason("");
   };
@@ -479,10 +531,12 @@ export default function RegistrationPage() {
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
-      className="relative flex min-h-full flex-col space-y-6 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
+      className="relative isolate flex min-h-[calc(100vh-5rem-28px)] flex-col space-y-6 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
     >
-      <div className="pointer-events-none absolute -left-24 -top-24 h-56 w-56 rounded-full bg-[#244CB8]/14 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-28 right-0 h-60 w-60 rounded-full bg-[#4F7FF1]/14 blur-3xl" />
+      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-[24px]">
+        <div className="absolute -left-24 -top-24 h-56 w-56 rounded-full bg-[#244CB8]/14 blur-3xl" />
+        <div className="absolute -bottom-28 right-0 h-60 w-60 rounded-full bg-[#4F7FF1]/14 blur-3xl" />
+      </div>
 
       <motion.div
         transition={{ duration: 0.2 }}
@@ -496,7 +550,7 @@ export default function RegistrationPage() {
 
       </motion.div>
 
-      {status === "pending" && (
+      {statusForView === "pending" && (
         <div className="auth-reveal is-visible flex items-center gap-3 rounded-2xl border border-yellow-200 bg-yellow-50/95 p-4 shadow-[0_12px_24px_rgba(212,175,55,0.18)]">
           <Clock className="h-5 w-5 text-yellow-600" />
           <div>
@@ -515,39 +569,67 @@ export default function RegistrationPage() {
         </div>
       ) : null}
 
-      {status === "approved" && (
-        <div className="auth-reveal is-visible flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/95 p-4 shadow-[0_12px_24px_rgba(16,185,129,0.16)]">
-          <CheckCircle className="h-5 w-5 text-emerald-600" />
-          <div>
-            <p className="font-semibold text-emerald-900">Đơn đăng ký đã được duyệt!</p>
-            <p className="text-sm text-emerald-800/90">
-              Chúc mừng! Bạn đã được chấp thuận đăng ký nội trú. Vui lòng liên hệ với phòng quản
-              lý KTX để hoàn tất các thủ tục tiếp theo.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {status === "rejected" && (
-        <div className="auth-reveal is-visible space-y-4 rounded-2xl border border-red-200 bg-red-50/95 p-4 shadow-[0_12px_24px_rgba(239,68,68,0.16)]">
-          <div className="flex items-center gap-3">
-            <AlertCircle className="h-5 w-5 text-red-600" />
-            <div>
-              <p className="font-semibold text-red-900">Đơn đăng ký bị từ chối</p>
-              <p className="text-sm text-red-700">Lý do: {rejectionReason}</p>
+      {statusForView === "approved" ? (
+        registrationForView?.assigned_room_id && assignedRoomName ? (
+          <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-emerald-200 bg-emerald-50/95 p-5 text-center shadow-[0_12px_24px_rgba(16,185,129,0.16)]">
+            <div className="flex items-center justify-center gap-2 text-emerald-700">
+              <Home className="h-5 w-5" />
+              <p className="font-semibold text-emerald-900">Bạn đã được phân phòng</p>
             </div>
+            <p className="mt-1.5 text-sm text-emerald-800/90">
+              Phòng: <span className="font-bold">{assignedRoomName}</span>
+            </p>
+            <p className="mt-1 text-sm text-emerald-800/90">Vui lòng chọn giường để hoàn tất đăng ký nội trú</p>
+            <button
+              type="button"
+              onClick={() => navigate("/student/select-bed")}
+              className="auth-btn-gloss mx-auto mt-4 inline-flex h-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-4 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.98]"
+            >
+              <span className="auth-btn-gloss__content">Chọn giường</span>
+            </button>
           </div>
+        ) : (
+          <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-emerald-200 bg-emerald-50/95 p-5 text-center shadow-[0_12px_24px_rgba(16,185,129,0.16)]">
+            <div className="flex items-center justify-center gap-2 text-emerald-700">
+              <CheckCircle className="h-5 w-5" />
+              <p className="font-semibold text-emerald-900">Đơn đã được duyệt</p>
+            </div>
+            <p className="mt-1.5 text-sm text-emerald-800/90">
+              Vui lòng chờ quản lý phân phòng (1-2 ngày)
+            </p>
+            <button
+              type="button"
+              onClick={reloadRegistration}
+              disabled={isCheckingRegistration}
+              className="auth-btn-gloss mx-auto mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#b7ccef] bg-[linear-gradient(135deg,#edf4ff_0%,#dfeaff_100%)] px-4 text-sm font-semibold text-[#244cb8] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              <span className="auth-btn-gloss__content inline-flex items-center justify-center gap-2">
+                {isCheckingRegistration ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
+                {isCheckingRegistration ? "Đang kiểm tra..." : "Kiểm tra lại"}
+              </span>
+            </button>
+          </div>
+        )
+      ) : null}
+
+      {statusForView === "rejected" && (
+        <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-red-200 bg-red-50/95 p-5 text-center shadow-[0_12px_24px_rgba(239,68,68,0.16)]">
+          <div className="flex items-center justify-center gap-2 text-red-700">
+            <AlertCircle className="h-5 w-5" />
+            <p className="font-semibold text-red-900">Đơn đăng ký bị từ chối</p>
+          </div>
+          <p className="mt-1.5 text-sm text-red-700">Lý do: {rejectionReason}</p>
           <button
             type="button"
             onClick={handleReset}
-            className="rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-red-400 active:scale-[0.98]"
+            className="auth-btn-gloss mx-auto mt-4 rounded-xl bg-[linear-gradient(135deg,#e25569_0%,#cc3c4f_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_18px_rgba(204,60,79,0.20)] transition-all duration-200 hover:-translate-y-0.5 hover:brightness-105 active:scale-[0.98]"
           >
-            Gửi lại đơn
+            <span className="auth-btn-gloss__content">Gửi lại đơn</span>
           </button>
         </div>
       )}
 
-      {status === "unregistered" && (
+      {statusForView === "unregistered" && (
         <motion.div
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
@@ -951,16 +1033,16 @@ export default function RegistrationPage() {
               <button
                 type="button"
                 onClick={handleClearForm}
-                className="rounded-2xl border border-[#c5d4f0] bg-[linear-gradient(135deg,#ffffff_0%,#f1f6ff_48%,#e8f0ff_100%)] px-6 py-2.5 text-sm font-semibold text-[#244CB8] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_22px_rgba(36,76,184,0.10)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#a9c0ea] hover:bg-[linear-gradient(135deg,#ffffff_0%,#edf4ff_40%,#dfeaff_100%)] hover:text-[#173D97] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_16px_28px_rgba(36,76,184,0.16)] active:scale-[0.98]"
+                className="auth-btn-gloss rounded-2xl border border-[#c5d4f0] bg-[linear-gradient(135deg,#ffffff_0%,#f1f6ff_48%,#e8f0ff_100%)] px-6 py-2.5 text-sm font-semibold text-[#244CB8] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_22px_rgba(36,76,184,0.10)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#a9c0ea] hover:bg-[linear-gradient(135deg,#ffffff_0%,#edf4ff_40%,#dfeaff_100%)] hover:text-[#173D97] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_16px_28px_rgba(36,76,184,0.16)] active:scale-[0.98]"
               >
-                Xóa
+                <span className="auth-btn-gloss__content">Xóa</span>
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-6 py-2.5 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition-all duration-300 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_22px_40px_rgba(36,76,184,0.34)] active:scale-[0.98]"
+                className="auth-btn-gloss rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-6 py-2.5 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition-all duration-300 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_22px_40px_rgba(36,76,184,0.34)] active:scale-[0.98]"
               >
-                {isSubmitting ? "Đang gửi..." : "Gửi đăng ký"}
+                <span className="auth-btn-gloss__content">{isSubmitting ? "Đang gửi..." : "Gửi đăng ký"}</span>
               </button>
             </div>
           </form>
