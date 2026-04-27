@@ -382,7 +382,13 @@ export default function AdminRegistrationsPage() {
                         {request.formData.mssv}
                       </td>
                       <td className="border-t border-[#e8eef8] px-5 py-4 text-center text-sm font-semibold text-[#1f3152]">
-                        {request.formData.fullName}
+                        <Link
+                          to={`/admin/assign-room/${request.id}`}
+                          state={{ request }}
+                          className="transition hover:text-[#244cb8] hover:underline"
+                        >
+                          {request.formData.fullName}
+                        </Link>
                       </td>
                       <td className="border-t border-[#e8eef8] px-5 py-4 text-center text-sm text-[#5d7299]">
                         {request.email}
@@ -413,8 +419,8 @@ export default function AdminRegistrationsPage() {
                         <div className="flex flex-wrap items-center justify-center gap-2">
                           {isApproved ? (
                             <Link
-                              to="/admin/rooms"
-                              state={{ registrationRequest: request }}
+                              to={`/admin/assign-room/${request.id}`}
+                              state={{ request }}
                               className="rounded-xl bg-[linear-gradient(135deg,#1762c3_0%,#2f80ed_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_18px_rgba(23,98,195,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110"
                             >
                               Phân phòng

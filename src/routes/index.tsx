@@ -6,6 +6,7 @@ import AdminDashboardPage from "../modules/admin/pages/AdminDashboardPage";
 import AdminRegistrationDetailPage from "../modules/admin/pages/AdminRegistrationDetailPage";
 import AdminRegistrationsPage from "../modules/admin/pages/AdminRegistrationsPage";
 import AdminRoomsPage from "../modules/admin/pages/AdminRoomsPage";
+import AssignRoomPage from "../modules/admin/pages/AssignRoomPage.tsx";
 import AdminStudentsPage from "../modules/admin/pages/AdminStudentsPage";
 import LoginPage from "../modules/auth/pages/LoginPage";
 import RegisterPage from "../modules/auth/pages/RegisterPage";
@@ -54,6 +55,7 @@ export default function AppRoutes() {
           <Route path="dashboard" element={<AdminDashboardPage />} />
           <Route path="registrations" element={<AdminRegistrationsPage />} />
           <Route path="registrations/:registrationId" element={<AdminRegistrationDetailPage />} />
+          <Route path="assign-room/:registrationId" element={<AssignRoomPage />} />
           <Route path="students" element={<AdminStudentsPage />} />
           <Route path="rooms" element={<AdminRoomsPage />} />
         </Route>
