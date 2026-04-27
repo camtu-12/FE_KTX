@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
-import { ArrowLeft, CheckCircle2, CircleAlert, Clock3, ShieldCheck, UserCircle2, Users } from "lucide-react";
-import { useMemo } from "react";
+import { ArrowLeft, ArrowUp, CheckCircle2, CircleAlert, Clock3, ShieldCheck, UserCircle2, Users } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   departmentOptions,
@@ -33,6 +33,7 @@ export default function AdminRegistrationDetailPage() {
   const location = useLocation();
   const { registrationId } = useParams();
   const routeState = location.state as DetailRouteState | null;
+  const [isScrollToTopVisible, setIsScrollToTopVisible] = useState(false);
 
   const request = useMemo(() => {
     const requestFromState = routeState?.request;
@@ -43,6 +44,34 @@ export default function AdminRegistrationDetailPage() {
     const id = Number(registrationId);
     return Number.isNaN(id) ? null : getRegistrationRequestById(id);
   }, [registrationId, routeState?.request]);
+
+  useEffect(() => {
+    const scrollContainer = document.querySelector(".auth-scrollbar") as HTMLElement | null;
+
+    if (!scrollContainer) {
+      return;
+    }
+
+    const updateVisibility = () => {
+      const threshold = Math.max(180, scrollContainer.clientHeight * 0.6);
+      setIsScrollToTopVisible(scrollContainer.scrollTop > threshold);
+    };
+
+    updateVisibility();
+    scrollContainer.addEventListener("scroll", updateVisibility, { passive: true });
+
+    return () => {
+      scrollContainer.removeEventListener("scroll", updateVisibility);
+    };
+  }, []);
+
+  const handleScrollToTop = () => {
+    const scrollContainer = document.querySelector(".auth-scrollbar") as HTMLElement | null;
+
+    if (scrollContainer) {
+      scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
 
   const handleBack = () => {
     if (routeState?.returnToModal) {
@@ -276,6 +305,20 @@ export default function AdminRegistrationDetailPage() {
           </div>
         </motion.div>
       </motion.div>
+
+      {isScrollToTopVisible ? (
+        <div className="fixed bottom-6 right-6 z-[70]">
+          <button
+            type="button"
+            onClick={handleScrollToTop}
+            className="group inline-flex h-12 w-12 items-center justify-center rounded-full bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_42%,#31b7d4_100%)] text-white shadow-[0_16px_32px_rgba(36,76,184,0.28)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.98]"
+            aria-label="Về đầu trang chi tiết"
+            title="Về đầu trang chi tiết"
+          >
+            <ArrowUp className="h-5 w-5 transition-transform duration-200 group-hover:-translate-y-0.5" />
+          </button>
+        </div>
+      ) : null}
     </motion.section>
   );
 }

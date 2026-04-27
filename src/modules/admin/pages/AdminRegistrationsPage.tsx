@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, CircleAlert, Clock3, Funnel, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowUp, CheckCircle2, CircleAlert, Clock3, Funnel, X } from "lucide-react";
+import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import {
@@ -14,6 +15,8 @@ import {
   type RegistrationFilterStatus,
   type RegistrationStatus,
 } from "../data/registrationRequests";
+
+type RegistrationIdSortOrder = "asc" | "desc";
 
 const statusIconMap: Record<RegistrationStatus, typeof Clock3> = {
   pending: Clock3,
@@ -32,36 +35,52 @@ export default function AdminRegistrationsPage() {
   const [requests, setRequests] = useState<RegistrationRequest[]>(() => getRegistrationRequestsInstant());
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [statusFilter, setStatusFilter] = useState<RegistrationFilterStatus>("all");
+  const [idSortOrder, setIdSortOrder] = useState<RegistrationIdSortOrder>("desc");
   const [draftStatusFilter, setDraftStatusFilter] = useState<RegistrationFilterStatus>("all");
+  const [draftIdSortOrder, setDraftIdSortOrder] = useState<RegistrationIdSortOrder>("desc");
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
+  const [statusFilterMenuPosition, setStatusFilterMenuPosition] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+  const statusFilterButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [isScrollToTopVisible, setIsScrollToTopVisible] = useState(false);
   const [rejectingRequestId, setRejectingRequestId] = useState<number | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [viewingRequestId, setViewingRequestId] = useState<number | null>(routeState?.openRequestId ?? null);
   const [requestModalTab, setRequestModalTab] = useState<"info" | "history">(routeState?.requestModalTab ?? "info");
 
-  const visibleRequests = useMemo(() => {
-    const normalized = headerSearchValue.trim().toLowerCase();
+  const latestRequests = useMemo(() => {
     const latestByEmail = new Map<string, (typeof requests)[number]>();
 
     requests.forEach((request) => {
       const key = request.email.trim().toLowerCase();
-      if (!latestByEmail.has(key)) {
+      const currentLatest = latestByEmail.get(key);
+      if (!currentLatest || request.id > currentLatest.id) {
         latestByEmail.set(key, request);
       }
     });
 
-    return Array.from(latestByEmail.values()).filter((request) => {
-      const matchesKeyword =
-        !normalized ||
-        [request.formData.mssv, request.formData.fullName, request.email]
-          .join(" ")
-          .toLowerCase()
-          .includes(normalized);
-      const matchesStatus = statusFilter === "all" || request.status === statusFilter;
+    return Array.from(latestByEmail.values());
+  }, [requests]);
 
-      return matchesKeyword && matchesStatus;
-    });
-  }, [headerSearchValue, requests, statusFilter]);
+  const visibleRequests = useMemo(() => {
+    const normalized = headerSearchValue.trim().toLowerCase();
+
+    return latestRequests
+      .filter((request) => {
+        const matchesKeyword =
+          !normalized ||
+          [request.formData.mssv, request.formData.fullName, request.email]
+            .join(" ")
+            .toLowerCase()
+            .includes(normalized);
+        const matchesStatus = statusFilter === "all" || request.status === statusFilter;
+
+        return matchesKeyword && matchesStatus;
+      })
+      .sort((a, b) => (idSortOrder === "asc" ? a.id - b.id : b.id - a.id));
+  }, [headerSearchValue, idSortOrder, latestRequests, statusFilter]);
 
   const selectedRequest = useMemo(() => {
     if (!viewingRequestId) {
@@ -83,9 +102,9 @@ export default function AdminRegistrationsPage() {
       .sort((a, b) => a.id - b.id);
   }, [requests, selectedRequest]);
 
-  const pendingCount = requests.filter((item) => item.status === "pending").length;
-  const approvedCount = requests.filter((item) => item.status === "approved").length;
-  const rejectedCount = requests.filter((item) => item.status === "rejected").length;
+  const pendingCount = latestRequests.filter((item) => item.status === "pending").length;
+  const approvedCount = latestRequests.filter((item) => item.status === "approved").length;
+  const rejectedCount = latestRequests.filter((item) => item.status === "rejected").length;
 
   const summaryCards = [
     {
@@ -113,6 +132,11 @@ export default function AdminRegistrationsPage() {
     { value: "pending", label: "Chờ duyệt" },
     { value: "approved", label: "Đã duyệt" },
     { value: "rejected", label: "Từ chối" },
+  ];
+
+  const idSortOptions: Array<{ value: RegistrationIdSortOrder; label: string }> = [
+    { value: "desc", label: "Mới nhất trước" },
+    { value: "asc", label: "Cũ nhất trước" },
   ];
 
   useEffect(() => {
@@ -152,6 +176,55 @@ export default function AdminRegistrationsPage() {
 
     navigate(location.pathname, { replace: true, state: nextState });
   }, [location.pathname, navigate, requestModalTab, routeState, viewingRequestId]);
+
+  useEffect(() => {
+    if (!isStatusFilterOpen) {
+      return;
+    }
+
+    const updateMenuPosition = () => {
+      const buttonRect = statusFilterButtonRef.current?.getBoundingClientRect();
+
+      if (!buttonRect) {
+        return;
+      }
+
+      setStatusFilterMenuPosition({
+        top: buttonRect.bottom + 10,
+        left: buttonRect.left + buttonRect.width / 2,
+      });
+    };
+
+    updateMenuPosition();
+
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [isStatusFilterOpen]);
+
+  useEffect(() => {
+    const scrollContainer = document.querySelector(".auth-scrollbar") as HTMLElement | null;
+
+    if (!scrollContainer) {
+      return;
+    }
+
+    const updateVisibility = () => {
+      const threshold = Math.max(180, scrollContainer.clientHeight * 0.6);
+      setIsScrollToTopVisible(scrollContainer.scrollTop > threshold);
+    };
+
+    updateVisibility();
+    scrollContainer.addEventListener("scroll", updateVisibility, { passive: true });
+
+    return () => {
+      scrollContainer.removeEventListener("scroll", updateVisibility);
+    };
+  }, []);
 
   const handleApprove = async (id: number) => {
     setIsUpdatingStatus(true);
@@ -203,23 +276,35 @@ export default function AdminRegistrationsPage() {
 
   const handleOpenStatusFilter = () => {
     setDraftStatusFilter(statusFilter);
+    setDraftIdSortOrder(idSortOrder);
     setIsStatusFilterOpen(true);
   };
 
   const handleResetStatusFilter = () => {
     setDraftStatusFilter("all");
+    setDraftIdSortOrder("desc");
     setStatusFilter("all");
+    setIdSortOrder("desc");
     setIsStatusFilterOpen(false);
   };
 
   const handleApplyStatusFilter = () => {
     setStatusFilter(draftStatusFilter);
+    setIdSortOrder(draftIdSortOrder);
     setIsStatusFilterOpen(false);
   };
 
   const handleOpenRequestModal = (request: RegistrationRequest) => {
     setViewingRequestId(request.id);
     setRequestModalTab("info");
+  };
+
+  const handleScrollToTop = () => {
+    const scrollContainer = document.querySelector(".auth-scrollbar") as HTMLElement | null;
+
+    if (scrollContainer) {
+      scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   const handleCloseRequestModal = () => {
@@ -274,23 +359,32 @@ export default function AdminRegistrationsPage() {
           transition={{ duration: 0.46, delay: 0.16, ease: "easeOut" }}
           className="p-0"
         >
-          <div className="auth-scrollbar mt-1 overflow-x-auto rounded-[24px] border border-[#d6e2f1] bg-white">
-            <table className="min-w-[920px] w-full border-separate border-spacing-0">
+          <div className="relative mt-1 overflow-hidden rounded-[14px] border border-[#d6e2f1] bg-white">
+            <table className="w-full table-fixed border-separate border-spacing-0">
+              <colgroup>
+                <col className="w-[14%]" />
+                <col className="w-[20%]" />
+                <col className="w-[24%]" />
+                <col className="w-[16%]" />
+                <col className="w-[12%]" />
+                <col className="w-[14%]" />
+              </colgroup>
               <thead>
                 <tr className="bg-[linear-gradient(180deg,#f7faff_0%,#eef4ff_100%)]">
-                  <th className="px-5 py-4 text-center text-xs font-bold uppercase tracking-[0.14em] text-[#6f84ad]">
+                  <th className="px-4 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
                     MSSV
                   </th>
-                  <th className="px-5 py-4 text-center text-xs font-bold uppercase tracking-[0.14em] text-[#6f84ad]">
+                  <th className="px-4 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
                     Họ tên
                   </th>
-                  <th className="px-5 py-4 text-center text-xs font-bold uppercase tracking-[0.14em] text-[#6f84ad]">
+                  <th className="px-4 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
                     Email
                   </th>
-                  <th className="relative px-5 py-4 text-center text-xs font-bold uppercase tracking-[0.14em] text-[#6f84ad]">
+                  <th className="relative z-30 px-4 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
                     <div className="inline-flex items-center justify-center gap-2">
                       <span>Trạng thái</span>
                       <button
+                        ref={statusFilterButtonRef}
                         type="button"
                         onClick={isStatusFilterOpen ? () => setIsStatusFilterOpen(false) : handleOpenStatusFilter}
                         className={`flex items-center justify-center transition ${
@@ -302,62 +396,11 @@ export default function AdminRegistrationsPage() {
                         <Funnel className="h-3 w-3" />
                       </button>
                     </div>
-
-                    {isStatusFilterOpen ? (
-                      <div className="absolute left-1/2 top-[calc(100%+2px)] z-20 w-[132px] -translate-x-1/2 overflow-hidden rounded-[18px] border border-[#d7e2f2] bg-white text-left normal-case shadow-[0_14px_30px_rgba(15,23,42,0.16)]">
-                        <div className="space-y-0.5 p-2.5">
-                          {statusFilterOptions.map((option) => {
-                            const isSelected = draftStatusFilter === option.value;
-
-                            return (
-                              <button
-                                key={option.value}
-                                type="button"
-                                onClick={() => setDraftStatusFilter(option.value)}
-                                className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-[10px] font-medium tracking-normal text-[#1f4a8d] transition hover:bg-[#f5f9ff]"
-                              >
-                                <span
-                                  className={`flex h-4 w-4 items-center justify-center rounded-full border ${
-                                    isSelected
-                                      ? "border-[#244cb8] bg-[#244cb8]/10"
-                                      : "border-[#cfd9e8] bg-white"
-                                  }`}
-                                >
-                                  <span
-                                    className={`h-2 w-2 rounded-full ${
-                                      isSelected ? "bg-[#244cb8]" : "bg-transparent"
-                                    }`}
-                                  />
-                                </span>
-                                <span>{option.label}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-
-                        <div className="flex items-center justify-between border-t border-[#dbe5f3] px-2.5 py-2">
-                          <button
-                            type="button"
-                            onClick={handleResetStatusFilter}
-                            className="text-[10px] font-medium tracking-normal text-[#b2b8c3] transition hover:text-[#7c8799]"
-                          >
-                            Reset
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleApplyStatusFilter}
-                            className="rounded-xl bg-[#0c4f97] px-3 py-1.5 text-[10px] font-semibold tracking-normal text-white shadow-[0_8px_16px_rgba(12,79,151,0.22)] transition hover:brightness-110"
-                          >
-                            OK
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
                   </th>
-                  <th className="px-5 py-4 text-center text-xs font-bold uppercase tracking-[0.14em] text-[#6f84ad]">
+                  <th className="px-4 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
                     Hành động
                   </th>
-                  <th className="px-5 py-4 text-center text-xs font-bold uppercase tracking-[0.14em] text-[#6f84ad]">
+                  <th className="px-4 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
                     Xử lý
                   </th>
                 </tr>
@@ -381,21 +424,21 @@ export default function AdminRegistrationsPage() {
                       }}
                       className="group transition duration-200 hover:bg-[#f8fbff]"
                     >
-                      <td className="border-t border-[#e8eef8] px-5 py-4 text-center text-sm font-semibold text-[#24407f]">
+                      <td className="border-t border-[#e8eef8] px-4 py-4 text-center text-[15px] font-semibold text-[#24407f]">
                         {request.formData.mssv}
                       </td>
-                      <td className="border-t border-[#e8eef8] px-5 py-4 text-center text-sm font-semibold text-[#1f3152]">
+                      <td className="border-t border-[#e8eef8] px-4 py-4 text-center text-[15px] font-semibold text-[#1f3152]">
                         {request.formData.fullName}
                       </td>
-                      <td className="border-t border-[#e8eef8] px-5 py-4 text-center text-sm text-[#5d7299]">
-                        {request.email}
+                      <td className="border-t border-[#e8eef8] px-4 py-4 text-center text-[15px] text-[#5d7299]">
+                        <p className="whitespace-nowrap">{request.email}</p>
                         {request.status === "rejected" && request.rejectionReason ? (
                           <p className="mt-1 text-xs leading-6 text-[#bf3e53]">
                             Lý do: {request.rejectionReason}
                           </p>
                         ) : null}
                       </td>
-                      <td className="border-t border-[#e8eef8] px-5 py-4 text-center">
+                      <td className="border-t border-[#e8eef8] px-4 py-4 text-center">
                         <span
                           className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold ${statusUi.className}`}
                         >
@@ -403,45 +446,45 @@ export default function AdminRegistrationsPage() {
                           <span>{statusUi.label}</span>
                         </span>
                       </td>
-                      <td className="border-t border-[#e8eef8] px-5 py-4 text-center">
+                      <td className="border-t border-[#e8eef8] px-4 py-4 text-center">
                         <button
                           type="button"
                           onClick={() => handleOpenRequestModal(request)}
-                          className="inline-flex rounded-xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-4 py-2 text-sm font-semibold text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.12)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white"
+                          className="auth-btn-gloss inline-flex rounded-xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-4 py-2 text-sm font-semibold text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.12)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white"
                         >
-                          Xem đơn
+                          <span className="auth-btn-gloss__content">Xem đơn</span>
                         </button>
                       </td>
-                      <td className="border-t border-[#e8eef8] px-5 py-4 text-center">
-                        <div className="flex flex-wrap items-center justify-center gap-2">
+                      <td className="border-t border-[#e8eef8] px-4 py-4 text-center">
+                        <div className="flex flex-nowrap items-center justify-center gap-1.5">
                           {isApproved ? (
                             <Link
                               to="/admin/rooms"
                               state={{ registrationRequest: request }}
-                              className="rounded-xl bg-[linear-gradient(135deg,#1762c3_0%,#2f80ed_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_18px_rgba(23,98,195,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110"
+                              className="auth-btn-gloss inline-flex min-w-[96px] items-center justify-center whitespace-nowrap rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-3 py-2 text-[14px] font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.98]"
                             >
-                              Phân phòng
+                              <span className="auth-btn-gloss__content">Phân phòng</span>
                             </Link>
                           ) : isPending ? (
                             <>
-                            <button
-                              type="button"
-                              disabled={isUpdatingStatus}
-                              onClick={() => {
-                                void handleApprove(request.id);
-                              }}
-                              className="rounded-xl bg-[linear-gradient(135deg,#1f9a60_0%,#35bf7a_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_18px_rgba(31,154,96,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
-                            >
-                              Duyệt
-                            </button>
-                            <button
-                              type="button"
-                              disabled={isUpdatingStatus}
-                              onClick={() => handleOpenRejectModal(request.id)}
-                              className="rounded-xl bg-[linear-gradient(135deg,#e25569_0%,#cc3c4f_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_18px_rgba(204,60,79,0.20)] transition duration-200 hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
-                            >
-                              Từ chối
-                            </button>
+                             <button
+                               type="button"
+                               disabled={isUpdatingStatus}
+                               onClick={() => {
+                                 void handleApprove(request.id);
+                               }}
+                              className="auth-btn-gloss min-w-[68px] rounded-xl bg-[linear-gradient(135deg,#1f9a60_0%,#35bf7a_100%)] px-2.5 py-2 text-[12px] font-semibold text-white shadow-[0_10px_18px_rgba(31,154,96,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                             >
+                              <span className="auth-btn-gloss__content">Duyệt</span>
+                             </button>
+                             <button
+                               type="button"
+                               disabled={isUpdatingStatus}
+                               onClick={() => handleOpenRejectModal(request.id)}
+                              className="auth-btn-gloss min-w-[68px] rounded-xl bg-[linear-gradient(135deg,#e25569_0%,#cc3c4f_100%)] px-2.5 py-2 text-[12px] font-semibold text-white shadow-[0_10px_18px_rgba(204,60,79,0.20)] transition duration-200 hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                             >
+                              <span className="auth-btn-gloss__content">Từ chối</span>
+                             </button>
                             </>
                           ) : (
                             <span className="rounded-xl border border-[#d1daea] bg-[#f6f8fc] px-4 py-2 text-sm font-semibold text-[#7f8da8]">
@@ -457,7 +500,118 @@ export default function AdminRegistrationsPage() {
             </table>
           </div>
         </motion.div>
+
       </motion.section>
+
+      {isScrollToTopVisible
+        ? createPortal(
+            <div className="fixed bottom-6 right-6 z-[70]">
+              <button
+                type="button"
+                onClick={handleScrollToTop}
+                className="group inline-flex h-12 w-12 items-center justify-center rounded-full bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_42%,#31b7d4_100%)] text-white shadow-[0_16px_32px_rgba(36,76,184,0.28)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.98]"
+                aria-label="Về đầu trang"
+                title="Về đầu trang"
+              >
+                <ArrowUp className="h-5 w-5 transition-transform duration-200 group-hover:-translate-y-0.5" />
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {isStatusFilterOpen && statusFilterMenuPosition
+        ? createPortal(
+            <div className="fixed inset-0 z-[68]" onClick={() => setIsStatusFilterOpen(false)}>
+              <div
+                className="absolute w-[160px] -translate-x-1/2 overflow-hidden rounded-[22px] border border-[#d7e2f2] bg-white text-left shadow-[0_18px_38px_rgba(15,23,42,0.18)]"
+                style={{ top: statusFilterMenuPosition.top, left: statusFilterMenuPosition.left }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="space-y-0.5 p-2.5">
+                  {statusFilterOptions.map((option) => {
+                    const isSelected = draftStatusFilter === option.value;
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setDraftStatusFilter(option.value)}
+                        className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-[10px] font-medium tracking-normal text-[#1f4a8d] transition hover:bg-[#f5f9ff]"
+                      >
+                        <span
+                          className={`flex h-4 w-4 items-center justify-center rounded-full border ${
+                            isSelected
+                              ? "border-[#244cb8] bg-[#244cb8]/10"
+                              : "border-[#cfd9e8] bg-white"
+                          }`}
+                        >
+                          <span
+                            className={`h-2 w-2 rounded-full ${
+                              isSelected ? "bg-[#244cb8]" : "bg-transparent"
+                            }`}
+                          />
+                        </span>
+                        <span>{option.label}</span>
+                      </button>
+                    );
+                  })}
+
+                  <div className="mt-2 border-t border-[#dbe5f3] pt-2">
+                    <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#7a8eb6]">
+                      Sắp xếp ID
+                    </p>
+                    {idSortOptions.map((option) => {
+                      const isSelected = draftIdSortOrder === option.value;
+
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setDraftIdSortOrder(option.value)}
+                          className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-[10px] font-medium tracking-normal text-[#1f4a8d] transition hover:bg-[#f5f9ff]"
+                        >
+                          <span
+                            className={`flex h-4 w-4 items-center justify-center rounded-full border ${
+                              isSelected
+                                ? "border-[#244cb8] bg-[#244cb8]/10"
+                                : "border-[#cfd9e8] bg-white"
+                            }`}
+                          >
+                            <span
+                              className={`h-2 w-2 rounded-full ${
+                                isSelected ? "bg-[#244cb8]" : "bg-transparent"
+                              }`}
+                            />
+                          </span>
+                          <span>{option.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between border-t border-[#dbe5f3] px-2.5 py-2">
+                  <button
+                    type="button"
+                    onClick={handleResetStatusFilter}
+                    className="text-[10px] font-medium tracking-normal text-[#b2b8c3] transition hover:text-[#7c8799]"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleApplyStatusFilter}
+                    className="rounded-xl bg-[#0c4f97] px-3 py-1.5 text-[10px] font-semibold tracking-normal text-white shadow-[0_8px_16px_rgba(12,79,151,0.22)] transition hover:brightness-110"
+                  >
+                    OK
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
       <AnimatePresence initial={!shouldSkipInitialModalAnimation}>
         {selectedRequest ? (
@@ -473,7 +627,7 @@ export default function AdminRegistrationsPage() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 16, scale: 0.98 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
-              className="w-full max-w-2xl rounded-[28px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f9fcff_0%,#eef5ff_72%,#e7f0ff_100%)] p-6 shadow-[0_28px_70px_rgba(27,56,122,0.28)]"
+              className="relative w-full max-w-2xl rounded-[28px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f9fcff_0%,#eef5ff_72%,#e7f0ff_100%)] p-6 shadow-[0_28px_70px_rgba(27,56,122,0.28)]"
             >
               <div className="flex items-start justify-between gap-4">
                 <div>

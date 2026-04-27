@@ -68,6 +68,17 @@ const cloneSeedRequests = () =>
     documents: { ...request.documents },
   }));
 
+const mergeSeedRequests = (requests: RegistrationRequest[]) => {
+  const existingIds = new Set(requests.map((request) => request.id));
+  const missingSeedRequests = cloneSeedRequests().filter((request) => !existingIds.has(request.id));
+
+  if (missingSeedRequests.length === 0) {
+    return requests;
+  }
+
+  return [...requests, ...missingSeedRequests].sort((a, b) => b.id - a.id);
+};
+
 const getLatestRequestIdByEmail = (requests: RegistrationRequest[], email: string) => {
   const normalizedEmail = email.trim().toLowerCase();
   const latest = requests
@@ -164,15 +175,21 @@ const readRequests = (): RegistrationRequest[] => {
       return cloneSeedRequests();
     }
 
-    return parsed
+    const normalizedRequests = parsed
       .filter(isValidRequest)
       .map((request) => ({
         ...request,
         email: request.email.trim().toLowerCase(),
         formData: { ...request.formData },
         documents: { ...request.documents },
-      }))
-      .sort((a, b) => b.id - a.id);
+      }));
+    const mergedRequests = mergeSeedRequests(normalizedRequests);
+
+    if (mergedRequests.length !== normalizedRequests.length) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toMockStorageRequests(mergedRequests)));
+    }
+
+    return mergedRequests;
   } catch {
     return cloneSeedRequests();
   }
