@@ -1,15 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertCircle, CheckCircle, Clock, ImagePlus, ShieldCheck, UserCircle2, Users } from "lucide-react";
+import { AlertCircle, BedDouble, CheckCircle, Clock, ImagePlus, LoaderCircle, ShieldCheck, UserCircle2, Users } from "lucide-react";
 import {
   getLatestRegistrationByEmail,
   getLatestRegistrationByEmailInstant,
   submitRegistration,
 } from "../../../api/registrationMockApi";
 import { getStoredAuth } from "../../auth/utils/authStorage";
+import type { RegistrationRequest } from "../../admin/data/registrationRequests";
 
 type RegistrationStatus = "unregistered" | "pending" | "approved" | "rejected";
 type DocumentField = "portraitPhoto" | "cccdFrontPhoto" | "cccdBackPhoto";
+type RegistrationWithAssignment = RegistrationRequest & {
+  assigned_room_id?: number | null;
+  building_code?: string;
+  room_number?: number;
+};
 
 interface FormData {
   mssv: string;
@@ -107,8 +113,9 @@ export default function RegistrationPage() {
   const storedAuth = getStoredAuth();
   const studentEmail = storedAuth?.user.email ?? "";
   const [initialRequestSnapshot] = useState(() =>
-    studentEmail ? getLatestRegistrationByEmailInstant(studentEmail) : null,
+    (studentEmail ? getLatestRegistrationByEmailInstant(studentEmail) : null) as RegistrationWithAssignment | null,
   );
+  const [registration, setRegistration] = useState<RegistrationWithAssignment | null>(initialRequestSnapshot);
   const [status, setStatus] = useState<RegistrationStatus>(initialRequestSnapshot?.status ?? "unregistered");
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [documentFiles, setDocumentFiles] = useState<Record<DocumentField, File | null>>(initialDocumentFiles);
@@ -116,6 +123,7 @@ export default function RegistrationPage() {
   const [rejectionReason, setRejectionReason] = useState(initialRequestSnapshot?.rejectionReason ?? "");
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckingRegistration, setIsCheckingRegistration] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [documentErrors, setDocumentErrors] = useState<Partial<Record<DocumentField, string>>>({});
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -156,6 +164,7 @@ export default function RegistrationPage() {
     const loadLatestStatus = async () => {
       if (!studentEmail) {
         if (isMounted) {
+          setRegistration(null);
           setStatus("unregistered");
           setRejectionReason("");
         }
@@ -163,17 +172,19 @@ export default function RegistrationPage() {
       }
 
       try {
-        const latestRequest = await getLatestRegistrationByEmail(studentEmail);
+        const latestRequest = (await getLatestRegistrationByEmail(studentEmail)) as RegistrationWithAssignment | null;
         if (!isMounted) {
           return;
         }
 
         if (!latestRequest) {
+          setRegistration(null);
           setStatus("unregistered");
           setRejectionReason("");
           return;
         }
 
+        setRegistration(latestRequest);
         setStatus(latestRequest.status);
         setRejectionReason(latestRequest.rejectionReason ?? "");
       } catch {
@@ -187,6 +198,39 @@ export default function RegistrationPage() {
       isMounted = false;
     };
   }, [studentEmail]);
+
+  const getRegistration = async (): Promise<RegistrationWithAssignment | null> => {
+    if (!studentEmail) {
+      return null;
+    }
+
+    return (await getLatestRegistrationByEmail(studentEmail)) as RegistrationWithAssignment | null;
+  };
+
+  const reloadRegistration = async () => {
+    setIsCheckingRegistration(true);
+
+    try {
+      const data = await getRegistration();
+      setRegistration(data);
+
+      if (!data) {
+        setStatus("unregistered");
+        setRejectionReason("");
+        return;
+      }
+
+      setStatus(data.status);
+      setRejectionReason(data.rejectionReason ?? "");
+    } finally {
+      setIsCheckingRegistration(false);
+    }
+  };
+
+  const assignedRoomName =
+    registration?.assigned_room_id && registration.building_code && registration.room_number
+      ? `${registration.building_code}${registration.room_number}`
+      : null;
 
   const readFileAsDataUrl = (file: File) =>
     new Promise<string>((resolve, reject) => {
@@ -434,6 +478,7 @@ export default function RegistrationPage() {
         },
       });
 
+      setRegistration(created as RegistrationWithAssignment);
       setStatus(created.status);
       setRejectionReason(created.rejectionReason ?? "");
     } catch (error) {
@@ -453,6 +498,7 @@ export default function RegistrationPage() {
 
   const handleReset = () => {
     resetFormState();
+    setRegistration(null);
     setStatus("unregistered");
     setRejectionReason("");
   };
@@ -515,32 +561,54 @@ export default function RegistrationPage() {
         </div>
       ) : null}
 
-      {status === "approved" && (
-        <div className="auth-reveal is-visible flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/95 p-4 shadow-[0_12px_24px_rgba(16,185,129,0.16)]">
-          <CheckCircle className="h-5 w-5 text-emerald-600" />
-          <div>
-            <p className="font-semibold text-emerald-900">Đơn đăng ký đã được duyệt!</p>
-            <p className="text-sm text-emerald-800/90">
-              Chúc mừng! Bạn đã được chấp thuận đăng ký nội trú. Vui lòng liên hệ với phòng quản
-              lý KTX để hoàn tất các thủ tục tiếp theo.
-            </p>
+      {status === "approved" && !registration?.assigned_room_id && (
+        <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-emerald-200 bg-emerald-50/95 p-5 text-center shadow-[0_12px_24px_rgba(16,185,129,0.16)]">
+          <div className="flex items-center justify-center gap-2 text-emerald-700">
+            <CheckCircle className="h-5 w-5" />
+            <p className="font-semibold text-emerald-900">Đơn đã được duyệt</p>
           </div>
+          <p className="mt-1.5 text-sm text-emerald-800/90">
+            Vui lòng chờ quản lý phân phòng (1-2 ngày)
+          </p>
+          <button
+            type="button"
+            onClick={reloadRegistration}
+            disabled={isCheckingRegistration}
+            className="mx-auto mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#b7ccef] bg-[linear-gradient(135deg,#edf4ff_0%,#dfeaff_100%)] px-4 text-sm font-semibold text-[#244cb8] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isCheckingRegistration ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
+            {isCheckingRegistration ? "Đang kiểm tra..." : "Kiểm tra lại"}
+          </button>
+        </div>
+      )}
+
+      {status === "approved" && registration?.assigned_room_id && assignedRoomName && (
+        <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-sky-200 bg-sky-50/95 p-5 text-center shadow-[0_12px_24px_rgba(56,189,248,0.14)]">
+          <div className="flex items-center justify-center gap-2 text-sky-700">
+            <BedDouble className="h-5 w-5" />
+            <p className="font-semibold text-sky-900">Bạn đã được phân phòng: {assignedRoomName}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => window.alert("Đi tới bước chọn giường")}
+            className="mx-auto mt-4 inline-flex h-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#1762c3_0%,#2f80ed_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_18px_rgba(23,98,195,0.22)] transition hover:-translate-y-0.5 hover:brightness-110"
+          >
+            Chọn giường
+          </button>
         </div>
       )}
 
       {status === "rejected" && (
-        <div className="auth-reveal is-visible space-y-4 rounded-2xl border border-red-200 bg-red-50/95 p-4 shadow-[0_12px_24px_rgba(239,68,68,0.16)]">
-          <div className="flex items-center gap-3">
-            <AlertCircle className="h-5 w-5 text-red-600" />
-            <div>
-              <p className="font-semibold text-red-900">Đơn đăng ký bị từ chối</p>
-              <p className="text-sm text-red-700">Lý do: {rejectionReason}</p>
-            </div>
+        <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-red-200 bg-red-50/95 p-5 text-center shadow-[0_12px_24px_rgba(239,68,68,0.16)]">
+          <div className="flex items-center justify-center gap-2 text-red-700">
+            <AlertCircle className="h-5 w-5" />
+            <p className="font-semibold text-red-900">Đơn đăng ký bị từ chối</p>
           </div>
+          <p className="mt-1.5 text-sm text-red-700">Lý do: {rejectionReason}</p>
           <button
             type="button"
             onClick={handleReset}
-            className="rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-red-400 active:scale-[0.98]"
+            className="mx-auto mt-4 rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-red-400 active:scale-[0.98]"
           >
             Gửi lại đơn
           </button>
