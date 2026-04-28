@@ -44,13 +44,15 @@ export default function AssignRoomDetailPage() {
   const [buildingFilter, setBuildingFilter] = useState<string>("all");
   const [floorFilter, setFloorFilter] = useState<string>("all");
   const [isScrollToTopVisible, setIsScrollToTopVisible] = useState(false);
-  // Show scroll-to-top button when scrolled past threshold in .auth-scrollbar
+  // Show scroll-to-top button when the scroll container is actually scrollable
+  // and the user has scrolled a small amount (improves visibility on moderately
+  // long pages where previous threshold was too large).
   useEffect(() => {
     const scrollContainer = document.querySelector('.auth-scrollbar') as HTMLElement | null;
     if (!scrollContainer) return;
     const updateVisibility = () => {
-      const threshold = Math.max(180, scrollContainer.clientHeight * 0.6);
-      setIsScrollToTopVisible(scrollContainer.scrollTop > threshold);
+      const canScroll = scrollContainer.scrollHeight > scrollContainer.clientHeight + 10;
+      setIsScrollToTopVisible(canScroll && scrollContainer.scrollTop > 20);
     };
     updateVisibility();
     scrollContainer.addEventListener('scroll', updateVisibility, { passive: true });
