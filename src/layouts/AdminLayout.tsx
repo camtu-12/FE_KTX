@@ -20,6 +20,8 @@ export default function AdminLayout() {
   const userName = user?.fullName || user?.email || "Admin User";
   const userEmail = user?.email || "admin@stu.edu.vn";
   const isRegistrationsPage = location.pathname === "/admin/registrations";
+  const isAssignRoomListPage = location.pathname === "/admin/assign-room";
+  const isSearchEnabled = isRegistrationsPage || isAssignRoomListPage;
 
   const handleLogout = () => {
     clearAuthStorage();
@@ -32,9 +34,9 @@ export default function AdminLayout() {
         role="admin"
         userName={userName}
         userEmail={userEmail}
-        searchValue={isRegistrationsPage ? headerSearchValue : undefined}
-        searchPlaceholder={isRegistrationsPage ? "Tìm theo MSSV, họ tên hoặc email" : undefined}
-        onSearchChange={isRegistrationsPage ? setHeaderSearchValue : undefined}
+        searchValue={isSearchEnabled ? headerSearchValue : undefined}
+        searchPlaceholder={isSearchEnabled ? "Tìm theo MSSV, họ tên hoặc email" : undefined}
+        onSearchChange={isSearchEnabled ? setHeaderSearchValue : undefined}
         onLogout={handleLogout}
         isSidebarOpen={isSidebarOpen}
         onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}

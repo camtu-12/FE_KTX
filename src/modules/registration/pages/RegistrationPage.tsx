@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { AlertCircle, CheckCircle, Clock, ImagePlus, LoaderCircle, ShieldCheck, UserCircle2, Users, Home } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import {
   getLatestRegistrationByEmail,
   getLatestRegistrationByEmailInstant,
   submitRegistration,
+  getDormRoomsInstant,
 } from "../../../api/registrationMockApi";
 import { getStoredAuth } from "../../auth/utils/authStorage";
 import type { RegistrationRequest } from "../../admin/data/registrationRequests";
@@ -16,6 +16,7 @@ type RegistrationWithAssignment = RegistrationRequest & {
   assigned_room_id?: number | null;
   building_code?: string;
   room_number?: number;
+
 };
 
 interface FormData {
@@ -111,7 +112,6 @@ function ErrorMessage({ message }: { message: string }) {
 }
 
 export default function RegistrationPage() {
-  const navigate = useNavigate();
   const storedAuth = getStoredAuth();
   const studentEmail = storedAuth?.user.email ?? "";
   const [initialRequestSnapshot] = useState(() =>
@@ -233,10 +233,15 @@ export default function RegistrationPage() {
 
   const statusForView = registrationForView?.status ?? status;
 
-  const assignedRoomName =
-    registrationForView?.assigned_room_id && registrationForView.building_code && registrationForView.room_number
-      ? `${registrationForView.building_code}${registrationForView.room_number}`
-      : null;
+  const assignedRoomName = (() => {
+    const roomId = registrationForView?.assigned_room_id;
+    if (!roomId) return null;
+
+    const rooms = getDormRoomsInstant();
+    const room = rooms.find((r) => r.id === roomId) ?? null;
+    if (!room) return null;
+    return `${room.building_code}${room.room_number}`;
+  })();
 
   const readFileAsDataUrl = (file: File) =>
     new Promise<string>((resolve, reject) => {
@@ -582,7 +587,9 @@ export default function RegistrationPage() {
             <p className="mt-1 text-sm text-emerald-800/90">Vui lòng chọn giường để hoàn tất đăng ký nội trú</p>
             <button
               type="button"
-              onClick={() => navigate("/student/select-bed")}
+              onClick={() => {
+                /* UI stub: bed selection page not implemented yet */
+              }}
               className="auth-btn-gloss mx-auto mt-4 inline-flex h-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-4 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.98]"
             >
               <span className="auth-btn-gloss__content">Chọn giường</span>

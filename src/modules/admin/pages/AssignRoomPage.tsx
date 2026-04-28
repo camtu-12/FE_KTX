@@ -1,198 +1,209 @@
-import { motion } from "framer-motion";
-import { ArrowLeft, DoorOpen, Star, UserRound } from "lucide-react";
-import { useMemo, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { AnimatePresence, motion } from "framer-motion";
+import { CheckCircle2, Funnel, XCircle, ArrowUp } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import {
-  registrationRequests,
-  type RegistrationRequest,
-} from "../data/registrationRequests";
+  getDormRoomsInstant,
+  getRegistrationRequests,
+  getRegistrationRequestsInstant,
+  type DormRoom,
+} from "../../../api/registrationMockApi";
+import type { RegistrationRequest } from "../data/registrationRequests";
+import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 
-type Gender = "male" | "female";
+type AssignmentFilter = "all" | "unassigned" | "assigned";
+type StudentSortOrder = "desc" | "asc";
+type ToastState = { kind: "success" | "error"; message: string } | null;
 
-type Building = {
-  building_code: string;
-  gender_config: Record<string, Gender>;
-};
-
-type Room = {
-  id: number;
-  building_code: string;
-  room_number: number;
-  available_beds: number;
-};
-
-type Student = {
-  id: number;
-  name: string;
-  studentCode: string;
-  gender: Gender;
-};
-
-type GenderFilter = "student" | "male" | "female" | "all";
-
-type RoomRow = Room & {
-  floor: number;
-  roomName: string;
-  roomGender: Gender | null;
-};
-
-type RoomRowWithGender = Room & {
-  floor: number;
-  roomName: string;
-  roomGender: Gender;
-};
-
-type AssignRoomRouteState = {
-  request?: RegistrationRequest;
-};
-
-const buildingsData: Building[] = [
-  {
-    building_code: "A",
-    gender_config: { "1": "male", "2": "female", "3": "female" },
-  },
-  {
-    building_code: "B",
-    gender_config: { "1": "male", "2": "female", "3": "female" },
-  },
+const assignmentFilterOptions: Array<{ value: AssignmentFilter; label: string }> = [
+  { value: "all", label: "Tất cả" },
+  { value: "unassigned", label: "Chưa phân phòng" },
+  { value: "assigned", label: "Đã phân phòng" },
 ];
 
-const roomsData: Room[] = [
-  { id: 1, building_code: "A", room_number: 101, available_beds: 5 },
-  { id: 2, building_code: "A", room_number: 102, available_beds: 2 },
-  { id: 3, building_code: "A", room_number: 201, available_beds: 7 },
-  { id: 6, building_code: "A", room_number: 202, available_beds: 3 },
-  { id: 7, building_code: "A", room_number: 203, available_beds: 4 },
-  { id: 4, building_code: "B", room_number: 103, available_beds: 4 },
-  { id: 5, building_code: "B", room_number: 202, available_beds: 6 },
-  { id: 8, building_code: "B", room_number: 203, available_beds: 1 },
-  { id: 9, building_code: "B", room_number: 204, available_beds: 5 },
+const studentSortOptions: Array<{ value: StudentSortOrder; label: string }> = [
+  { value: "desc", label: "Mới nhất trước" },
+  { value: "asc", label: "Cũ nhất trước" },
 ];
 
-const totalBedsPerRoom = 14;
-
-const fallbackStudent: Student = {
-  id: 1,
-  name: "Nguyễn Văn A",
-  studentCode: "DH52201699",
-  gender: "male",
-};
-
-const getGenderLabel = (gender: Gender) => (gender === "male" ? "Nam" : "Nữ");
-
-const getGenderBadgeClass = (gender: Gender) =>
-  gender === "male"
-    ? "border-[#b8d2ff] bg-[#edf4ff] text-[#1e56b7]"
-    : "border-[#f7bfd4] bg-[#fff0f6] text-[#bc3f70]";
+const getRoomName = (room: DormRoom) => `${room.building_code}${room.room_number}`;
 
 export default function AssignRoomPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { registrationId } = useParams<{ registrationId: string }>();
-  const routeState = location.state as AssignRoomRouteState | null;
+  const { headerSearchValue } = useOutletContext<AdminLayoutOutletContext>();
 
-  const [buildings] = useState<Building[]>(buildingsData);
-  const [rooms] = useState<Room[]>(roomsData);
-  const [buildingFilter, setBuildingFilter] = useState<string>("all");
-  const [floorFilter, setFloorFilter] = useState<string>("all");
-  const [genderFilter, setGenderFilter] = useState<GenderFilter>("student");
+  const [requests, setRequests] = useState<RegistrationRequest[]>(() => getRegistrationRequestsInstant());
+  const [rooms, setRooms] = useState<DormRoom[]>(() => getDormRoomsInstant());
+  const [toast, setToast] = useState<ToastState>(null);
 
-  const [student] = useState<Student>(() => {
-    const fromState = routeState?.request;
-    if (fromState) {
-      return {
-        id: fromState.id,
-        name: fromState.formData.fullName,
-        studentCode: fromState.formData.mssv,
-        gender: fromState.formData.gender === "female" ? "female" : "male",
-      };
+  const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilter>("all");
+  const [sortOrder, setSortOrder] = useState<StudentSortOrder>("desc");
+  const [draftAssignmentFilter, setDraftAssignmentFilter] = useState<AssignmentFilter>("all");
+  const [draftSortOrder, setDraftSortOrder] = useState<StudentSortOrder>("desc");
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [filterMenuPosition, setFilterMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const filterButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [isScrollToTopVisible, setIsScrollToTopVisible] = useState(false);
+
+  const handleScrollToTop = () => {
+    const scrollContainer = document.querySelector(".auth-scrollbar") as HTMLElement | null;
+
+    if (scrollContainer) {
+      scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
     }
+  };
 
-    const id = Number(registrationId);
-    if (!Number.isNaN(id)) {
-      const found = registrationRequests.find((item) => item.id === id);
-      if (found) {
-        return {
-          id: found.id,
-          name: found.formData.fullName,
-          studentCode: found.formData.mssv,
-          gender: found.formData.gender === "female" ? "female" : "male",
-        };
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadData = async () => {
+      const nextRequests = await getRegistrationRequests();
+      if (!isMounted) {
+        return;
       }
+
+      setRequests(nextRequests);
+      setRooms(getDormRoomsInstant());
+    };
+
+    void loadData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const routeState = location.state as { toast?: ToastState } | null;
+    const nextToast = routeState?.toast ?? null;
+
+    if (!nextToast) {
+      return;
     }
 
-    return fallbackStudent;
-  });
+    const timeoutId = window.setTimeout(() => setToast(nextToast), 0);
+    navigate(location.pathname, { replace: true, state: null });
 
-  const effectiveGenderFilter = useMemo<Gender | null>(() => {
-    if (genderFilter === "all") {
-      return null;
+    return () => window.clearTimeout(timeoutId);
+  }, [location.pathname, location.state, navigate]);
+
+  useEffect(() => {
+    if (!isFilterOpen) {
+      return;
     }
 
-    if (genderFilter === "student") {
-      return student.gender;
+    const updateMenuPosition = () => {
+      const buttonRect = filterButtonRef.current?.getBoundingClientRect();
+      if (!buttonRect) {
+        return;
+      }
+
+      setFilterMenuPosition({
+        top: buttonRect.bottom + 10,
+        left: buttonRect.left + buttonRect.width / 2,
+      });
+    };
+
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [isFilterOpen]);
+
+  useEffect(() => {
+    const scrollContainer = document.querySelector(".auth-scrollbar") as HTMLElement | null;
+
+    if (!scrollContainer) {
+      return;
     }
 
-    return genderFilter;
-  }, [genderFilter, student.gender]);
+    const updateVisibility = () => {
+      const threshold = Math.max(180, scrollContainer.clientHeight * 0.6);
+      setIsScrollToTopVisible(scrollContainer.scrollTop > threshold);
+    };
 
-  const buildingOptions = useMemo(() => {
-    return Array.from(new Set(rooms.map((room) => room.building_code))).sort();
-  }, [rooms]);
+    updateVisibility();
+    scrollContainer.addEventListener("scroll", updateVisibility, { passive: true });
 
-  const floorOptions = useMemo(() => {
-    return Array.from(new Set(rooms.map((room) => Math.floor(room.room_number / 100)))).sort(
-      (a, b) => a - b,
-    );
-  }, [rooms]);
+    return () => {
+      scrollContainer.removeEventListener("scroll", updateVisibility);
+    };
+  }, []);
 
-  const filteredRooms = useMemo<RoomRowWithGender[]>(() => {
-    return rooms
-      .map<RoomRow>((room) => {
-        const floor = Math.floor(room.room_number / 100);
-        const building = buildings.find((item) => item.building_code === room.building_code);
-        const roomGender = building?.gender_config[String(floor)] ?? null;
+  useEffect(() => {
+    if (!toast) {
+      return undefined;
+    }
 
-        return {
-          ...room,
-          floor,
-          roomName: `${room.building_code}${room.room_number}`,
-          roomGender,
-        };
-      })
-      .filter((room) => {
-        if (!room.roomGender) {
-          return false;
+    const timerId = window.setTimeout(() => setToast(null), 2200);
+    return () => window.clearTimeout(timerId);
+  }, [toast]);
+
+  const approvedStudents = useMemo(() => {
+    return requests.filter((request) => request.status === "approved");
+  }, [requests]);
+
+  const visibleStudents = useMemo(() => {
+    const normalized = (headerSearchValue ?? "").trim().toLowerCase();
+
+    return approvedStudents
+      .filter((student) => {
+        if (assignmentFilter === "assigned") {
+          if (!student.assigned_room_id) return false;
         }
 
-        if (buildingFilter !== "all" && room.building_code !== buildingFilter) {
-          return false;
+        if (assignmentFilter === "unassigned") {
+          if (student.assigned_room_id) return false;
         }
 
-        if (floorFilter !== "all" && room.floor !== Number(floorFilter)) {
-          return false;
-        }
+        if (normalized) {
+          const hay = [student.formData.mssv, student.formData.fullName, student.email]
+            .join(" ")
+            .toLowerCase();
 
-        if (effectiveGenderFilter && room.roomGender !== effectiveGenderFilter) {
-          return false;
+          if (!hay.includes(normalized)) {
+            return false;
+          }
         }
 
         return true;
       })
-      .filter((room): room is RoomRowWithGender => room.roomGender !== null)
-      .sort((a, b) => b.available_beds - a.available_beds);
-  }, [buildings, buildingFilter, effectiveGenderFilter, floorFilter, rooms]);
+      .sort((a, b) => (sortOrder === "asc" ? a.id - b.id : b.id - a.id));
+  }, [approvedStudents, assignmentFilter, sortOrder, headerSearchValue]);
 
-  const suggestedRoomId = useMemo<number | null>(() => {
-    return filteredRooms.find((room) => room.roomGender === student.gender)?.id ?? null;
-  }, [filteredRooms, student.gender]);
+  const roomNameById = useMemo(() => {
+    const map = new Map<number, string>();
+    rooms.forEach((room) => map.set(room.id, getRoomName(room)));
+    return map;
+  }, [rooms]);
 
-  const handleChooseRoom = () => {
-    window.alert("Phân phòng thành công");
+  const assignedCount = approvedStudents.filter((student) => student.assigned_room_id).length;
+  const unassignedCount = approvedStudents.length - assignedCount;
+
+  const handleOpenFilter = () => {
+    setDraftAssignmentFilter(assignmentFilter);
+    setDraftSortOrder(sortOrder);
+    setIsFilterOpen(true);
   };
 
-  const handleBack = () => {
-    navigate(-1);
+  const handleApplyFilter = () => {
+    setAssignmentFilter(draftAssignmentFilter);
+    setSortOrder(draftSortOrder);
+    setIsFilterOpen(false);
+  };
+
+  const handleResetFilter = () => {
+    setDraftAssignmentFilter("all");
+    setDraftSortOrder("desc");
+    setAssignmentFilter("all");
+    setSortOrder("desc");
+    setIsFilterOpen(false);
   };
 
   return (
@@ -202,154 +213,261 @@ export default function AssignRoomPage() {
       transition={{ duration: 0.35, ease: "easeOut" }}
       className="flex min-h-full flex-col space-y-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
     >
-      <div className="rounded-[22px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
-        <div className="relative pl-16 sm:pl-20">
-          <button
-            type="button"
-            onClick={handleBack}
-            aria-label="Quay lại"
-            className="absolute left-0 top-1/2 inline-flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-[#c4d7f2] bg-white/90 text-[#40619a] shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:border-[#9cb9e7] hover:text-[#244cb8]"
-          >
-            <ArrowLeft className="h-5 w-5 text-[#2b65c9]" />
-          </button>
+      {typeof document !== "undefined"
+        ? createPortal(
+            <AnimatePresence>
+              {toast ? (
+                <motion.div
+                  key={`${toast.kind}-${toast.message}`}
+                  initial={{ opacity: 0, y: -14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                  role="status"
+                  aria-live="polite"
+                  className="pointer-events-none fixed left-1/2 top-6 z-[9999] w-[min(92vw,420px)] -translate-x-1/2 px-4"
+                >
+                  <motion.div
+                    className={`flex items-center gap-3 rounded-2xl border px-4 py-3 shadow-[0_22px_60px_rgba(15,23,42,0.22)] ${
+                      toast.kind === "success"
+                        ? "border-[#c4d7f2] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] text-[#24407f]"
+                        : "border-[#f2b8c6] bg-[linear-gradient(180deg,#ffffff_0%,#fff5f8_100%)] text-[#8f2f4b]"
+                    }`}
+                  >
+                    <span
+                      className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${
+                        toast.kind === "success"
+                          ? "bg-[linear-gradient(135deg,#e6f0ff_0%,#d4e3ff_100%)] text-[#2f63d8]"
+                          : "bg-[linear-gradient(135deg,#fff0f6_0%,#ffd6e6_100%)] text-[#cc3c4f]"
+                      }`}
+                    >
+                      {toast.kind === "success" ? <CheckCircle2 className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
+                    </span>
+                    <div className="min-w-0 truncate text-[15px] font-semibold">{toast.message}</div>
+                  </motion.div>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>,
+            document.body,
+          )
+        : null}
 
-          <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">Phân phòng cho sinh viên</h1>
-          <p className="mt-1 text-sm text-[#62789f]">Chọn phòng phù hợp cho từng sinh viên.</p>
-        </div>
+      {typeof document !== "undefined" && isScrollToTopVisible
+        ? createPortal(
+            <div className="fixed bottom-6 right-6 z-[70]">
+              <button
+                type="button"
+                onClick={handleScrollToTop}
+                className="group inline-flex h-12 w-12 items-center justify-center rounded-full bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_42%,#31b7d4_100%)] text-white shadow-[0_16px_32px_rgba(36,76,184,0.28)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.98]"
+                aria-label="Về đầu trang"
+                title="Về đầu trang"
+              >
+                <ArrowUp className="h-5 w-5 transition-transform duration-200 group-hover:-translate-y-0.5" />
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      <div className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
+        <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">Phân phòng</h1>
+        <p className="mt-1 text-sm text-[#62789f]">Danh sách sinh viên đã được duyệt đơn và thao tác chọn phòng.</p>
       </div>
 
-      <div className="rounded-[22px] border border-[#d3e0f2] bg-white/85 p-5 shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
-        <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-[#6f84ad]">
-          <UserRound className="h-4 w-4 text-[#2f83c9]" />
-          Thông tin sinh viên
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-[#5570a0]">
-          <span>
-            Họ tên: <strong className="text-[#1b3766]">{student.name}</strong>
-          </span>
-          <span className="h-1 w-1 rounded-full bg-[#93aad1]" />
-          <span>
-            MSSV: <strong className="text-[#1b3766]">{student.studentCode}</strong>
-          </span>
-          <span className="h-1 w-1 rounded-full bg-[#93aad1]" />
-          <span>
-            Giới tính:
-            <span
-              className={`ml-2 inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${getGenderBadgeClass(
-                student.gender,
-              )}`}
-            >
-              {getGenderLabel(student.gender)}
-            </span>
-          </span>
-        </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <article className="flex flex-col items-center rounded-[24px] border border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#7c8fb5]">Đã duyệt</p>
+          <p className="mt-3 text-[2rem] font-extrabold leading-none text-[#16784b]">{approvedStudents.length}</p>
+        </article>
+        <article className="flex flex-col items-center rounded-[24px] border border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#7c8fb5]">Chưa phân phòng</p>
+          <p className="mt-3 text-[2rem] font-extrabold leading-none text-[#9b6b00]">{unassignedCount}</p>
+        </article>
+        <article className="flex flex-col items-center rounded-[24px] border border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#7c8fb5]">Đã phân phòng</p>
+          <p className="mt-3 text-[2rem] font-extrabold leading-none text-[#244cb8]">{assignedCount}</p>
+        </article>
       </div>
 
-      <div className="rounded-[22px] border border-[#d3e0f2] bg-white p-5 shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-[#6f84ad]">
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#e6f0ff_0%,#d4e3ff_100%)] text-[#2f5fd0] shadow-[0_8px_18px_rgba(47,95,208,0.12)]">
-              <DoorOpen className="h-4 w-4 text-[#2f63d8]" />
-            </span>
-            Danh sách phòng phù hợp
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-           
-
-            <select
-              value={buildingFilter}
-              onChange={(event) => setBuildingFilter(event.target.value)}
-              className="h-10 rounded-xl border border-[#d2def0] bg-white px-3 text-sm text-[#24407f] outline-none transition focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/12"
-            >
-              <option value="all">Tất cả tòa</option>
-              {buildingOptions.map((buildingCode) => (
-                <option key={buildingCode} value={buildingCode}>
-                  Tòa {buildingCode}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={floorFilter}
-              onChange={(event) => setFloorFilter(event.target.value)}
-              className="h-10 rounded-xl border border-[#d2def0] bg-white px-3 text-sm text-[#24407f] outline-none transition focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/12"
-            >
-              <option value="all">Tất cả tầng</option>
-              {floorOptions.map((floor) => (
-                <option key={floor} value={String(floor)}>
-                  Tầng {floor}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={genderFilter}
-              onChange={(event) => setGenderFilter(event.target.value as GenderFilter)}
-              className="h-10 rounded-xl border border-[#d2def0] bg-white px-3 text-sm text-[#24407f] outline-none transition focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/12"
-            >
-              <option value="all">Tất cả</option>
-              <option value="student">Theo giới tính sinh viên</option>
-              <option value="male">Nam</option>
-              <option value="female">Nữ</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto rounded-xl border border-[#dde7f5]">
-          <table className="min-w-[640px] w-full border-separate border-spacing-0">
+      <div className="space-y-3 sm:space-y-4">
+        <div className="overflow-x-auto rounded-[22px] border border-[#dde7f5] bg-white shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
+          <table className="min-w-[740px] w-full table-fixed border-separate border-spacing-0">
+            <colgroup>
+              <col className="w-[18%]" />
+              <col className="w-[22%]" />
+              <col className="w-[28%]" />
+              <col className="w-[18%]" />
+              <col className="w-[14%]" />
+            </colgroup>
             <thead>
               <tr className="bg-[linear-gradient(180deg,#f7faff_0%,#eef4ff_100%)]">
-                <th className="px-4 py-3 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Phòng</th>
-                <th className="px-4 py-3 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Giới tính</th>
-                <th className="px-4 py-3 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Số giường trống</th>
-                <th className="px-4 py-3 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Hành động</th>
+                <th className="px-3 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                  MSSV
+                </th>
+                <th className="px-3 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                  Họ tên
+                </th>
+                <th className="px-3 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                  Email
+                </th>
+                <th className="px-3 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                  Trạng thái
+                </th>
+                <th className="relative z-30 px-3 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                  <div className="inline-flex items-center justify-center gap-2">
+                    <span>Hành động</span>
+                    <button
+                      ref={filterButtonRef}
+                      type="button"
+                      onClick={isFilterOpen ? () => setIsFilterOpen(false) : handleOpenFilter}
+                      className={`flex items-center justify-center transition   ${
+                        assignmentFilter !== "all"
+                           ? "text-[#244cb8]"
+                            : "text-[#6f84ad] hover:text-[#244cb8]"
+                      }`}
+                      title="Bộ lọc"
+                    >
+                      <Funnel className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody>
-              {filteredRooms.map((room) => (
-                <tr key={room.id} className="transition-colors hover:bg-[#f8fbff]">
-                  <td className="border-t border-[#e7eef9] px-4 py-3 text-center text-sm font-semibold text-[#1f3152]">{room.roomName}</td>
-                  <td className="border-t border-[#e7eef9] px-4 py-3 text-center text-sm">
-                    <span
-                      className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${getGenderBadgeClass(
-                        room.roomGender,
-                      )}`}
-                    >
-                      {getGenderLabel(room.roomGender)}
-                    </span>
-                  </td>
-                  <td className="border-t border-[#e7eef9] px-4 py-3 text-center text-sm font-semibold text-[#1f7a4e]">
-                    <span>{room.available_beds}/{totalBedsPerRoom}</span>
-                  </td>
-                  <td className="border-t border-[#e7eef9] px-4 py-3 text-center">
-                    <button
-                      type="button"
-                      onClick={handleChooseRoom}
-                      className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-semibold shadow-[0_10px_18px_rgba(23,98,195,0.22)] transition hover:-translate-y-0.5 hover:brightness-110 ${
-                        room.id === suggestedRoomId
-                          ? "border border-[#9bb9ea] bg-[linear-gradient(135deg,#2558bf_0%,#1f4fae_100%)] text-white shadow-[0_12px_22px_rgba(31,79,174,0.30)] ring-2 ring-[#d9e7ff]"
-                          : "bg-[linear-gradient(135deg,#1762c3_0%,#2f80ed_100%)] text-white"
-                      }`}
-                    >
-                      {room.id === suggestedRoomId ? <Star className="h-4 w-4 fill-[#ffd34f] text-[#ffd34f]" /> : null}
-                      {room.id === suggestedRoomId ? "Chọn ngay" : "Chọn"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {visibleStudents.map((student) => {
+                const isAssigned = Boolean(student.assigned_room_id);
+                const roomName = student.assigned_room_id ? roomNameById.get(student.assigned_room_id) : null;
+
+                return (
+                  <tr key={student.id} className="transition-colors hover:bg-[#f8fbff]">
+                    <td className="border-t border-[#e7eef9] px-3 py-2.5 text-center text-[15px] font-semibold text-[#1f3152]">
+                      <span className="whitespace-nowrap">{student.formData.mssv}</span>
+                    </td>
+                    <td className="border-t border-[#e7eef9] px-3 py-2.5 text-center text-sm font-semibold text-[#1f3152]">
+                      <span className="line-clamp-2">{student.formData.fullName}</span>
+                    </td>
+                    <td className="border-t border-[#e7eef9] px-3 py-2.5 text-center text-[15px] text-[#5d7299]">
+                      <span className="truncate">{student.email}</span>
+                    </td>
+                    <td className="border-t border-[#e7eef9] px-3 py-2.5 text-center text-[15px]">
+                      <span
+                        className={`inline-flex items-center rounded-full border px-3 py-1 text-[14px] font-semibold ${
+                          isAssigned
+                            ? "border-[#b9e6c7] bg-[#effcf3] text-[#16784b]"
+                            : "border-[#f3dd9c] bg-[#fff8df] text-[#9b6b00]"
+                        }`}
+                      >
+                        {isAssigned ? `Đã phân phòng${roomName ? `: ${roomName}` : ""}` : "Chưa phân phòng"}
+                      </span>
+                    </td>
+                    <td className="border-t border-[#e7eef9] px-3 py-2.5 text-center ">
+                      <button
+                        type="button"
+                        disabled={isAssigned}
+                        onClick={() => navigate(`/admin/assign-room/${student.id}`)}
+                        className={`auth-btn-gloss inline-flex min-w-[108px] flex-nowrap items-center justify-center whitespace-nowrap rounded-full px-4 py-2 text-[13px] font-semibold transition duration-200 ${
+                          isAssigned
+                            ? "border border-[#d2def0] bg-[linear-gradient(135deg,#edf4ff_0%,#dfeaff_100%)] text-[#7f8da8] shadow-[0_10px_18px_rgba(36,76,184,0.10)] disabled:opacity-100"
+                            : "bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] hover:-translate-y-0.5 hover:brightness-110"
+                        }`}
+                      >
+                        <span className="auth-btn-gloss__content">{isAssigned ? "Đã phân phòng" : "Chọn phòng"}</span>
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
 
-        {filteredRooms.length === 0 ? (
-          <div className="mt-4 rounded-xl border border-[#d8e3f2] bg-[#f8fbff] px-4 py-4 text-sm text-[#5a7197]">
-            Không có phòng phù hợp với bộ lọc hiện tại.
+        {visibleStudents.length === 0 ? (
+          <div className="mt-3 rounded-xl border border-[#d8e3f2] bg-[#f8fbff] px-4 py-3 text-sm text-[#5a7197]">
+            Không có sinh viên phù hợp với bộ lọc.
           </div>
         ) : null}
       </div>
 
+      {isFilterOpen && filterMenuPosition
+        ? createPortal(
+            <div className="fixed inset-0 z-[70]" onClick={() => setIsFilterOpen(false)}>
+              <div
+                className="absolute w-[160px] -translate-x-1/2 overflow-hidden rounded-[22px] border border-[#d7e2f2] bg-white text-left shadow-[0_18px_38px_rgba(15,23,42,0.18)]"
+                style={{ top: filterMenuPosition.top, left: filterMenuPosition.left }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="space-y-0.5 p-2.5">
+                  {assignmentFilterOptions.map((option) => {
+                    const isSelected = draftAssignmentFilter === option.value;
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setDraftAssignmentFilter(option.value)}
+                        className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-[10px] font-medium tracking-normal text-[#1f4a8d] transition hover:bg-[#f5f9ff]"
+                      >
+                        <span
+                          className={`flex h-4 w-4 items-center justify-center rounded-full border ${
+                            isSelected ? "border-[#244cb8] bg-[#244cb8]/10" : "border-[#cfd9e8] bg-white"
+                          }`}
+                        >
+                          <span className={`h-2 w-2 rounded-full ${isSelected ? "bg-[#244cb8]" : "bg-transparent"}`} />
+                        </span>
+                        <span>{option.label}</span>
+                      </button>
+                    );
+                  })}
+
+                  <div className="mt-2 border-t border-[#dbe5f3] pt-2">
+                    <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#7a8eb6]">
+                      Sắp xếp ID
+                    </p>
+                    {studentSortOptions.map((option) => {
+                      const isSelected = draftSortOrder === option.value;
+
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setDraftSortOrder(option.value)}
+                          className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-[10px] font-medium tracking-normal text-[#1f4a8d] transition hover:bg-[#f5f9ff]"
+                        >
+                          <span
+                            className={`flex h-4 w-4 items-center justify-center rounded-full border ${
+                              isSelected ? "border-[#244cb8] bg-[#244cb8]/10" : "border-[#cfd9e8] bg-white"
+                            }`}
+                          >
+                            <span className={`h-2 w-2 rounded-full ${isSelected ? "bg-[#244cb8]" : "bg-transparent"}`} />
+                          </span>
+                          <span>{option.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between border-t border-[#dbe5f3] px-2.5 py-2">
+                  <button
+                    type="button"
+                    onClick={handleResetFilter}
+                    className="text-[10px] font-medium tracking-normal text-[#b2b8c3] transition hover:text-[#7c8799]"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleApplyFilter}
+                    className="rounded-xl bg-[#0c4f97] px-3 py-1.5 text-[10px] font-semibold tracking-normal text-white shadow-[0_8px_16px_rgba(12,79,151,0.22)] transition hover:brightness-110"
+                  >
+                    OK
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </motion.section>
   );
 }

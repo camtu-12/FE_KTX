@@ -40,6 +40,11 @@ const adminMenu: MenuItem[] = [
     icon: School,
   },
   {
+    label: "Phân phòng",
+    to: "/admin/assign-room",
+    icon: BedSingle,
+  },
+  {
     label: "Quản lý sinh viên",
     to: "/admin/students",
     icon: UserCog ,

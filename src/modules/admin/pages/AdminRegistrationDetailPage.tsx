@@ -5,12 +5,12 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   departmentOptions,
   documentLabels,
-  getRegistrationRequestById,
   relationshipOptions,
   statusMap,
   type RegistrationRequest,
   type RegistrationStatus,
 } from "../data/registrationRequests";
+import { getRegistrationRequestByIdInstant } from "../../../api/registrationMockApi";
 
 const statusIconMap: Record<RegistrationStatus, typeof Clock3> = {
   pending: Clock3,
@@ -42,7 +42,7 @@ export default function AdminRegistrationDetailPage() {
     }
 
     const id = Number(registrationId);
-    return Number.isNaN(id) ? null : getRegistrationRequestById(id);
+    return Number.isNaN(id) ? null : getRegistrationRequestByIdInstant(id);
   }, [registrationId, routeState?.request]);
 
   useEffect(() => {

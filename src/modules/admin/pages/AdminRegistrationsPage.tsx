@@ -393,7 +393,7 @@ export default function AdminRegistrationsPage() {
                             : "text-[#6f84ad] hover:text-[#244cb8]"
                         }`}
                       >
-                        <Funnel className="h-3 w-3" />
+                        <Funnel className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   </th>
@@ -428,13 +428,7 @@ export default function AdminRegistrationsPage() {
                         {request.formData.mssv}
                       </td>
                       <td className="border-t border-[#e8eef8] px-5 py-4 text-center text-sm font-semibold text-[#1f3152]">
-                        <Link
-                          to={`/admin/assign-room/${request.id}`}
-                          state={{ request }}
-                          className="transition hover:text-[#244cb8] hover:underline"
-                        >
-                          {request.formData.fullName}
-                        </Link>
+                        {request.formData.fullName}
                       </td>
                       <td className="border-t border-[#e8eef8] px-4 py-4 text-center text-[15px] text-[#5d7299]">
                         <p className="whitespace-nowrap">{request.email}</p>
@@ -464,13 +458,9 @@ export default function AdminRegistrationsPage() {
                       <td className="border-t border-[#e8eef8] px-4 py-4 text-center">
                         <div className="flex flex-nowrap items-center justify-center gap-1.5">
                           {isApproved ? (
-                            <Link
-                              to={`/admin/assign-room/${request.id}`}
-                              state={{ request }}
-                              className="rounded-xl bg-[linear-gradient(135deg,#1762c3_0%,#2f80ed_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_18px_rgba(23,98,195,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110"
-                            >
-                              <span className="auth-btn-gloss__content">Phân phòng</span>
-                            </Link>
+                            <span className="auth-btn-gloss inline-flex min-w-[118px] flex-nowrap items-center justify-center whitespace-nowrap rounded-full bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)]">
+                              <span className="auth-btn-gloss__content">Đã duyệt</span>
+                            </span>
                           ) : isPending ? (
                             <>
                              <button
