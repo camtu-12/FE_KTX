@@ -6,8 +6,9 @@ import {
   type RegistrationStatus,
 } from "../modules/admin/data/registrationRequests";
 
-const STORAGE_KEY = "mock_registration_requests_v4";
+const STORAGE_KEY = "mock_registration_requests_v5";
 const ROOMS_STORAGE_KEY = "mock_dorm_rooms_v4";
+const BEDS_STORAGE_KEY = "mock_dorm_beds_v1";
 const ONE_TIME_CLEANUP_KEY = "mock_registration_cleanup_v4";
 const REQUEST_DELAY_MS = 500;
 
@@ -18,6 +19,20 @@ export type DormRoom = {
   totalBeds: number;
   availableBeds: number;
   gender: "male" | "female";
+};
+
+export type DormBed = {
+  id: number;
+  room_id: number;
+  bed_number: number;
+  position: "upper" | "lower";
+  status: "occupied" | "empty" | "maintenance";
+};
+
+export type DormBedPair = {
+  pairNumber: number;
+  upper: DormBed;
+  lower: DormBed;
 };
 
 type SubmitRegistrationPayload = {
@@ -37,11 +52,16 @@ type AssignRoomPayload = {
   roomId: number;
 };
 
+type SelectBedPayload = {
+  email: string;
+  bedId: number;
+};
+
 const roomSeedData: DormRoom[] = [
   // Tòa A - Tầng 1 (Nam)
   { id: 1, building_code: "A", room_number: 101, totalBeds: 14, availableBeds: 8, gender: "male" },
   { id: 2, building_code: "A", room_number: 102, totalBeds: 14, availableBeds: 5, gender: "male" },
-  { id: 3, building_code: "A", room_number: 103, totalBeds: 14, availableBeds: 14, gender: "male" },
+  { id: 3, building_code: "A", room_number: 103, totalBeds: 14, availableBeds: 10, gender: "male" },
   { id: 4, building_code: "A", room_number: 104, totalBeds: 14, availableBeds: 6, gender: "male" },
   { id: 5, building_code: "A", room_number: 105, totalBeds: 14, availableBeds: 10, gender: "male" },
 
@@ -66,6 +86,64 @@ const roomSeedData: DormRoom[] = [
   { id: 19, building_code: "B", room_number: 204, totalBeds: 14, availableBeds: 5, gender: "female" },
   { id: 20, building_code: "B", room_number: 205, totalBeds: 14, availableBeds: 14, gender: "female" },
 ];
+
+const getSeedBedStatus = (room: DormRoom, index: number): DormBed["status"] => {
+  if (room.id !== 3) {
+    return "empty";
+  }
+
+  const statusPattern: DormBed["status"][] = [
+    "empty",
+    "occupied",
+    "maintenance",
+    "empty",
+    "occupied",
+    "maintenance",
+    "empty",
+    "empty",
+    "empty",
+    "empty",
+    "empty",
+    "empty",
+    "empty",
+    "empty",
+  ];
+
+  return statusPattern[index] ?? "empty";
+};
+
+const buildInitialBeds = (rooms: DormRoom[]): DormBed[] =>
+  rooms.flatMap((room) =>
+    Array.from({ length: room.totalBeds }, (_, index) => ({
+      id: room.id * 100 + index + 1,
+      room_id: room.id,
+      bed_number: index + 1,
+      position: index % 2 === 0 ? ("upper" as const) : ("lower" as const),
+      status: getSeedBedStatus(room, index),
+    })),
+  );
+
+const buildBedPairs = (beds: DormBed[]): DormBedPair[] => {
+  const orderedBeds = [...beds].sort((a, b) => a.bed_number - b.bed_number);
+  const pairs: DormBedPair[] = [];
+
+  for (let index = 0; index < orderedBeds.length; index += 2) {
+    const upper = orderedBeds[index];
+    const lower = orderedBeds[index + 1];
+
+    if (!upper || !lower) {
+      continue;
+    }
+
+    pairs.push({
+      pairNumber: Math.floor(index / 2) + 1,
+      upper: { ...upper, position: "upper" },
+      lower: { ...lower, position: "lower" },
+    });
+  }
+
+  return pairs;
+};
 
 const createCompactPreviewSvg = (title: string, subtitle: string, accent: string) =>
   `data:image/svg+xml;utf8,${encodeURIComponent(
@@ -112,6 +190,22 @@ const isValidRoom = (room: unknown): room is DormRoom => {
   );
 };
 
+const isValidBed = (bed: unknown): bed is DormBed => {
+  if (!bed || typeof bed !== "object") {
+    return false;
+  }
+
+  const candidate = bed as Partial<DormBed>;
+
+  return (
+    typeof candidate.id === "number" &&
+    typeof candidate.room_id === "number" &&
+    typeof candidate.bed_number === "number" &&
+    (candidate.position === "upper" || candidate.position === "lower") &&
+    (candidate.status === "occupied" || candidate.status === "empty" || candidate.status === "maintenance")
+  );
+};
+
 const toIsoMinuteString = (value: Date) => {
   const year = value.getFullYear();
   const month = `${value.getMonth() + 1}`.padStart(2, "0");
@@ -131,14 +225,28 @@ const cloneSeedRequests = () =>
   }));
 
 const mergeSeedRequests = (requests: RegistrationRequest[]) => {
-  const existingIds = new Set(requests.map((request) => request.id));
-  const missingSeedRequests = cloneSeedRequests().filter((request) => !existingIds.has(request.id));
+  const seedRequests = cloneSeedRequests();
+  const byId = new Map<number, RegistrationRequest>(requests.map((request) => [request.id, request]));
 
-  if (missingSeedRequests.length === 0) {
-    return requests;
+  for (const seedRequest of seedRequests) {
+    const existing = byId.get(seedRequest.id);
+
+    if (!existing) {
+      byId.set(seedRequest.id, seedRequest);
+      continue;
+    }
+
+    // Backfill optional seed fields for older localStorage snapshots, but never
+    // overwrite user/admin actions that already exist in storage.
+    byId.set(seedRequest.id, {
+      ...existing,
+      assigned_room_id:
+        existing.assigned_room_id ?? seedRequest.assigned_room_id ?? null,
+      bedId: existing.bedId ?? seedRequest.bedId ?? null,
+    });
   }
 
-  return [...requests, ...missingSeedRequests].sort((a, b) => b.id - a.id);
+  return [...byId.values()].sort((a, b) => b.id - a.id);
 };
 
 const getLatestRequestIdByEmail = (requests: RegistrationRequest[], email: string) => {
@@ -151,7 +259,7 @@ const getLatestRequestIdByEmail = (requests: RegistrationRequest[], email: strin
 };
 
 const isValidStatus = (status: unknown): status is RegistrationStatus => {
-  return status === "pending" || status === "approved" || status === "rejected";
+  return status === "pending" || status === "approved" || status === "rejected" || status === "completed";
 };
 
 const isValidRequest = (request: unknown): request is RegistrationRequest => {
@@ -207,6 +315,25 @@ const initializeRoomsIfNeeded = () => {
     }
   } catch {
     localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(roomSeedData));
+  }
+};
+
+const initializeBedsIfNeeded = () => {
+  const raw = localStorage.getItem(BEDS_STORAGE_KEY);
+
+  if (!raw) {
+    localStorage.setItem(BEDS_STORAGE_KEY, JSON.stringify(buildInitialBeds(roomSeedData)));
+    return;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+
+    if (!Array.isArray(parsed) || !parsed.every(isValidBed)) {
+      localStorage.setItem(BEDS_STORAGE_KEY, JSON.stringify(buildInitialBeds(readRooms())));
+    }
+  } catch {
+    localStorage.setItem(BEDS_STORAGE_KEY, JSON.stringify(buildInitialBeds(readRooms())));
   }
 };
 
@@ -303,11 +430,40 @@ const readRooms = (): DormRoom[] => {
   }
 };
 
+const readBeds = (): DormBed[] => {
+  initializeBedsIfNeeded();
+
+  const raw = localStorage.getItem(BEDS_STORAGE_KEY);
+  if (!raw) {
+    return buildInitialBeds(readRooms());
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return buildInitialBeds(readRooms());
+    }
+
+    const beds = parsed.filter(isValidBed).map((bed) => ({ ...bed }));
+    return beds.length > 0 ? beds : buildInitialBeds(readRooms());
+  } catch {
+    return buildInitialBeds(readRooms());
+  }
+};
+
 const writeRooms = (rooms: DormRoom[]) => {
   try {
     localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(rooms));
   } catch {
     localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(rooms.slice(0, 60)));
+  }
+};
+
+const writeBeds = (beds: DormBed[]) => {
+  try {
+    localStorage.setItem(BEDS_STORAGE_KEY, JSON.stringify(beds));
+  } catch {
+    localStorage.setItem(BEDS_STORAGE_KEY, JSON.stringify(beds.slice(0, 120)));
   }
 };
 
@@ -357,6 +513,16 @@ export const getLatestRegistrationByEmailInstant = (
 
 export const getDormRoomsInstant = (): DormRoom[] => {
   return readRooms();
+};
+
+export const getDormBedsForRoomInstant = (roomId: number): DormBed[] => {
+  return readBeds()
+    .filter((bed) => bed.room_id === roomId)
+    .sort((a, b) => a.bed_number - b.bed_number);
+};
+
+export const getDormBedPairsForRoomInstant = (roomId: number): DormBedPair[] => {
+  return buildBedPairs(getDormBedsForRoomInstant(roomId));
 };
 
 export const getRegistrationRequestByIdInstant = (id: number): RegistrationRequest | null => {
@@ -411,6 +577,87 @@ export const assignRoomToRegistration = async (
 
   writeRequests(nextRequests);
   writeRooms(nextRooms);
+
+  return updatedRequest;
+};
+
+export const selectBedForRegistration = async (
+  payload: SelectBedPayload,
+): Promise<RegistrationRequest> => {
+  await delay(REQUEST_DELAY_MS);
+
+  const requests = readRequests();
+  const beds = readBeds();
+  const normalizedEmail = payload.email.trim().toLowerCase();
+
+  if (!normalizedEmail) {
+    throw new Error("Không tìm thấy sinh viên.");
+  }
+
+  const requestIndex = requests
+    .map((request, index) => ({ request, index }))
+    .filter(({ request }) => request.email.trim().toLowerCase() === normalizedEmail)
+    .sort((a, b) => b.request.id - a.request.id)[0]?.index ?? -1;
+
+  if (requestIndex < 0) {
+    throw new Error("Không tìm thấy đơn đăng ký.");
+  }
+
+  const request = requests[requestIndex];
+  if (request.bedId) {
+    if (request.status === "completed") {
+      return request;
+    }
+
+    const completedRequest: RegistrationRequest = {
+      ...request,
+      status: "completed",
+    };
+
+    const nextRequests = [...requests];
+    nextRequests[requestIndex] = completedRequest;
+    writeRequests(nextRequests);
+
+    return completedRequest;
+  }
+
+  if (request.status !== "approved") {
+    throw new Error("Chỉ chọn giường cho đơn đã duyệt.");
+  }
+
+  if (!request.assigned_room_id) {
+    throw new Error("Bạn chưa được phân phòng.");
+  }
+  const bedIndex = beds.findIndex((bed) => bed.id === payload.bedId);
+
+  if (bedIndex < 0) {
+    throw new Error("Không tìm thấy giường.");
+  }
+
+  const selectedBed = beds[bedIndex];
+
+  if (selectedBed.room_id !== request.assigned_room_id) {
+    throw new Error("Giường này không thuộc phòng đã được phân.");
+  }
+
+  if (selectedBed.status === "occupied") {
+    throw new Error("Giường đã có người chọn.");
+  }
+
+  const updatedRequest: RegistrationRequest = {
+    ...request,
+    bedId: selectedBed.id,
+    status: "completed",
+  };
+
+  const nextRequests = [...requests];
+  nextRequests[requestIndex] = updatedRequest;
+
+  const nextBeds = [...beds];
+  nextBeds[bedIndex] = { ...selectedBed, status: "occupied" };
+
+  writeRequests(nextRequests);
+  writeBeds(nextBeds);
 
   return updatedRequest;
 };

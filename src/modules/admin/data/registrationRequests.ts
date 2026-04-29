@@ -1,4 +1,4 @@
-export type RegistrationStatus = "pending" | "approved" | "rejected";
+export type RegistrationStatus = "pending" | "approved" | "rejected" | "completed";
 export type RegistrationFilterStatus = "all" | RegistrationStatus;
 export type RegistrationDocumentField = "portraitPhoto" | "cccdFrontPhoto" | "cccdBackPhoto";
 
@@ -90,6 +90,10 @@ export const statusMap: Record<
     label: "Từ chối",
     className: "border border-[#f1c2c8] bg-[#fff3f5] text-[#bf3e53]",
   },
+  completed: {
+    label: "Hoàn tất",
+    className: "border border-[#b8ddff] bg-[#edf7ff] text-[#2451b5]",
+  },
 };
 
 export const registrationRequests: RegistrationRequest[] = [
@@ -119,7 +123,7 @@ export const registrationRequests: RegistrationRequest[] = [
   },
   {
     id: 2,
-    email: "quocbao@stu.edu.vn",
+    email: "student@gmail.com",
     status: "approved",
     submittedAt: "2026-04-18 14:10",
     formData: {
@@ -140,7 +144,7 @@ export const registrationRequests: RegistrationRequest[] = [
       cccdFrontPhoto: createPreviewSvg("CCCD mặt trước", "DH52201701", "#2f63da"),
       cccdBackPhoto: createPreviewSvg("CCCD mặt sau", "DH52201701", "#31b7d4"),
     },
-    assigned_room_id: 1,
+    assigned_room_id: 3,
   },
   {
     id: 3,

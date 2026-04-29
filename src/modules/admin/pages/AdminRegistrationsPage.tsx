@@ -22,6 +22,7 @@ const statusIconMap: Record<RegistrationStatus, typeof Clock3> = {
   pending: Clock3,
   approved: CheckCircle2,
   rejected: CircleAlert,
+  completed: CheckCircle2,
 };
 
 export default function AdminRegistrationsPage() {
@@ -105,6 +106,7 @@ export default function AdminRegistrationsPage() {
   const pendingCount = latestRequests.filter((item) => item.status === "pending").length;
   const approvedCount = latestRequests.filter((item) => item.status === "approved").length;
   const rejectedCount = latestRequests.filter((item) => item.status === "rejected").length;
+  const completedCount = latestRequests.filter((item) => item.status === "completed").length;
 
   const summaryCards = [
     {
@@ -125,6 +127,12 @@ export default function AdminRegistrationsPage() {
       valueClassName: "text-[#bf3e53]",
       delay: 0.24,
     },
+    {
+      label: "Hoàn tất",
+      value: completedCount,
+      valueClassName: "text-[#2451b5]",
+      delay: 0.3,
+    },
   ];
 
   const statusFilterOptions: Array<{ value: RegistrationFilterStatus; label: string }> = [
@@ -132,6 +140,7 @@ export default function AdminRegistrationsPage() {
     { value: "pending", label: "Chờ duyệt" },
     { value: "approved", label: "Đã duyệt" },
     { value: "rejected", label: "Từ chối" },
+    { value: "completed", label: "Hoàn tất" },
   ];
 
   const idSortOptions: Array<{ value: RegistrationIdSortOrder; label: string }> = [
