@@ -5,6 +5,7 @@ import StudentLayout from "../layouts/StudentLayout";
 import AdminDashboardPage from "../modules/admin/pages/AdminDashboardPage";
 import AdminRegistrationDetailPage from "../modules/admin/pages/AdminRegistrationDetailPage";
 import AdminRegistrationsPage from "../modules/admin/pages/AdminRegistrationsPage";
+import BedManagementPage from "../modules/admin/pages/BedManagementPage";
 import AdminRoomsPage from "../modules/admin/pages/AdminRoomsPage";
 import AssignRoomPage from "../modules/admin/pages/AssignRoomPage.tsx";
 import AssignRoomDetailPage from "../modules/admin/pages/AssignRoomDetailPage";
@@ -59,6 +60,7 @@ export default function AppRoutes() {
           <Route path="registrations/:registrationId" element={<AdminRegistrationDetailPage />} />
           <Route path="assign-room" element={<AssignRoomPage />} />
           <Route path="assign-room/:requestId" element={<AssignRoomDetailPage />} />
+          <Route path="bed-management" element={<BedManagementPage />} />
           <Route path="students" element={<AdminStudentsPage />} />
           <Route path="rooms" element={<AdminRoomsPage />} />
         </Route>
