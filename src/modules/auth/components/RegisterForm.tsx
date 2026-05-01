@@ -10,12 +10,14 @@ import {
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import { checkEmailExists, checkStudentCodeExists } from "../services/auth.api";
 
 type RegisterFields = {
   fullName: string;
   studentCode: string;
   email: string;
   password: string;
+  confirmPassword: string;
 };
 
 type FieldErrors = Partial<Record<keyof RegisterFields, string>>;
@@ -25,6 +27,7 @@ const initialFields: RegisterFields = {
   studentCode: "",
   email: "",
   password: "",
+  confirmPassword: "",
 };
 
 const labelClassName =
@@ -81,6 +84,7 @@ export default function RegisterForm() {
   const [successMessage, setSuccessMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const setField = <K extends keyof RegisterFields>(
     key: K,
@@ -89,6 +93,33 @@ export default function RegisterForm() {
     setFields((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => ({ ...prev, [key]: undefined }));
     if (generalError) setGeneralError("");
+  };
+
+  const handleEmailBlur = async () => {
+    const email = fields.email.trim();
+    if (!email) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
+    try {
+      const exists = await checkEmailExists(email);
+      if (exists) {
+        setErrors((prev) => ({ ...prev, email: "Email đã tồn tại." }));
+      }
+    } catch {
+      // ignore network/mock errors
+    }
+  };
+
+  const handleStudentCodeBlur = async () => {
+    const code = fields.studentCode.trim();
+    if (!code) return;
+    try {
+      const exists = await checkStudentCodeExists(code);
+      if (exists) {
+        setErrors((prev) => ({ ...prev, studentCode: "MSSV đã tồn tại." }));
+      }
+    } catch {
+      // ignore
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -100,6 +131,7 @@ export default function RegisterForm() {
       studentCode: fields.studentCode.trim(),
       email: fields.email.trim(),
       password: fields.password.trim(),
+      confirmPassword: fields.confirmPassword.trim(),
     };
 
     if (!trimmed.fullName) {
@@ -118,8 +150,14 @@ export default function RegisterForm() {
 
     if (!trimmed.password) {
       nextErrors.password = "Vui lòng nhập mật khẩu.";
-    } else if (trimmed.password.length < 6) {
-      nextErrors.password = "Mật khẩu cần ít nhất 6 ký tự.";
+    } else if (trimmed.password.length < 8) {
+      nextErrors.password = "Mật khẩu cần ít nhất 8 ký tự.";
+    }
+
+    if (!trimmed.confirmPassword) {
+      nextErrors.confirmPassword = "Vui lòng nhập lại mật khẩu.";
+    } else if (trimmed.confirmPassword !== trimmed.password) {
+      nextErrors.confirmPassword = "Mật khẩu không khớp.";
     }
 
     setErrors(nextErrors);
@@ -205,6 +243,7 @@ export default function RegisterForm() {
                   className={inputClassName}
                   value={fields.studentCode}
                   onChange={(e) => setField("studentCode", e.target.value)}
+                  onBlur={handleStudentCodeBlur}
                   disabled={isSubmitting}
                 />
               </InputShell>
@@ -223,6 +262,7 @@ export default function RegisterForm() {
                   className={inputClassName}
                   value={fields.email}
                   onChange={(e) => setField("email", e.target.value)}
+                  onBlur={handleEmailBlur}
                   disabled={isSubmitting}
                 />
               </InputShell>
@@ -248,10 +288,39 @@ export default function RegisterForm() {
                   readOnly
                   onFocus={(e) => ((e.target as HTMLInputElement).readOnly = false)}
                   type={showPassword ? "text" : "password"}
-                  placeholder="Nhập mật khẩu"
+                  placeholder="Mật khẩu tối thiểu 8 ký tự"
                   className={inputClassName}
                   value={fields.password}
                   onChange={(e) => setField("password", e.target.value)}
+                  disabled={isSubmitting}
+                />
+              </InputShell>
+            </FormField>
+
+            <FormField label="Xác nhận mật khẩu" error={errors.confirmPassword}>
+              <InputShell
+                icon={Lock}
+                trailing={
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirm((prev) => !prev)}
+                    className="text-[#7c88a0] transition hover:text-[var(--color-primary-hover)]"
+                    aria-label={showConfirm ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                  >
+                    {showConfirm ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                }
+              >
+                <input
+                  name="confirmPassword"
+                  autoComplete="new-password"
+                  readOnly
+                  onFocus={(e) => ((e.target as HTMLInputElement).readOnly = false)}
+                  type={showConfirm ? "text" : "password"}
+                  placeholder="Nhập lại mật khẩu"
+                  className={inputClassName}
+                  value={fields.confirmPassword}
+                  onChange={(e) => setField("confirmPassword", e.target.value)}
                   disabled={isSubmitting}
                 />
               </InputShell>
