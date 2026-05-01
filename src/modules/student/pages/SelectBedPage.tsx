@@ -279,12 +279,6 @@ export default function SelectBedPage() {
   }, [errorMessage]);
 
   const handleOpenConfirm = () => {
-    if (!selectedBed) {
-      setErrorMessage("⚠️ Bạn chưa chọn giường. Vui lòng chọn một giường trống để tiếp tục.");
-      return;
-    }
-
-    setErrorMessage("");
     setIsConfirmOpen(true);
   };
 
@@ -379,8 +373,8 @@ export default function SelectBedPage() {
         <button
           type="button"
           onClick={handleOpenConfirm}
-          disabled={isSubmitting}
-          className="inline-flex h-11 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-5 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"
+          disabled={isSubmitting || !selectedBed}
+          className="inline-flex h-11 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-5 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
         >
           <span className="inline-flex items-center gap-2">
             {isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
