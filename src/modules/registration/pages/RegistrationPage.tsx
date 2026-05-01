@@ -11,8 +11,10 @@ import {
 } from "../../../api/registrationMockApi";
 import { getStoredAuth } from "../../auth/utils/authStorage";
 import type { RegistrationRequest } from "../../admin/data/registrationRequests";
+import ProgressStep from "../components/ProgressStep";
 
 type RegistrationStatus = "unregistered" | "pending" | "approved" | "rejected" | "completed";
+type ProgressStatus = "pending" | "approved" | "assigned_room" | "selected_bed" | "completed";
 type DocumentField = "portraitPhoto" | "cccdFrontPhoto" | "cccdBackPhoto";
 type RegistrationWithAssignment = RegistrationRequest & {
   assigned_room_id?: number | null;
@@ -33,6 +35,23 @@ interface FormData {
   relationName: string;
   relationPhone: string;
   relationship: string;
+}
+
+function getCurrentStep(status: string): number {
+  switch (status) {
+    case "pending":
+      return 1;
+    case "approved":
+      return 2;
+    case "assigned_room":
+      return 3;
+    case "selected_bed":
+      return 4;
+    case "completed":
+      return 5;
+    default:
+      return 1;
+  }
 }
 
 const initialFormData: FormData = {
@@ -260,6 +279,27 @@ export default function RegistrationPage() {
 
   const hasSelectedBed = Boolean(assignedRoomName && selectedBedName && registrationForView?.assigned_room_id && registrationForView?.bedId);
   const viewStatus = registrationForView?.bedId ? "completed" : statusForView;
+  const progressStatus: ProgressStatus = useMemo(() => {
+    if (statusForView === "completed") {
+      return "completed";
+    }
+
+    if (registrationForView?.bedId) {
+      return "selected_bed";
+    }
+
+    if (statusForView === "approved" && registrationForView?.assigned_room_id && assignedRoomName) {
+      return "assigned_room";
+    }
+
+    if (statusForView === "approved") {
+      return "approved";
+    }
+
+    return "pending";
+  }, [assignedRoomName, registrationForView?.assigned_room_id, registrationForView?.bedId, statusForView]);
+
+  const currentProgressStep = useMemo(() => getCurrentStep(progressStatus), [progressStatus]);
 
   const readFileAsDataUrl = (file: File) =>
     new Promise<string>((resolve, reject) => {
@@ -572,6 +612,8 @@ export default function RegistrationPage() {
         </p>
 
       </motion.div>
+
+      <ProgressStep currentStep={currentProgressStep} />
 
       {statusForView === "pending" && (
         <div className="auth-reveal is-visible flex items-center gap-3 rounded-2xl border border-yellow-200 bg-yellow-50/95 p-4 shadow-[0_12px_24px_rgba(212,175,55,0.18)]">
