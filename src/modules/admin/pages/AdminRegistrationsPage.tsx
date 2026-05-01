@@ -463,24 +463,24 @@ export default function AdminRegistrationsPage() {
                             </span>
                           ) : isPending ? (
                             <>
-                             <button
-                               type="button"
-                               disabled={isUpdatingStatus}
-                               onClick={() => {
-                                 void handleApprove(request.id);
-                               }}
-                              className="auth-btn-gloss min-w-[68px] rounded-xl bg-[linear-gradient(135deg,#1f9a60_0%,#35bf7a_100%)] px-2.5 py-2 text-[12px] font-semibold text-white shadow-[0_10px_18px_rgba(31,154,96,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
-                             >
-                              <span className="auth-btn-gloss__content">Duyệt</span>
-                             </button>
-                             <button
-                               type="button"
-                               disabled={isUpdatingStatus}
-                               onClick={() => handleOpenRejectModal(request.id)}
-                              className="auth-btn-gloss min-w-[68px] rounded-xl bg-[linear-gradient(135deg,#e25569_0%,#cc3c4f_100%)] px-2.5 py-2 text-[12px] font-semibold text-white shadow-[0_10px_18px_rgba(204,60,79,0.20)] transition duration-200 hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
-                             >
-                              <span className="auth-btn-gloss__content">Từ chối</span>
-                             </button>
+                              <button
+                                type="button"
+                                disabled={isUpdatingStatus}
+                                onClick={() => {
+                                  void handleApprove(request.id);
+                                }}
+                                className="auth-btn-gloss min-w-[68px] rounded-xl bg-[linear-gradient(135deg,#1f9a60_0%,#35bf7a_100%)] px-2.5 py-2 text-[12px] font-semibold text-white shadow-[0_10px_18px_rgba(31,154,96,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                              >
+                                <span className="auth-btn-gloss__content">Duyệt</span>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isUpdatingStatus}
+                                onClick={() => handleOpenRejectModal(request.id)}
+                                className="auth-btn-gloss min-w-[68px] rounded-xl bg-[linear-gradient(135deg,#e25569_0%,#cc3c4f_100%)] px-2.5 py-2 text-[12px] font-semibold text-white shadow-[0_10px_18px_rgba(204,60,79,0.20)] transition duration-200 hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                              >
+                                <span className="auth-btn-gloss__content">Từ chối</span>
+                              </button>
                             </>
                           ) : (
                             <span className="rounded-xl border border-[#d1daea] bg-[#f6f8fc] px-4 py-2 text-sm font-semibold text-[#7f8da8]">

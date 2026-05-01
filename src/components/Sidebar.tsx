@@ -1,4 +1,5 @@
 import {
+  BedDouble,
   BedSingle,
   ClipboardList,
   CreditCard,
@@ -35,14 +36,19 @@ const adminMenu: MenuItem[] = [
     icon: ClipboardList,
   },
   {
-    label: "Quản lý phòng",
-    to: "/admin/rooms",
-    icon: School,
-  },
-  {
     label: "Phân phòng",
     to: "/admin/assign-room",
     icon: BedSingle,
+  },
+  {
+    label: "Quản lý giường",
+    to: "/admin/bed-management",
+    icon: BedDouble,
+  },
+  {
+    label: "Quản lý phòng",
+    to: "/admin/rooms",
+    icon: School,
   },
   {
     label: "Quản lý sinh viên",

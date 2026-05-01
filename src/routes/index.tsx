@@ -5,6 +5,7 @@ import StudentLayout from "../layouts/StudentLayout";
 import AdminDashboardPage from "../modules/admin/pages/AdminDashboardPage";
 import AdminRegistrationDetailPage from "../modules/admin/pages/AdminRegistrationDetailPage";
 import AdminRegistrationsPage from "../modules/admin/pages/AdminRegistrationsPage";
+import BedManagementPage from "../modules/admin/pages/BedManagementPage";
 import AdminRoomsPage from "../modules/admin/pages/AdminRoomsPage";
 import AssignRoomPage from "../modules/admin/pages/AssignRoomPage.tsx";
 import AssignRoomDetailPage from "../modules/admin/pages/AssignRoomDetailPage";
@@ -16,6 +17,7 @@ import ContactPage from "../modules/public/pages/ContactPage";
 import HomePage from "../modules/public/pages/HomePage";
 import RegistrationPage from "../modules/registration/pages/RegistrationPage";
 import StudentDashboardPage from "../modules/student/pages/StudentDashboardPage";
+import SelectBedPage from "../modules/student/pages/SelectBedPage";
 import ProtectedRoute from "./ProtectedRoute";
 
 function LegacyRegistrationDetailRedirect() {
@@ -58,6 +60,7 @@ export default function AppRoutes() {
           <Route path="registrations/:registrationId" element={<AdminRegistrationDetailPage />} />
           <Route path="assign-room" element={<AssignRoomPage />} />
           <Route path="assign-room/:requestId" element={<AssignRoomDetailPage />} />
+          <Route path="bed-management" element={<BedManagementPage />} />
           <Route path="students" element={<AdminStudentsPage />} />
           <Route path="rooms" element={<AdminRoomsPage />} />
         </Route>
@@ -72,6 +75,7 @@ export default function AppRoutes() {
         >
           <Route path="dashboard" element={<StudentDashboardPage />} />
           <Route path="registration" element={<RegistrationPage />} />
+          <Route path="select-bed" element={<SelectBedPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

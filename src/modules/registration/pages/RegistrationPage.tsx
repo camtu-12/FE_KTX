@@ -1,16 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { AlertCircle, CheckCircle, Clock, ImagePlus, LoaderCircle, ShieldCheck, UserCircle2, Users, Home } from "lucide-react";
+import {
+  AlertCircle,
+  BedSingle,
+  CheckCircle,
+  Clock,
+  ImagePlus,
+  LoaderCircle,
+  ShieldCheck,
+  UserCircle2,
+  Users,
+  Home,
+} from "lucide-react";
 import {
   getLatestRegistrationByEmail,
   getLatestRegistrationByEmailInstant,
+  getDormBedsForRoomInstant,
   submitRegistration,
   getDormRoomsInstant,
 } from "../../../api/registrationMockApi";
 import { getStoredAuth } from "../../auth/utils/authStorage";
 import type { RegistrationRequest } from "../../admin/data/registrationRequests";
+import ProgressStep from "../components/ProgressStep";
 
-type RegistrationStatus = "unregistered" | "pending" | "approved" | "rejected";
+type RegistrationStatus = "unregistered" | "pending" | "approved" | "rejected" | "completed";
+type ProgressStatus = "pending" | "approved" | "assigned_room" | "selected_bed" | "completed";
 type DocumentField = "portraitPhoto" | "cccdFrontPhoto" | "cccdBackPhoto";
 type RegistrationWithAssignment = RegistrationRequest & {
   assigned_room_id?: number | null;
@@ -31,6 +46,23 @@ interface FormData {
   relationName: string;
   relationPhone: string;
   relationship: string;
+}
+
+function getCurrentStep(status: string): number {
+  switch (status) {
+    case "pending":
+      return 1;
+    case "approved":
+      return 2;
+    case "assigned_room":
+      return 3;
+    case "selected_bed":
+      return 4;
+    case "completed":
+      return 5;
+    default:
+      return 1;
+  }
 }
 
 const initialFormData: FormData = {
@@ -112,6 +144,7 @@ function ErrorMessage({ message }: { message: string }) {
 }
 
 export default function RegistrationPage() {
+  const navigate = useNavigate();
   const storedAuth = getStoredAuth();
   const studentEmail = storedAuth?.user.email ?? "";
   const [initialRequestSnapshot] = useState(() =>
@@ -242,6 +275,44 @@ export default function RegistrationPage() {
     if (!room) return null;
     return `${room.building_code}${room.room_number}`;
   })();
+
+  const selectedBed = (() => {
+    const roomId = registrationForView?.assigned_room_id;
+    const bedId = registrationForView?.bedId;
+
+    if (!roomId || !bedId) {
+      return null;
+    }
+
+    return getDormBedsForRoomInstant(roomId).find((item) => item.id === bedId) ?? null;
+  })();
+
+  const selectedBedName = selectedBed
+    ? `${selectedBed.bed_number} (${selectedBed.position === "upper" ? "Trên" : "Dưới"})`
+    : null;
+
+  const hasSelectedBed = Boolean(assignedRoomName && selectedBedName && registrationForView?.assigned_room_id && registrationForView?.bedId);
+  const progressStatus: ProgressStatus = useMemo(() => {
+    if (statusForView === "completed") {
+      return "completed";
+    }
+
+    if (registrationForView?.bedId) {
+      return "selected_bed";
+    }
+
+    if (statusForView === "approved" && registrationForView?.assigned_room_id && assignedRoomName) {
+      return "assigned_room";
+    }
+
+    if (statusForView === "approved") {
+      return "approved";
+    }
+
+    return "pending";
+  }, [assignedRoomName, registrationForView?.assigned_room_id, registrationForView?.bedId, statusForView]);
+
+  const currentProgressStep = useMemo(() => getCurrentStep(progressStatus), [progressStatus]);
 
   const readFileAsDataUrl = (file: File) =>
     new Promise<string>((resolve, reject) => {
@@ -555,15 +626,17 @@ export default function RegistrationPage() {
 
       </motion.div>
 
+      <ProgressStep currentStep={currentProgressStep} />
+
       {statusForView === "pending" && (
-        <div className="auth-reveal is-visible flex items-center gap-3 rounded-2xl border border-yellow-200 bg-yellow-50/95 p-4 shadow-[0_12px_24px_rgba(212,175,55,0.18)]">
-          <Clock className="h-5 w-5 text-yellow-600" />
-          <div>
-            <p className="font-semibold text-yellow-900">Đơn của bạn đã được gửi</p>
-            <p className="text-sm text-yellow-800/85">
-              Vui lòng chờ. Kết quả sẽ có trong vòng 1-3 ngày làm việc.
-            </p>
+        <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-[#b7ccef] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-5 text-center shadow-[0_12px_24px_rgba(36,76,184,0.10)] backdrop-blur-sm">
+          <div className="flex items-center justify-center gap-2 text-[#2f63da]">
+            <Clock className="h-5 w-5" />
+            <p className="font-semibold text-[#1F3152]">Đơn của bạn đã được gửi</p>
           </div>
+          <p className="mt-1.5 text-sm text-[#5C7094]">
+            Vui lòng chờ. Kết quả sẽ có trong vòng 1-3 ngày làm việc.
+          </p>
         </div>
       )}
 
@@ -574,8 +647,34 @@ export default function RegistrationPage() {
         </div>
       ) : null}
 
-      {statusForView === "approved" ? (
-        registrationForView?.assigned_room_id && assignedRoomName ? (
+      {progressStatus === "completed" || progressStatus === "selected_bed" || progressStatus === "assigned_room" || progressStatus === "approved" ? (
+        hasSelectedBed ? (
+          <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-emerald-200 bg-emerald-50/95 p-5 text-center shadow-[0_12px_24px_rgba(16,185,129,0.16)]">
+            <div className="flex items-center justify-center gap-2 text-emerald-700">
+              <BedSingle className="h-5 w-5" />
+              <p className="font-semibold text-emerald-900">Bạn đã chọn giường thành công</p>
+            </div>
+            <p className="mt-1.5 text-sm text-emerald-800/90">
+              Phòng: <span className="font-bold">{assignedRoomName}</span>
+            </p>
+            <p className="mt-1 text-sm text-emerald-800/90">
+              Giường: <span className="font-bold">{selectedBedName}</span>
+            </p>
+            <p className="mt-1.5 text-sm text-emerald-800/90">Vui lòng xem và ký hợp đồng để hoàn tất thủ tục đăng ký.</p>
+            <div className="mx-auto mt-4 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                onClick={() => navigate("/student/contract")}
+                className="auth-btn-gloss inline-flex h-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-4 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.98]"
+              >
+                <span className="auth-btn-gloss__content inline-flex items-center justify-center gap-2">
+                  <ShieldCheck className="h-4 w-4" />
+                  Ký hợp đồng
+                </span>
+              </button>
+            </div>
+          </div>
+        ) : registrationForView?.assigned_room_id && assignedRoomName ? (
           <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-emerald-200 bg-emerald-50/95 p-5 text-center shadow-[0_12px_24px_rgba(16,185,129,0.16)]">
             <div className="flex items-center justify-center gap-2 text-emerald-700">
               <Home className="h-5 w-5" />
@@ -587,9 +686,7 @@ export default function RegistrationPage() {
             <p className="mt-1 text-sm text-emerald-800/90">Vui lòng chọn giường để hoàn tất đăng ký nội trú</p>
             <button
               type="button"
-              onClick={() => {
-                /* UI stub: bed selection page not implemented yet */
-              }}
+              onClick={() => navigate("/student/select-bed")}
               className="auth-btn-gloss mx-auto mt-4 inline-flex h-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-4 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.98]"
             >
               <span className="auth-btn-gloss__content">Chọn giường</span>
