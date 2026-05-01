@@ -103,3 +103,25 @@ export const registerApi = async (
     }, 1100);
   });
 };
+
+export const checkEmailExists = async (email: string): Promise<boolean> => {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      const normalizedEmail = email.trim().toLowerCase();
+      const found = mockUsers.some((u) => u.email === normalizedEmail);
+      resolve(found);
+    }, 300);
+  });
+};
+
+export const checkStudentCodeExists = async (
+  studentCode: string
+): Promise<boolean> => {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      const normalized = studentCode.trim().toUpperCase();
+      const found = mockUsers.some((u) => u.studentCode === normalized);
+      resolve(found);
+    }, 300);
+  });
+};
