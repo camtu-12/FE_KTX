@@ -551,14 +551,14 @@ export default function RegistrationPage() {
       </motion.div>
 
       {statusForView === "pending" && (
-        <div className="auth-reveal is-visible flex items-center gap-3 rounded-2xl border border-yellow-200 bg-yellow-50/95 p-4 shadow-[0_12px_24px_rgba(212,175,55,0.18)]">
-          <Clock className="h-5 w-5 text-yellow-600" />
-          <div>
-            <p className="font-semibold text-yellow-900">Đơn của bạn đã được gửi</p>
-            <p className="text-sm text-yellow-800/85">
-              Vui lòng chờ. Kết quả sẽ có trong vòng 1-3 ngày làm việc.
-            </p>
+        <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-[#b7ccef] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-5 text-center shadow-[0_12px_24px_rgba(36,76,184,0.10)] backdrop-blur-sm">
+          <div className="flex items-center justify-center gap-2 text-[#2f63da]">
+            <Clock className="h-5 w-5" />
+            <p className="font-semibold text-[#1F3152]">Đơn của bạn đã được gửi</p>
           </div>
+          <p className="mt-1.5 text-sm text-[#5C7094]">
+            Vui lòng chờ. Kết quả sẽ có trong vòng 1-3 ngày làm việc.
+          </p>
         </div>
       )}
 
