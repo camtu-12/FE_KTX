@@ -1,7 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { AlertCircle, BedSingle, CheckCircle, Clock, ImagePlus, LoaderCircle, ShieldCheck, UserCircle2, Users, Home } from "lucide-react";
+import {
+  AlertCircle,
+  BedSingle,
+  CheckCircle,
+  Clock,
+  ImagePlus,
+  LoaderCircle,
+  ShieldCheck,
+  UserCircle2,
+  Users,
+  Home,
+} from "lucide-react";
 import {
   getLatestRegistrationByEmail,
   getLatestRegistrationByEmailInstant,
@@ -265,7 +276,7 @@ export default function RegistrationPage() {
     return `${room.building_code}${room.room_number}`;
   })();
 
-  const selectedBedName = (() => {
+  const selectedBed = (() => {
     const roomId = registrationForView?.assigned_room_id;
     const bedId = registrationForView?.bedId;
 
@@ -273,12 +284,14 @@ export default function RegistrationPage() {
       return null;
     }
 
-    const bed = getDormBedsForRoomInstant(roomId).find((item) => item.id === bedId);
-    return bed ? `${bed.bed_number} (${bed.position === "upper" ? "Trên" : "Dưới"})` : `${bedId}`;
+    return getDormBedsForRoomInstant(roomId).find((item) => item.id === bedId) ?? null;
   })();
 
+  const selectedBedName = selectedBed
+    ? `${selectedBed.bed_number} (${selectedBed.position === "upper" ? "Trên" : "Dưới"})`
+    : null;
+
   const hasSelectedBed = Boolean(assignedRoomName && selectedBedName && registrationForView?.assigned_room_id && registrationForView?.bedId);
-  const viewStatus = registrationForView?.bedId ? "completed" : statusForView;
   const progressStatus: ProgressStatus = useMemo(() => {
     if (statusForView === "completed") {
       return "completed";
@@ -634,12 +647,12 @@ export default function RegistrationPage() {
         </div>
       ) : null}
 
-      {viewStatus === "completed" || viewStatus === "approved" ? (
+      {progressStatus === "completed" || progressStatus === "selected_bed" || progressStatus === "assigned_room" || progressStatus === "approved" ? (
         hasSelectedBed ? (
           <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-emerald-200 bg-emerald-50/95 p-5 text-center shadow-[0_12px_24px_rgba(16,185,129,0.16)]">
             <div className="flex items-center justify-center gap-2 text-emerald-700">
               <BedSingle className="h-5 w-5" />
-              <p className="font-semibold text-emerald-900">Bạn đã hoàn tất đăng ký nội trú</p>
+              <p className="font-semibold text-emerald-900">Bạn đã chọn giường thành công</p>
             </div>
             <p className="mt-1.5 text-sm text-emerald-800/90">
               Phòng: <span className="font-bold">{assignedRoomName}</span>
@@ -647,13 +660,19 @@ export default function RegistrationPage() {
             <p className="mt-1 text-sm text-emerald-800/90">
               Giường: <span className="font-bold">{selectedBedName}</span>
             </p>
-            <button
-              type="button"
-              onClick={() => navigate("/student/room")}
-              className="auth-btn-gloss mx-auto mt-4 inline-flex h-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-4 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.98]"
-            >
-              <span className="auth-btn-gloss__content">Xem phòng của tôi</span>
-            </button>
+            <p className="mt-1.5 text-sm text-emerald-800/90">Vui lòng xem và ký hợp đồng để hoàn tất thủ tục đăng ký.</p>
+            <div className="mx-auto mt-4 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                onClick={() => navigate("/student/contract")}
+                className="auth-btn-gloss inline-flex h-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-4 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.98]"
+              >
+                <span className="auth-btn-gloss__content inline-flex items-center justify-center gap-2">
+                  <ShieldCheck className="h-4 w-4" />
+                  Ký hợp đồng
+                </span>
+              </button>
+            </div>
           </div>
         ) : registrationForView?.assigned_room_id && assignedRoomName ? (
           <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-emerald-200 bg-emerald-50/95 p-5 text-center shadow-[0_12px_24px_rgba(16,185,129,0.16)]">

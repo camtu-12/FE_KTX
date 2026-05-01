@@ -17,7 +17,6 @@ import HomePage from "../modules/public/pages/HomePage";
 import RegistrationPage from "../modules/registration/pages/RegistrationPage";
 import StudentDashboardPage from "../modules/student/pages/StudentDashboardPage";
 import SelectBedPage from "../modules/student/pages/SelectBedPage";
-import StudentRoomPage from "../modules/student/pages/StudentRoomPage.tsx";
 import ProtectedRoute from "./ProtectedRoute";
 
 function LegacyRegistrationDetailRedirect() {
@@ -75,7 +74,6 @@ export default function AppRoutes() {
           <Route path="dashboard" element={<StudentDashboardPage />} />
           <Route path="registration" element={<RegistrationPage />} />
           <Route path="select-bed" element={<SelectBedPage />} />
-          <Route path="room" element={<StudentRoomPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

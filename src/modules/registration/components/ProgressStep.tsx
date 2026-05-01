@@ -4,7 +4,7 @@ type ProgressStepProps = {
   currentStep: number;
 };
 
-const steps = ["Gửi đơn", "Duyệt", "Phân phòng", "Chọn giường", "Hoàn tất"] as const;
+const steps = ["Gửi đơn", "Được duyệt", "Nhận phòng", "Chọn giường", "Ký hợp đồng"] as const;
 
 export default function ProgressStep({ currentStep }: ProgressStepProps) {
   const safeStep = Math.min(5, Math.max(1, Math.floor(currentStep)));
