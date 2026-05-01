@@ -259,7 +259,7 @@ const getLatestRequestIdByEmail = (requests: RegistrationRequest[], email: strin
 };
 
 const isValidStatus = (status: unknown): status is RegistrationStatus => {
-  return status === "pending" || status === "approved" || status === "rejected" || status === "completed";
+  return status === "pending" || status === "approved" || status === "rejected";
 };
 
 const isValidRequest = (request: unknown): request is RegistrationRequest => {
@@ -605,20 +605,7 @@ export const selectBedForRegistration = async (
 
   const request = requests[requestIndex];
   if (request.bedId) {
-    if (request.status === "completed") {
-      return request;
-    }
-
-    const completedRequest: RegistrationRequest = {
-      ...request,
-      status: "completed",
-    };
-
-    const nextRequests = [...requests];
-    nextRequests[requestIndex] = completedRequest;
-    writeRequests(nextRequests);
-
-    return completedRequest;
+    return request;
   }
 
   if (request.status !== "approved") {
@@ -647,7 +634,6 @@ export const selectBedForRegistration = async (
   const updatedRequest: RegistrationRequest = {
     ...request,
     bedId: selectedBed.id,
-    status: "completed",
   };
 
   const nextRequests = [...requests];

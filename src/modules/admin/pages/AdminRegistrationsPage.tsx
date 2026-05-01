@@ -22,7 +22,6 @@ const statusIconMap: Record<RegistrationStatus, typeof Clock3> = {
   pending: Clock3,
   approved: CheckCircle2,
   rejected: CircleAlert,
-  completed: CheckCircle2,
 };
 
 export default function AdminRegistrationsPage() {
@@ -106,7 +105,6 @@ export default function AdminRegistrationsPage() {
   const pendingCount = latestRequests.filter((item) => item.status === "pending").length;
   const approvedCount = latestRequests.filter((item) => item.status === "approved").length;
   const rejectedCount = latestRequests.filter((item) => item.status === "rejected").length;
-  const completedCount = latestRequests.filter((item) => item.status === "completed").length;
 
   const summaryCards = [
     {
@@ -127,12 +125,6 @@ export default function AdminRegistrationsPage() {
       valueClassName: "text-[#bf3e53]",
       delay: 0.24,
     },
-    {
-      label: "Hoàn tất",
-      value: completedCount,
-      valueClassName: "text-[#2451b5]",
-      delay: 0.3,
-    },
   ];
 
   const statusFilterOptions: Array<{ value: RegistrationFilterStatus; label: string }> = [
@@ -140,7 +132,6 @@ export default function AdminRegistrationsPage() {
     { value: "pending", label: "Chờ duyệt" },
     { value: "approved", label: "Đã duyệt" },
     { value: "rejected", label: "Từ chối" },
-    { value: "completed", label: "Hoàn tất" },
   ];
 
   const idSortOptions: Array<{ value: RegistrationIdSortOrder; label: string }> = [
@@ -472,24 +463,24 @@ export default function AdminRegistrationsPage() {
                             </span>
                           ) : isPending ? (
                             <>
-                             <button
-                               type="button"
-                               disabled={isUpdatingStatus}
-                               onClick={() => {
-                                 void handleApprove(request.id);
-                               }}
-                              className="auth-btn-gloss min-w-[68px] rounded-xl bg-[linear-gradient(135deg,#1f9a60_0%,#35bf7a_100%)] px-2.5 py-2 text-[12px] font-semibold text-white shadow-[0_10px_18px_rgba(31,154,96,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
-                             >
-                              <span className="auth-btn-gloss__content">Duyệt</span>
-                             </button>
-                             <button
-                               type="button"
-                               disabled={isUpdatingStatus}
-                               onClick={() => handleOpenRejectModal(request.id)}
-                              className="auth-btn-gloss min-w-[68px] rounded-xl bg-[linear-gradient(135deg,#e25569_0%,#cc3c4f_100%)] px-2.5 py-2 text-[12px] font-semibold text-white shadow-[0_10px_18px_rgba(204,60,79,0.20)] transition duration-200 hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
-                             >
-                              <span className="auth-btn-gloss__content">Từ chối</span>
-                             </button>
+                              <button
+                                type="button"
+                                disabled={isUpdatingStatus}
+                                onClick={() => {
+                                  void handleApprove(request.id);
+                                }}
+                                className="auth-btn-gloss min-w-[68px] rounded-xl bg-[linear-gradient(135deg,#1f9a60_0%,#35bf7a_100%)] px-2.5 py-2 text-[12px] font-semibold text-white shadow-[0_10px_18px_rgba(31,154,96,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                              >
+                                <span className="auth-btn-gloss__content">Duyệt</span>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isUpdatingStatus}
+                                onClick={() => handleOpenRejectModal(request.id)}
+                                className="auth-btn-gloss min-w-[68px] rounded-xl bg-[linear-gradient(135deg,#e25569_0%,#cc3c4f_100%)] px-2.5 py-2 text-[12px] font-semibold text-white shadow-[0_10px_18px_rgba(204,60,79,0.20)] transition duration-200 hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                              >
+                                <span className="auth-btn-gloss__content">Từ chối</span>
+                              </button>
                             </>
                           ) : (
                             <span className="rounded-xl border border-[#d1daea] bg-[#f6f8fc] px-4 py-2 text-sm font-semibold text-[#7f8da8]">

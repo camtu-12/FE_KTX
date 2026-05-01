@@ -16,7 +16,6 @@ const statusIconMap: Record<RegistrationStatus, typeof Clock3> = {
   pending: Clock3,
   approved: CheckCircle2,
   rejected: CircleAlert,
-  completed: CheckCircle2,
 };
 
 const readOnlyFieldClassName =

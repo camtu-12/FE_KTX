@@ -1,4 +1,4 @@
-export type RegistrationStatus = "pending" | "approved" | "rejected" | "completed";
+export type RegistrationStatus = "pending" | "approved" | "rejected";
 export type RegistrationFilterStatus = "all" | RegistrationStatus;
 export type RegistrationDocumentField = "portraitPhoto" | "cccdFrontPhoto" | "cccdBackPhoto";
 
@@ -89,10 +89,6 @@ export const statusMap: Record<
   rejected: {
     label: "Từ chối",
     className: "border border-[#f1c2c8] bg-[#fff3f5] text-[#bf3e53]",
-  },
-  completed: {
-    label: "Hoàn tất",
-    className: "border border-[#b8ddff] bg-[#edf7ff] text-[#2451b5]",
   },
 };
 
