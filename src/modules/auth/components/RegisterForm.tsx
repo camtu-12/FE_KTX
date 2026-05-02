@@ -37,7 +37,7 @@ const inputClassName =
   "h-full w-full bg-transparent text-base text-[var(--color-title)] outline-none placeholder:text-[#8b97ad]";
 
 const inputShellClassName =
-  "group flex h-14 items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-input)] px-4 transition duration-200 focus-within:border-[var(--color-primary)] focus-within:bg-white focus-within:ring-4 focus-within:ring-[var(--color-primary-light)]";
+  "group flex h-12 items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-input)] px-4 transition duration-200 focus-within:border-[var(--color-primary)] focus-within:bg-white focus-within:ring-4 focus-within:ring-[var(--color-primary-light)]";
 
 function FormField({
   label,
@@ -232,7 +232,7 @@ export default function RegisterForm() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[400px]">
+    <div className="mx-auto w-full max-w-[380px]">
       <form onSubmit={handleSubmit} autoComplete="off">
         <input
           type="text"
@@ -247,17 +247,17 @@ export default function RegisterForm() {
           className="hidden"
         />
 
-        <section className="rounded-[24px] border border-[#e3eaf4] bg-[#fbfcff] p-4 sm:p-5">
+        <section className="rounded-[24px] border border-[#e3eaf4] bg-[#fbfcff] p-3.5 sm:p-4">
           <div>
-            <h2 className="auth-display text-[2.08rem] font-bold text-[var(--color-title)] sm:text-[1.78rem]">
+            <h2 className="auth-display text-[1.72rem] font-bold text-[var(--color-title)] sm:text-[1.55rem]">
               Đăng ký tài khoản
             </h2>
-            <p className="mt-1.5 text-[0.92rem] leading-7 text-[var(--color-content)]">
+            <p className="mt-1 text-[0.88rem] leading-[1.55] text-[var(--color-content)]">
               Tạo tài khoản đăng nhập vào hệ thống.
             </p>
           </div>
 
-          <div className="mt-4 grid gap-3">
+          <div className="mt-3 grid gap-2.5">
             <FormField label="Họ và tên" error={errors.full_name}>
               <InputShell icon={IdCard}>
                 <input
@@ -367,13 +367,13 @@ export default function RegisterForm() {
           </div>
 
           {generalError ? (
-            <p className="mt-3 rounded-2xl border border-[#f4caca] bg-[#fff3f3] px-4 py-3 text-sm font-medium text-[#c53c3c]">
+            <p className="mt-2.5 rounded-2xl border border-[#f4caca] bg-[#fff3f3] px-4 py-2.5 text-sm font-medium text-[#c53c3c]">
               {generalError}
             </p>
           ) : null}
 
           {successMessage ? (
-            <p className="mt-3 rounded-2xl border border-[#cfead5] bg-[#f2fbf4] px-4 py-3 text-sm font-medium text-[#2f7a45]">
+            <p className="mt-2.5 rounded-2xl border border-[#cfead5] bg-[#f2fbf4] px-4 py-2.5 text-sm font-medium text-[#2f7a45]">
               {successMessage}
             </p>
           ) : null}
@@ -381,7 +381,7 @@ export default function RegisterForm() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="mt-4 flex h-10 w-full items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,var(--color-primary)_0%,#31b7d4_100%)] px-4 text-[1rem] font-extrabold text-white shadow-[0_14px_28px_rgba(36,76,184,0.22)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_32px_rgba(36,76,184,0.28)] disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-80"
+            className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,var(--color-primary)_0%,#31b7d4_100%)] px-4 text-[0.98rem] font-extrabold text-white shadow-[0_14px_28px_rgba(36,76,184,0.22)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_32px_rgba(36,76,184,0.28)] disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-80"
           >
             {isSubmitting ? (
               <>
@@ -393,7 +393,7 @@ export default function RegisterForm() {
             )}
           </button>
 
-          <p className="pt-2 text-center text-[0.9rem] text-[var(--color-content)]">
+          <p className="pt-1.5 text-center text-[0.88rem] text-[var(--color-content)]">
             Đã có tài khoản?{" "}
             <Link
               to="/login"
