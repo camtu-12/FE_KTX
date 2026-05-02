@@ -1,19 +1,24 @@
-import { loginApi, registerApi } from "../services/auth.api";
-import type { LoginRequest, RegisterRequest } from "../types/auth.type";
+import { useAuthStore } from "../store";
+import { login as loginApi, register as registerApi } from "../services/auth.api";
+
 
 export const useAuth = () => {
-  const login = async (data: LoginRequest) => {
+  const login = async (data: { email: string; password: string }) => {
     const res = await loginApi(data);
 
+    // 🔥 LƯU TOKEN
     localStorage.setItem("token", res.token);
-    localStorage.setItem("user", JSON.stringify(res.user));
 
     return res;
   };
 
-  const register = async (data: RegisterRequest) => {
-    return registerApi(data);
+   const register = async (data: any) => {
+    const res = await registerApi(data);
+    return res;
   };
 
   return { login, register };
 };
+
+ 
+

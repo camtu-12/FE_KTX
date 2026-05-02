@@ -1,127 +1,58 @@
-import type {
-  LoginRequest,
-  LoginResponse,
-  RegisterRequest,
-  RegisterResponse,
-} from "../types/auth.type";
+const API = "http://127.0.0.1:8000/api";
 
-type MockUser = {
-  id: number;
-  fullName: string;
-  studentCode: string;
-  email: string;
-  password: string;
-  role: "admin" | "student";
-};
-
-const mockUsers: MockUser[] = [
-  {
-    id: 1,
-    fullName: "Admin STU",
-    studentCode: "ADMIN001",
-    email: "admin@gmail.com",
-    password: "123",
-    role: "admin",
-  },
-  {
-    id: 2,
-    fullName: "Student User",
-    studentCode: "SV001",
-    email: "student@gmail.com",
-    password: "123",
-    role: "student",
-  },
-];
-
-export const loginApi = async (data: LoginRequest): Promise<LoginResponse> => {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      const normalizedEmail = data.email.trim().toLowerCase();
-
-      const foundUser = mockUsers.find(
-        (user) => user.email === normalizedEmail && user.password === data.password
-      );
-
-      if (foundUser) {
-        resolve({
-          token: `fake_token_${foundUser.role}_${foundUser.id}`,
-          user: {
-            id: foundUser.id,
-            fullName: foundUser.fullName,
-            studentCode: foundUser.studentCode,
-            email: foundUser.email,
-            role: foundUser.role,
-          },
-        });
-      } else {
-        reject(new Error("Tài khoản hoặc mật khẩu không đúng"));
-      }
-    }, 900);
+export const login = async (data: { email: string; password: string }) => {
+  const res = await fetch(`${API}/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(data),
   });
+
+  const json = await res.json();
+
+  if (!res.ok) throw new Error(json.message);
+
+  return json;
 };
 
-export const registerApi = async (
-  data: RegisterRequest
-): Promise<RegisterResponse> => {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      const normalizedEmail = data.email.trim().toLowerCase();
-      const normalizedStudentCode = data.studentCode.trim().toUpperCase();
-
-      const existedUser = mockUsers.find(
-        (user) =>
-          user.email === normalizedEmail ||
-          user.studentCode === normalizedStudentCode
-      );
-
-      if (existedUser) {
-        reject(new Error("Email hoặc MSSV đã tồn tại trong hệ thống"));
-        return;
-      }
-
-      const newUser: MockUser = {
-        id: mockUsers.length + 1,
-        fullName: data.fullName.trim(),
-        studentCode: normalizedStudentCode,
-        email: normalizedEmail,
-        password: data.password,
-        role: "student",
-      };
-
-      mockUsers.push(newUser);
-
-      resolve({
-        message: "Đăng ký thành công",
-        user: {
-          id: newUser.id,
-          fullName: newUser.fullName,
-          studentCode: newUser.studentCode,
-          email: newUser.email,
-          role: newUser.role,
-        },
-      });
-    }, 1100);
+export const checkEmailExists = async (email: string) => {
+  const res = await fetch(`http://127.0.0.1:8000/api/check-email`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({ email }),
   });
+
+  return res.json();
 };
 
-export const checkEmailExists = async (email: string): Promise<boolean> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const normalizedEmail = email.trim().toLowerCase();
-      const found = mockUsers.some((u) => u.email === normalizedEmail);
-      resolve(found);
-    }, 300);
+export const checkStudentCodeExists = async (student_code: string) => {
+  const res = await fetch("http://127.0.0.1:8000/api/check-student-code", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({ student_code }),
   });
+
+  return res.json();
 };
 
-export const checkStudentCodeExists = async (
-  studentCode: string
-): Promise<boolean> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const normalized = studentCode.trim().toUpperCase();
-      const found = mockUsers.some((u) => u.studentCode === normalized);
-      resolve(found);
-    }, 300);
+export const register = async (data: any) => {
+  const res = await fetch("http://127.0.0.1:8000/api/register", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(data),
   });
+
+  return res.json();
 };
+

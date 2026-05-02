@@ -13,8 +13,8 @@ import { useAuth } from "../hooks/useAuth";
 import { checkEmailExists, checkStudentCodeExists } from "../services/auth.api";
 
 type RegisterFields = {
-  fullName: string;
-  studentCode: string;
+  full_name: string;
+  student_code: string;
   email: string;
   password: string;
   confirmPassword: string;
@@ -23,8 +23,8 @@ type RegisterFields = {
 type FieldErrors = Partial<Record<keyof RegisterFields, string>>;
 
 const initialFields: RegisterFields = {
-  fullName: "",
-  studentCode: "",
+  full_name: "",
+  student_code: "",
   email: "",
   password: "",
   confirmPassword: "",
@@ -95,65 +95,103 @@ export default function RegisterForm() {
     if (generalError) setGeneralError("");
   };
 
+  const nameRegex = /^[A-Za-zÀ-ỹ\s]+$/;
+
+  const studentCodeRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]+$/;
+
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
+
+  const passwordRegex =
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
+
   const handleEmailBlur = async () => {
     const email = fields.email.trim();
     if (!email) return;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
+
+    if (!emailRegex.test(email)) {
+      setErrors((prev) => ({
+        ...prev,
+        email: "Email phải đúng định dạng abc@gmail.com.",
+      }));
+      return;
+    }
+
     try {
-      const exists = await checkEmailExists(email);
-      if (exists) {
+      const res = await checkEmailExists(email);
+      if (res.exists) {
         setErrors((prev) => ({ ...prev, email: "Email đã tồn tại." }));
       }
-    } catch {
-      // ignore network/mock errors
-    }
+    } catch { }
   };
 
   const handleStudentCodeBlur = async () => {
-    const code = fields.studentCode.trim();
+    const code = fields.student_code.trim();
     if (!code) return;
-    try {
-      const exists = await checkStudentCodeExists(code);
-      if (exists) {
-        setErrors((prev) => ({ ...prev, studentCode: "MSSV đã tồn tại." }));
-      }
-    } catch {
-      // ignore
+
+    if (!studentCodeRegex.test(code)) {
+      setErrors((prev) => ({
+        ...prev,
+        student_code: "MSSV phải gồm chữ và số, không chứa ký tự đặc biệt.",
+      }));
+      return;
     }
+
+    try {
+      const res = await checkStudentCodeExists(code);
+      if (res.exists) {
+        setErrors((prev) => ({
+          ...prev,
+          student_code: "MSSV đã tồn tại.",
+        }));
+      }
+    } catch { }
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     const nextErrors: FieldErrors = {};
+
     const trimmed = {
-      fullName: fields.fullName.trim(),
-      studentCode: fields.studentCode.trim(),
+      full_name: fields.full_name.trim(),
+      student_code: fields.student_code.trim(),
       email: fields.email.trim(),
       password: fields.password.trim(),
       confirmPassword: fields.confirmPassword.trim(),
     };
 
-    if (!trimmed.fullName) {
-      nextErrors.fullName = "Vui lòng nhập họ và tên.";
+    // 🔹 Họ và tên
+    if (!trimmed.full_name) {
+      nextErrors.full_name = "Vui lòng nhập họ và tên.";
+    } else if (!nameRegex.test(trimmed.full_name)) {
+      nextErrors.full_name =
+        "Họ tên chỉ được chứa chữ cái, không có số hoặc ký tự đặc biệt.";
     }
 
-    if (!trimmed.studentCode) {
-      nextErrors.studentCode = "Vui lòng nhập MSSV.";
+    // 🔹 MSSV
+    if (!trimmed.student_code) {
+      nextErrors.student_code = "Vui lòng nhập MSSV.";
+    } else if (!studentCodeRegex.test(trimmed.student_code)) {
+      nextErrors.student_code =
+        "MSSV phải gồm chữ và số, không chứa ký tự đặc biệt.";
     }
 
+    // 🔹 Email (chỉ gmail)
     if (!trimmed.email) {
       nextErrors.email = "Vui lòng nhập email.";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed.email)) {
-      nextErrors.email = "Email không hợp lệ.";
+    } else if (!emailRegex.test(trimmed.email)) {
+      nextErrors.email = "Email phải đúng định dạng abc@gmail.com.";
     }
 
+    // 🔹 Password
     if (!trimmed.password) {
       nextErrors.password = "Vui lòng nhập mật khẩu.";
-    } else if (trimmed.password.length < 8) {
-      nextErrors.password = "Mật khẩu cần ít nhất 8 ký tự.";
+    } else if (!passwordRegex.test(trimmed.password)) {
+      nextErrors.password =
+        "Mật khẩu phải nhiều hơn 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.";
     }
 
+    // 🔹 Confirm password
     if (!trimmed.confirmPassword) {
       nextErrors.confirmPassword = "Vui lòng nhập lại mật khẩu.";
     } else if (trimmed.confirmPassword !== trimmed.password) {
@@ -171,9 +209,10 @@ export default function RegisterForm() {
     setIsSubmitting(true);
 
     try {
+      // 🔥 FIX QUAN TRỌNG: đúng key backend
       await register({
-        fullName: trimmed.fullName,
-        studentCode: trimmed.studentCode,
+        full_name: trimmed.full_name,
+        student_code: trimmed.student_code,
         email: trimmed.email,
         password: trimmed.password,
       });
@@ -181,6 +220,7 @@ export default function RegisterForm() {
       setSuccessMessage(
         "Tạo tài khoản thành công. Bạn có thể đăng nhập bằng email vừa khai báo."
       );
+
       setTimeout(() => navigate("/login"), 1200);
     } catch (error) {
       setGeneralError(
@@ -218,31 +258,31 @@ export default function RegisterForm() {
           </div>
 
           <div className="mt-4 grid gap-3">
-            <FormField label="Họ và tên" error={errors.fullName}>
+            <FormField label="Họ và tên" error={errors.full_name}>
               <InputShell icon={IdCard}>
                 <input
-                  name="fullName"
+                  name="full_name"
                   autoComplete="name"
                   type="text"
                   placeholder="Nhập họ và tên"
                   className={inputClassName}
-                  value={fields.fullName}
-                  onChange={(e) => setField("fullName", e.target.value)}
+                  value={fields.full_name}
+                  onChange={(e) => setField("full_name", e.target.value)}
                   disabled={isSubmitting}
                 />
               </InputShell>
             </FormField>
 
-            <FormField label="MSSV" error={errors.studentCode}>
+            <FormField label="MSSV" error={errors.student_code}>
               <InputShell icon={BookOpen}>
                 <input
-                  name="studentCode"
+                  name="student_code"
                   autoComplete="off"
                   type="text"
                   placeholder="Nhập MSSV"
                   className={inputClassName}
-                  value={fields.studentCode}
-                  onChange={(e) => setField("studentCode", e.target.value)}
+                  value={fields.student_code}
+                  onChange={(e) => setField("student_code", e.target.value)}
                   onBlur={handleStudentCodeBlur}
                   disabled={isSubmitting}
                 />
