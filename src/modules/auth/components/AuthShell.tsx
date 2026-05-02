@@ -18,10 +18,10 @@ export default function AuthShell({
   children,
 }: AuthShellProps) {
   return (
-    <div className="auth-font flex min-h-screen flex-col bg-[radial-gradient(circle_at_top_left,#f7faff_0%,#edf2f8_42%,#e8eef7_100%)]">
+    <div className="auth-font flex h-screen flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,#f7faff_0%,#edf2f8_42%,#e8eef7_100%)]">
       <header className="border-b border-[#dbe4f0] bg-white/92 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 sm:px-6 lg:px-8">
-          <Link to="/login">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
+          <Link to="/login" className="flex items-center gap-3 text-[#14377b]">
             <AppBrand />
           </Link>
 
@@ -37,8 +37,8 @@ export default function AuthShell({
         </div>
       </header>
 
-      <main className="flex flex-1 items-center px-4 py-4 sm:px-6 lg:px-8 lg:py-4">
-        <section className="mx-auto w-full max-w-[920px] overflow-hidden rounded-[24px] border border-[#dce5f1] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
+      <main className="flex flex-1 items-center px-4 py-2 sm:px-6 lg:px-8 lg:py-2">
+        <section className="mx-auto w-full max-w-[860px] overflow-hidden rounded-[22px] border border-[#dce5f1] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
           <div className="grid lg:grid-cols-[0.78fr_0.92fr]">
             <div className="min-w-0">
               <AuthShowcase
@@ -48,7 +48,7 @@ export default function AuthShell({
               />
             </div>
 
-            <div className="flex min-w-0 items-center bg-[linear-gradient(180deg,#ffffff_0%,#fbfcff_100%)] px-4 py-4 sm:px-5 sm:py-5 lg:px-5 lg:py-5">
+            <div className="flex min-w-0 items-center bg-[linear-gradient(180deg,#ffffff_0%,#fbfcff_100%)] px-3 py-3 sm:px-4 sm:py-4 lg:px-4 lg:py-4">
               {children}
             </div>
           </div>

@@ -10,6 +10,7 @@ import ContactPage from "../modules/public/pages/ContactPage";
 import HomePage from "../modules/public/pages/HomePage";
 import StudentDashboardPage from "../modules/student/pages/StudentDashboardPage";
 import ProtectedRoute from "./ProtectedRoute";
+import ForgotPassword from "../modules/auth/pages/ForgotPassword";
 
 export default function AppRoutes() {
   return (
@@ -23,7 +24,7 @@ export default function AppRoutes() {
 
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
-
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route
           path="/admin"
           element={

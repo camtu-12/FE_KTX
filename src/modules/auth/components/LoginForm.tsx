@@ -26,6 +26,26 @@ export default function LoginForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  const handleLogin = async (e: any) => {
+    e.preventDefault();
+
+    try {
+      const res = await login({
+        email,
+        password,
+      });
+
+      // 🔥 redirect theo role
+      if (res.user.role === "admin") {
+        navigate("/admin");
+      } else {
+        navigate("/student");
+      }
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
@@ -63,7 +83,7 @@ export default function LoginForm() {
       });
 
       const nextPath =
-        res.user.role === "admin"
+        res.user?.role === "admin"
           ? "/admin/dashboard"
           : "/student/dashboard";
 
@@ -183,6 +203,14 @@ export default function LoginForm() {
               {generalError}
             </p>
           ) : null}
+
+          <button
+            type="button"
+            onClick={() => navigate("/forgot-password")}
+            className="text-sm text-blue-500 hover:underline"
+          >
+            Quên mật khẩu?
+          </button>
 
           <button
             type="submit"
