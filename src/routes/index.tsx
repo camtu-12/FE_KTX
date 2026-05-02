@@ -4,6 +4,7 @@ import StudentLayout from "../layouts/StudentLayout";
 import LoginPage from "../modules/auth/pages/LoginPage";
 import RegisterPage from "../modules/auth/pages/RegisterPage";
 import ProtectedRoute from "./ProtectedRoute";
+import ForgotPassword from "../modules/auth/pages/ForgotPassword";
 
 function AdminDashboard() {
   return <h1>Admin Dashboard</h1>;
@@ -20,7 +21,7 @@ export default function AppRoutes() {
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
-
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route
           path="/admin"
           element={

@@ -56,3 +56,52 @@ export const register = async (data: any) => {
   return res.json();
 };
 
+export const forgotPassword = async (email: string) => {
+  const res = await fetch("http://127.0.0.1:8000/api/forgot-password", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ email }),
+  });
+
+  return res.json();
+};
+
+export const sendOtp = async (data: { email: string }) => {
+  const res = await fetch(`${API}/send-otp`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+
+  const json = await res.json();
+
+  if (!res.ok) throw new Error(json.message);
+
+  return json;
+};
+
+export const resetPasswordOtp = async (data: {
+  email: string;
+  otp: string;
+  password: string;
+}) => {
+  const res = await fetch(`${API}/reset-password-otp`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+
+  const json = await res.json();
+
+  if (!res.ok) throw new Error(json.message);
+
+  return json;
+};
