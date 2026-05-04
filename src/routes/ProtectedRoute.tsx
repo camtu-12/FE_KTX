@@ -1,28 +1,16 @@
 import { Navigate } from "react-router-dom";
-import { getStoredAuth } from "../modules/auth/utils/authStorage";
+import { useAuthStore } from "../modules/auth/store";
 
-type ProtectedRouteProps = {
+type Props = {
   children: React.ReactNode;
-  allowedRole?: string;
+  role?: "admin" | "student";
 };
 
-export default function ProtectedRoute({
-  children,
-  allowedRole,
-}: ProtectedRouteProps) {
-  const auth = getStoredAuth();
-  const token = auth?.token;
-  const user = auth?.user;
+export default function ProtectedRoute({ children, role }: Props) {
+  const { user, token } = useAuthStore();
 
-  if (!token || !user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (allowedRole && user.role !== allowedRole) {
-    const fallbackPath =
-      user.role === "admin" ? "/admin/dashboard" : "/student/dashboard";
-    return <Navigate to={fallbackPath} replace />;
-  }
+  if (!token) return <Navigate to="/login" replace />;
+  if (role && user?.role !== role) return <Navigate to="/" replace />;
 
   return <>{children}</>;
 }

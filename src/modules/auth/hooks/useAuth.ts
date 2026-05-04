@@ -1,18 +1,26 @@
-import { loginApi, registerApi } from "../services/auth.api";
-import type { LoginRequest, RegisterRequest } from "../types/auth.type";
-import { setAuthStorage } from "../utils/authStorage";
+import { useAuthStore } from "../store";
+import { login as loginApi, register as registerApi } from "../services/auth.api";
+
+type RegisterRequest = {
+  full_name: string;
+  student_code: string;
+  email: string;
+  password: string;
+};
 
 export const useAuth = () => {
-  const login = async (data: LoginRequest) => {
+  const { setAuth } = useAuthStore();
+
+  const login = async (data: { email: string; password: string }) => {
     const res = await loginApi(data);
-
-    setAuthStorage(res.token, res.user);
-
+    // Lưu token + user vào store
+    setAuth(res.user, res.token);
     return res;
   };
 
   const register = async (data: RegisterRequest) => {
-    return registerApi(data);
+    const res = await registerApi(data);
+    return res;
   };
 
   return { login, register };
