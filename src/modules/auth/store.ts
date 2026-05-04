@@ -2,8 +2,8 @@ import { create } from "zustand";
 
 type User = {
   id: number;
-  name: string;
   email: string;
+  role: "admin" | "student";
 };
 
 type AuthState = {
@@ -13,17 +13,23 @@ type AuthState = {
   logout: () => void;
 };
 
+// 🔥 lấy từ localStorage khi reload
+const storedUser = localStorage.getItem("user");
+const storedToken = localStorage.getItem("token");
+
 export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  token: localStorage.getItem("token"),
+  user: storedUser ? JSON.parse(storedUser) : null,
+  token: storedToken,
 
   setAuth: (user, token) => {
     localStorage.setItem("token", token);
+    localStorage.setItem("user", JSON.stringify(user)); 
     set({ user, token });
   },
 
   logout: () => {
     localStorage.removeItem("token");
+    localStorage.removeItem("user"); 
     set({ user: null, token: null });
   },
 }));
