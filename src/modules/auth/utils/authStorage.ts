@@ -22,21 +22,21 @@ function isValidUser(user: unknown): user is AuthUser {
 }
 
 export function clearAuthStorage() {
-  sessionStorage.removeItem(TOKEN_KEY);
-  sessionStorage.removeItem(USER_KEY);
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  sessionStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(USER_KEY);
 }
 
 export function setAuthStorage(token: string, user: AuthUser) {
   clearAuthStorage();
-  sessionStorage.setItem(TOKEN_KEY, token);
-  sessionStorage.setItem(USER_KEY, JSON.stringify(user));
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
 }
 
 export function getStoredAuth(): StoredAuth | null {
-  const token = sessionStorage.getItem(TOKEN_KEY);
-  const rawUser = sessionStorage.getItem(USER_KEY);
+  const token = localStorage.getItem(TOKEN_KEY);
+  const rawUser = localStorage.getItem(USER_KEY);
 
   if (!token || !rawUser) {
     return null;
