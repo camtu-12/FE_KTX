@@ -10,7 +10,7 @@ import {
   type RegistrationRequest,
   type RegistrationStatus,
 } from "../data/registrationRequests";
-import { getRegistrationRequestByIdInstant } from "../../../api/registrationMockApi";
+import { getRegistrationById } from "../../../api/registrationService";
 
 const statusIconMap: Record<RegistrationStatus, typeof Clock3> = {
   pending: Clock3,
@@ -22,6 +22,31 @@ const readOnlyFieldClassName =
   "mt-1 h-11 w-full rounded-xl border border-[#D6E2F1] bg-[#F6F9FD] px-4 text-sm text-[#1F3152] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]";
 
 const readOnlySelectClassName = `${readOnlyFieldClassName} appearance-none`;
+
+const createPreviewSvg = (title: string, subtitle: string, accent: string) =>
+  `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480">
+      <defs>
+        <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="#f8fbff"/>
+          <stop offset="100%" stop-color="#dbe9ff"/>
+        </linearGradient>
+      </defs>
+      <rect width="640" height="480" rx="36" fill="url(#bg)"/>
+      <rect x="36" y="36" width="568" height="408" rx="28" fill="#ffffff" stroke="#cddcf3" stroke-width="4"/>
+      <rect x="72" y="76" width="496" height="132" rx="24" fill="${accent}" opacity="0.12"/>
+      <text x="320" y="150" text-anchor="middle" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#1f3152">${title}</text>
+      <text x="320" y="196" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" fill="#5c7094">${subtitle}</text>
+      <rect x="120" y="256" width="400" height="108" rx="24" fill="#eef4ff" stroke="#d8e4f5" stroke-width="3"/>
+      <text x="320" y="318" text-anchor="middle" font-family="Arial, sans-serif" font-size="22" font-weight="600" fill="#244cb8">Bản xem hồ sơ đã nộp</text>
+    </svg>`,
+  )}`;
+
+const previewByField = {
+  portraitPhoto: createPreviewSvg("Ảnh thẻ", "Ảnh hồ sơ", "#2f63da"),
+  cccdFrontPhoto: createPreviewSvg("CCCD mặt trước", "Ảnh hồ sơ", "#2f63da"),
+  cccdBackPhoto: createPreviewSvg("CCCD mặt sau", "Ảnh hồ sơ", "#31b7d4"),
+} as const;
 
 type DetailRouteState = {
   request?: RegistrationRequest;
@@ -35,15 +60,26 @@ export default function AdminRegistrationDetailPage() {
   const routeState = location.state as DetailRouteState | null;
   const [isScrollToTopVisible, setIsScrollToTopVisible] = useState(false);
 
-  const request = useMemo(() => {
-    const requestFromState = routeState?.request;
-    if (requestFromState) {
-      return requestFromState;
-    }
+  const [request, setRequest] = useState<RegistrationRequest | null>(routeState?.request ?? null);
 
-    const id = Number(registrationId);
-    return Number.isNaN(id) ? null : getRegistrationRequestByIdInstant(id);
-  }, [registrationId, routeState?.request]);
+  useEffect(() => {
+    const load = async () => {
+      if (request) return;
+
+      const id = Number(registrationId);
+      if (Number.isNaN(id)) return;
+
+      try {
+        const res = await getRegistrationById(id);
+        setRequest(res);
+      } catch (err) {
+        console.log(err);
+        setRequest(null);
+      }
+    };
+
+    load();
+  }, [registrationId]);
 
   useEffect(() => {
     const scrollContainer = document.querySelector(".auth-scrollbar") as HTMLElement | null;
@@ -147,7 +183,7 @@ export default function AdminRegistrationDetailPage() {
           </div>
         </div>
 
-       
+
       </motion.div>
 
       <motion.div
@@ -242,11 +278,14 @@ export default function AdminRegistrationDetailPage() {
                 <h3 className="text-base font-semibold uppercase tracking-wide text-[#5578AC]">Hồ sơ ảnh đính kèm</h3>
                 <p className="mt-1 text-sm text-[#6981aa]">Bản xem tài liệu sinh viên đã tải lên.</p>
               </div>
-              
+
             </div>
 
             <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2 lg:[grid-template-columns:repeat(3,minmax(0,15rem))] lg:justify-between lg:gap-8">
-              {Object.entries(request.documents).map(([field, src]) => (
+              {Object.entries(request.documents).map(([field, src]) => {
+                const fallbackSrc = previewByField[field as keyof typeof previewByField];
+
+                return (
                 <div
                   key={field}
                   className="rounded-3xl border border-[#bfd2ec] bg-[linear-gradient(180deg,#f5f9ff_0%,#edf4ff_100%)] p-3 shadow-[inset_0_0_0_1px_rgba(185,205,234,0.24)]"
@@ -264,13 +303,20 @@ export default function AdminRegistrationDetailPage() {
 
                   <div className="mt-4 overflow-hidden rounded-2xl border border-[#cfdbef] bg-white">
                     <img
-                      src={src}
+                      src={src || fallbackSrc}
                       alt={documentLabels[field as keyof typeof documentLabels]}
                       className="h-48 w-full object-cover"
+                      onError={(event) => {
+                        const image = event.currentTarget;
+                        if (image.src !== fallbackSrc) {
+                          image.src = fallbackSrc;
+                        }
+                      }}
                     />
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </motion.div>

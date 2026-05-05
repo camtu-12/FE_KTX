@@ -15,11 +15,9 @@ import {
 } from "lucide-react";
 import {
   getLatestRegistrationByEmail,
-  getLatestRegistrationByEmailInstant,
-  getDormBedsForRoomInstant,
+  getMyRegistration,
   submitRegistration,
-  getDormRoomsInstant,
-} from "../../../api/registrationMockApi";
+} from "../../../api/registrationService";
 import { getStoredAuth } from "../../auth/utils/authStorage";
 import type { RegistrationRequest } from "../../admin/data/registrationRequests";
 import ProgressStep from "../components/ProgressStep";
@@ -105,6 +103,25 @@ const documentUploadHints: Record<DocumentField, string> = {
   cccdBackPhoto: "Ảnh rõ nét, không bị chói",
 };
 
+const createPreviewSvg = (title: string, subtitle: string, accent: string) =>
+  `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480">
+      <defs>
+        <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="#f8fbff"/>
+          <stop offset="100%" stop-color="#dbe9ff"/>
+        </linearGradient>
+      </defs>
+      <rect width="640" height="480" rx="36" fill="url(#bg)"/>
+      <rect x="36" y="36" width="568" height="408" rx="28" fill="#ffffff" stroke="#cddcf3" stroke-width="4"/>
+      <rect x="72" y="76" width="496" height="132" rx="24" fill="${accent}" opacity="0.12"/>
+      <text x="320" y="150" text-anchor="middle" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#1f3152">${title}</text>
+      <text x="320" y="196" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" fill="#5c7094">${subtitle}</text>
+      <rect x="120" y="256" width="400" height="108" rx="24" fill="#eef4ff" stroke="#d8e4f5" stroke-width="3"/>
+      <text x="320" y="318" text-anchor="middle" font-family="Arial, sans-serif" font-size="22" font-weight="600" fill="#244cb8">Bản xem hồ sơ đã nộp</text>
+    </svg>`,
+  )}`;
+
 const documentFieldConfigs: Array<{ field: DocumentField }> = [
   { field: "portraitPhoto" },
   { field: "cccdFrontPhoto" },
@@ -147,20 +164,18 @@ export default function RegistrationPage() {
   const navigate = useNavigate();
   const storedAuth = getStoredAuth();
   const studentEmail = storedAuth?.user.email ?? "";
-  const [initialRequestSnapshot] = useState(() =>
-    (studentEmail ? getLatestRegistrationByEmailInstant(studentEmail) : null) as RegistrationWithAssignment | null,
-  );
-  const [registration, setRegistration] = useState<RegistrationWithAssignment | null>(initialRequestSnapshot);
-  const [status, setStatus] = useState<RegistrationStatus>(initialRequestSnapshot?.status ?? "unregistered");
+  const [registration, setRegistration] = useState<RegistrationWithAssignment | null>(null);
+  const [status, setStatus] = useState<RegistrationStatus>("unregistered");
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [documentFiles, setDocumentFiles] = useState<Record<DocumentField, File | null>>(initialDocumentFiles);
   const [draggingDocumentField, setDraggingDocumentField] = useState<DocumentField | null>(null);
-  const [rejectionReason, setRejectionReason] = useState(initialRequestSnapshot?.rejectionReason ?? "");
+  const [rejectionReason, setRejectionReason] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingRegistration, setIsCheckingRegistration] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [documentErrors, setDocumentErrors] = useState<Partial<Record<DocumentField, string>>>({});
+  const [hasSubmitted, setHasSubmitted] = useState(false);
   const formRef = useRef<HTMLFormElement | null>(null);
   const fieldRefs = useRef<
     Partial<Record<keyof FormData, HTMLInputElement | HTMLSelectElement | null>>
@@ -182,57 +197,7 @@ export default function RegistrationPage() {
     return nextPreviewUrls;
   }, [documentFiles]);
 
-  useEffect(() => {
-    return () => {
-      documentFieldConfigs.forEach(({ field }) => {
-        const objectUrl = documentPreviewUrls[field];
-        if (objectUrl) {
-          URL.revokeObjectURL(objectUrl);
-        }
-      });
-    };
-  }, [documentPreviewUrls]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadLatestStatus = async () => {
-      if (!studentEmail) {
-        if (isMounted) {
-          setRegistration(null);
-          setStatus("unregistered");
-          setRejectionReason("");
-        }
-        return;
-      }
-
-      try {
-        const latestRequest = (await getLatestRegistrationByEmail(studentEmail)) as RegistrationWithAssignment | null;
-        if (!isMounted) {
-          return;
-        }
-
-        if (!latestRequest) {
-          setRegistration(null);
-          setStatus("unregistered");
-          setRejectionReason("");
-          return;
-        }
-
-        setRegistration(latestRequest);
-        setStatus(latestRequest.status);
-        setRejectionReason(latestRequest.rejectionReason ?? "");
-      } catch {
-        // Keep current state when fetch fails.
-      }
-    };
-
-    void loadLatestStatus();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [studentEmail]);
+  
 
   const getRegistration = async (): Promise<RegistrationWithAssignment | null> => {
     if (!studentEmail) {
@@ -241,7 +206,45 @@ export default function RegistrationPage() {
 
     return (await getLatestRegistrationByEmail(studentEmail)) as RegistrationWithAssignment | null;
   };
+useEffect(() => {
+  let isMounted = true;
 
+  const loadLatestStatus = async () => {
+    if (!studentEmail) {
+      if (isMounted) {
+        setRegistration(null);
+        setStatus("unregistered");
+        setRejectionReason("");
+      }
+      return;
+    }
+
+    try {
+      const data = await getRegistration();
+
+      if (!isMounted) return;
+
+      if (!data) {
+        setRegistration(null);
+        setStatus("unregistered");
+        setRejectionReason("");
+        return;
+      }
+
+      setRegistration(data);
+      setStatus(data.status);
+      setRejectionReason(data.rejectionReason ?? "");
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  loadLatestStatus();
+
+  return () => {
+    isMounted = false;
+  };
+}, [studentEmail]);
   const reloadRegistration = async () => {
     setIsCheckingRegistration(true);
 
@@ -266,32 +269,13 @@ export default function RegistrationPage() {
 
   const statusForView = registrationForView?.status ?? status;
 
-  const assignedRoomName = (() => {
-    const roomId = registrationForView?.assigned_room_id;
-    if (!roomId) return null;
+  const assignedRoomName = null;
+  const selectedBedName = null;
+  const hasSelectedBed = false;
 
-    const rooms = getDormRoomsInstant();
-    const room = rooms.find((r) => r.id === roomId) ?? null;
-    if (!room) return null;
-    return `${room.building_code}${room.room_number}`;
-  })();
 
-  const selectedBed = (() => {
-    const roomId = registrationForView?.assigned_room_id;
-    const bedId = registrationForView?.bedId;
 
-    if (!roomId || !bedId) {
-      return null;
-    }
-
-    return getDormBedsForRoomInstant(roomId).find((item) => item.id === bedId) ?? null;
-  })();
-
-  const selectedBedName = selectedBed
-    ? `${selectedBed.bed_number} (${selectedBed.position === "upper" ? "Trên" : "Dưới"})`
-    : null;
-
-  const hasSelectedBed = Boolean(assignedRoomName && selectedBedName && registrationForView?.assigned_room_id && registrationForView?.bedId);
+  
   const progressStatus: ProgressStatus = useMemo(() => {
     if (statusForView === "completed") {
       return "completed";
@@ -550,19 +534,35 @@ export default function RegistrationPage() {
         toDataUrl(documentFiles.cccdBackPhoto as File),
       ]);
 
-      const created = await submitRegistration({
-        email: studentEmail,
-        formData,
-        documents: {
-          portraitPhoto,
-          cccdFrontPhoto,
-          cccdBackPhoto,
-        },
-      });
+      const form = new FormData();
 
-      setRegistration(created as RegistrationWithAssignment);
-      setStatus(created.status);
-      setRejectionReason(created.rejectionReason ?? "");
+      form.append("email", studentEmail);
+      form.append("semester", "2024-2025");
+
+      form.append("student_code", formData.mssv);
+      form.append("full_name", formData.fullName);
+      form.append("gender", formData.gender);
+      form.append("class_name", formData.class);
+      form.append("faculty", formData.department);
+      form.append("phone", formData.phone);
+      form.append("cccd", formData.cccd);
+      form.append("permanent_address", formData.address);
+
+      form.append("parent_name", formData.relationName);
+      form.append("parent_phone", formData.relationPhone);
+      form.append("parent_relationship", formData.relationship);
+
+      form.append("avatar", documentFiles.portraitPhoto as File);
+      form.append("cccd_front", documentFiles.cccdFrontPhoto as File);
+      form.append("cccd_back", documentFiles.cccdBackPhoto as File);
+
+      const res = await submitRegistration(form);
+
+      const data = res;
+
+      setRegistration(data);
+      setStatus(data.status);
+      setHasSubmitted(true);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Không thể gửi đơn. Vui lòng thử lại.");
     } finally {
@@ -583,6 +583,7 @@ export default function RegistrationPage() {
     setRegistration(null);
     setStatus("unregistered");
     setRejectionReason("");
+    setHasSubmitted(false);
   };
 
   const handleClearForm = () => {
@@ -628,7 +629,7 @@ export default function RegistrationPage() {
 
       <ProgressStep currentStep={currentProgressStep} />
 
-      {statusForView === "pending" && (
+      {statusForView === "pending" && hasSubmitted && (
         <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-[#b7ccef] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-5 text-center shadow-[0_12px_24px_rgba(36,76,184,0.10)] backdrop-blur-sm">
           <div className="flex items-center justify-center gap-2 text-[#2f63da]">
             <Clock className="h-5 w-5" />
@@ -733,18 +734,25 @@ export default function RegistrationPage() {
         </div>
       )}
 
-      {statusForView === "unregistered" && (
-        <motion.div
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.08, ease: "easeOut" }}
-          className="auth-reveal is-visible mt-2 rounded-[24px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_75%,#deebff_100%)] px-5 pb-6 pt-5 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm sm:mt-3 sm:px-6 sm:pt-6"
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, delay: 0.08, ease: "easeOut" }}
+        className="auth-reveal is-visible mt-2 rounded-[24px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_75%,#deebff_100%)] px-5 pb-6 pt-5 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm sm:mt-3 sm:px-6 sm:pt-6"
+      >
+        {hasSubmitted && statusForView !== "unregistered" && statusForView !== "rejected" ? (
+          <div className="mb-5 rounded-2xl border border-[#b7ccef] bg-white/70 p-4 text-sm text-[#1F3152] shadow-[0_10px_20px_rgba(36,76,184,0.08)]">
+            {statusForView === "pending"
+              ? "Bạn đã gửi đơn. Mẫu vẫn được hiển thị để bạn xem lại thông tin đã nhập."
+              : "Mẫu đăng ký vẫn được hiển thị để bạn xem lại thông tin."}
+          </div>
+        ) : null}
+
+        <form
+          ref={formRef}
+          onSubmit={handleSubmit}
+          className="space-y-6"
         >
-          <form
-            ref={formRef}
-            onSubmit={handleSubmit}
-            className="space-y-6"
-          >
             <motion.div
               transition={{ duration: 0.22 }}
               className="space-y-4 rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] transition-all duration-300 ease-out hover:border-[#aac3ea] hover:shadow-[0_22px_44px_rgba(36,76,184,0.14)] sm:p-7"
@@ -944,7 +952,7 @@ export default function RegistrationPage() {
                   <div>
                     <h3 className="text-base font-semibold uppercase tracking-wide text-[#5578AC]">Hồ sơ ảnh đính kèm</h3>
                   </div>
-                    <span className="w-fit rounded-full bg-[linear-gradient(135deg,#244CB8_0%,#4F7FF1_100%)] px-3 py-1 text-xs font-semibold text-white shadow-[0_8px_16px_rgba(36,76,184,0.22)]">
+                  <span className="w-fit rounded-full bg-[linear-gradient(135deg,#244CB8_0%,#4F7FF1_100%)] px-3 py-1 text-xs font-semibold text-white shadow-[0_8px_16px_rgba(36,76,184,0.22)]">
                     JPG, PNG, WEBP
                   </span>
                 </div>
@@ -966,15 +974,14 @@ export default function RegistrationPage() {
                         onDragEnter={(e) => handleDocumentDragOver(field, e)}
                         onDragLeave={(e) => handleDocumentDragLeave(field, e)}
                         onDrop={(e) => handleDocumentDrop(field, e)}
-                        className={`group h-full rounded-3xl border-2 border-dashed p-3 transition-all duration-300 ease-out ${
-                          documentErrors[field]
-                            ? "border-red-500/70 bg-red-950/30 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.55)]"
-                            : draggingDocumentField === field
-                              ? "border-[#244CB8] bg-white shadow-[0_24px_46px_rgba(36,76,184,0.16),inset_0_0_0_1px_rgba(36,76,184,0.16)]"
-                              : documentFiles[field]
-                                ? "border-[#B8CDEA] bg-white shadow-[inset_0_0_0_1px_rgba(143,170,226,0.24)] hover:border-[#244CB8] hover:shadow-[0_18px_36px_rgba(36,76,184,0.14),inset_0_0_0_1px_rgba(36,76,184,0.14)]"
-                                : "border-[#bfd2ec] bg-[linear-gradient(180deg,#f5f9ff_0%,#edf4ff_100%)] shadow-[inset_0_0_0_1px_rgba(185,205,234,0.24)] hover:border-[#8fb3e5] hover:bg-white hover:shadow-[0_18px_34px_rgba(36,76,184,0.12),inset_0_0_0_1px_rgba(185,205,234,0.24)]"
-                        }`}
+                        className={`group h-full rounded-3xl border-2 border-dashed p-3 transition-all duration-300 ease-out ${documentErrors[field]
+                          ? "border-red-500/70 bg-red-950/30 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.55)]"
+                          : draggingDocumentField === field
+                            ? "border-[#244CB8] bg-white shadow-[0_24px_46px_rgba(36,76,184,0.16),inset_0_0_0_1px_rgba(36,76,184,0.16)]"
+                            : documentFiles[field]
+                              ? "border-[#B8CDEA] bg-white shadow-[inset_0_0_0_1px_rgba(143,170,226,0.24)] hover:border-[#244CB8] hover:shadow-[0_18px_36px_rgba(36,76,184,0.14),inset_0_0_0_1px_rgba(36,76,184,0.14)]"
+                              : "border-[#bfd2ec] bg-[linear-gradient(180deg,#f5f9ff_0%,#edf4ff_100%)] shadow-[inset_0_0_0_1px_rgba(185,205,234,0.24)] hover:border-[#8fb3e5] hover:bg-white hover:shadow-[0_18px_34px_rgba(36,76,184,0.12),inset_0_0_0_1px_rgba(185,205,234,0.24)]"
+                          }`}
                       >
                         <input
                           type="file"
@@ -1007,6 +1014,18 @@ export default function RegistrationPage() {
                                 src={documentPreviewUrls[field]}
                                 alt={documentLabels[field]}
                                 className="h-full w-full object-cover"
+                                onError={(event) => {
+                                  const image = event.currentTarget;
+                                  const fallbackMap: Record<DocumentField, string> = {
+                                    portraitPhoto: createPreviewSvg("Ảnh thẻ", "Ảnh hồ sơ", "#2f63da"),
+                                    cccdFrontPhoto: createPreviewSvg("CCCD mặt trước", "Ảnh hồ sơ", "#2f63da"),
+                                    cccdBackPhoto: createPreviewSvg("CCCD mặt sau", "Ảnh hồ sơ", "#31b7d4"),
+                                  };
+
+                                  if (image.src !== fallbackMap[field]) {
+                                    image.src = fallbackMap[field];
+                                  }
+                                }}
                               />
                             </div>
                             <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#cfdbef] bg-[linear-gradient(180deg,#f7fbff_0%,#eef5ff_100%)] px-4 py-3 shadow-[0_10px_20px_rgba(36,76,184,0.08)]">
@@ -1149,9 +1168,8 @@ export default function RegistrationPage() {
                 <span className="auth-btn-gloss__content">{isSubmitting ? "Đang gửi..." : "Gửi đăng ký"}</span>
               </button>
             </div>
-          </form>
-        </motion.div>
-      )}
+        </form>
+      </motion.div>
     </motion.section>
   );
 }

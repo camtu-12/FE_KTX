@@ -11,7 +11,7 @@ import {
   type DormBed,
   type DormBedPair,
   type DormRoom,
-} from "../../../api/registrationMockApi";
+} from "../../../api/registrationService";
 import { getStoredAuth } from "../../auth/utils/authStorage";
 import bunkBedIcon from "../../../assets/icons8-bunk-bed-64.png";
 import maintenanceIcon from "../../../assets/icons8-maintenance-94.png";

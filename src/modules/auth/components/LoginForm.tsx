@@ -8,6 +8,7 @@
   } from "lucide-react";
   import { Link, useNavigate } from "react-router-dom";
   import { useAuth } from "../hooks/useAuth";
+  import { ApiHttpError } from "../services/auth.api";
 
   const fieldClassName =
     "group flex h-14 items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-input)] px-4 transition duration-200 focus-within:border-[var(--color-primary)] focus-within:bg-white focus-within:ring-4 focus-within:ring-[var(--color-primary-light)]";
@@ -69,8 +70,14 @@
             : "/student/dashboard";
 
         navigate(nextPath);
-      } catch {
-        setGeneralError("Tài khoản hoặc mật khẩu không đúng.");
+      } catch (error) {
+        if (error instanceof ApiHttpError) {
+          setEmailError(error.fieldErrors.email ?? "");
+          setPasswordError(error.fieldErrors.password ?? "");
+          setGeneralError(error.message || "Tài khoản hoặc mật khẩu không đúng.");
+        } else {
+          setGeneralError("Tài khoản hoặc mật khẩu không đúng.");
+        }
       } finally {
         setIsSubmitting(false);
       }

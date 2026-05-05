@@ -4,11 +4,7 @@ import { ArrowUp, CheckCircle2, CircleAlert, Clock3, Funnel, X } from "lucide-re
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
-import {
-  getRegistrationRequests,
-  getRegistrationRequestsInstant,
-  updateRegistrationStatus,
-} from "../../../api/registrationMockApi";
+import { getRegistrations, updateRegistrationStatus } from "../../../api/registrationService";
 import {
   statusMap,
   type RegistrationRequest,
@@ -32,7 +28,7 @@ export default function AdminRegistrationsPage() {
     | { openRequestId?: number; requestModalTab?: "info" | "history" }
     | null;
   const [shouldSkipInitialModalAnimation] = useState(() => Boolean(routeState?.openRequestId));
-  const [requests, setRequests] = useState<RegistrationRequest[]>(() => getRegistrationRequestsInstant());
+  const [requests, setRequests] = useState<RegistrationRequest[]>([]);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [statusFilter, setStatusFilter] = useState<RegistrationFilterStatus>("all");
   const [idSortOrder, setIdSortOrder] = useState<RegistrationIdSortOrder>("desc");
@@ -54,6 +50,7 @@ export default function AdminRegistrationsPage() {
     const latestByEmail = new Map<string, (typeof requests)[number]>();
 
     requests.forEach((request) => {
+      if (!request?.email) return; // Skip if no email
       const key = request.email.trim().toLowerCase();
       const currentLatest = latestByEmail.get(key);
       if (!currentLatest || request.id > currentLatest.id) {
@@ -69,9 +66,10 @@ export default function AdminRegistrationsPage() {
 
     return latestRequests
       .filter((request) => {
+        if (!request?.email || !request?.formData) return false;
         const matchesKeyword =
           !normalized ||
-          [request.formData.mssv, request.formData.fullName, request.email]
+          [request.formData.mssv || '', request.formData.fullName || '', request.email || '']
             .join(" ")
             .toLowerCase()
             .includes(normalized);
@@ -91,14 +89,14 @@ export default function AdminRegistrationsPage() {
   }, [requests, viewingRequestId]);
 
   const selectedRequestHistory = useMemo(() => {
-    if (!selectedRequest) {
+    if (!selectedRequest?.email) {
       return [];
     }
 
     const emailKey = selectedRequest.email.trim().toLowerCase();
 
     return requests
-      .filter((request) => request.email.trim().toLowerCase() === emailKey)
+      .filter((request) => request?.email?.trim().toLowerCase() === emailKey)
       .sort((a, b) => a.id - b.id);
   }, [requests, selectedRequest]);
 
@@ -143,7 +141,7 @@ export default function AdminRegistrationsPage() {
     let isMounted = true;
 
     const loadRequests = async () => {
-      const nextRequests = await getRegistrationRequests();
+      const nextRequests = await getRegistrations();
       if (isMounted) {
         setRequests(nextRequests);
       }

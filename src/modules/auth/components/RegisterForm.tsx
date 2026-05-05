@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
-import { checkEmailExists, checkStudentCodeExists } from "../services/auth.api";
+import { ApiHttpError, checkEmailExists, checkStudentCodeExists } from "../services/auth.api";
 
 type RegisterFields = {
   full_name: string;
@@ -99,7 +99,7 @@ export default function RegisterForm() {
 
   const studentCodeRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]+$/;
 
-  const emailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@student\.stu\.edu\.vn$/i;
 
   const passwordRegex =
     /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
@@ -111,7 +111,7 @@ export default function RegisterForm() {
     if (!emailRegex.test(email)) {
       setErrors((prev) => ({
         ...prev,
-        email: "Email phải đúng định dạng abc@gmail.com.",
+        email: "Email phải đúng định dạng abc@student.stu.edu.vn.",
       }));
       return;
     }
@@ -176,11 +176,11 @@ export default function RegisterForm() {
         "MSSV phải gồm chữ và số, không chứa ký tự đặc biệt.";
     }
 
-    // 🔹 Email (chỉ gmail)
+    // 🔹 Email (chỉ student.stu.edu.vn)
     if (!trimmed.email) {
       nextErrors.email = "Vui lòng nhập email.";
     } else if (!emailRegex.test(trimmed.email)) {
-      nextErrors.email = "Email phải đúng định dạng abc@gmail.com.";
+      nextErrors.email = "Email phải đúng định dạng abc@student.stu.edu.vn.";
     }
 
     // 🔹 Password
@@ -215,6 +215,7 @@ export default function RegisterForm() {
         student_code: trimmed.student_code,
         email: trimmed.email,
         password: trimmed.password,
+        password_confirmation: trimmed.confirmPassword,
       });
 
       setSuccessMessage(
@@ -223,9 +224,23 @@ export default function RegisterForm() {
 
       setTimeout(() => navigate("/login"), 1200);
     } catch (error) {
-      setGeneralError(
-        error instanceof Error ? error.message : "Đăng ký thất bại."
-      );
+      if (error instanceof ApiHttpError) {
+        const backendFieldErrors = error.fieldErrors;
+
+        setErrors((prev) => ({
+          ...prev,
+          email: backendFieldErrors.email ?? prev.email,
+          password: backendFieldErrors.password ?? prev.password,
+          confirmPassword:
+            backendFieldErrors.password_confirmation ?? prev.confirmPassword,
+        }));
+
+        setGeneralError(error.message || "Đăng ký thất bại.");
+      } else {
+        setGeneralError(
+          error instanceof Error ? error.message : "Đăng ký thất bại."
+        );
+      }
     } finally {
       setIsSubmitting(false);
     }

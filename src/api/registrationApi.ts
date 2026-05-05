@@ -1,0 +1,31 @@
+import axios from "axios";
+
+const API = axios.create({
+  baseURL: "http://127.0.0.1:8000/api", // BE Laravel
+});
+
+// ================== GET ==================
+export const getMyRegistration = (email: string) => {
+  return API.get(`/registration/me`, {
+    params: { email },
+  }).then((res) => res.data);
+};
+
+// ================== POST ==================
+export const submitRegistration = (formData: FormData) => {
+  return API.post(`/registration`, formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  }).then((res) => res.data);
+};
+
+export const getRegistrationById = (id: number) => {
+  return API.get(`/registration/${id}`).then((res) => res.data);
+};
+export const getRegistrations = () => {
+  return API.get("/registration").then((res) => res.data);
+};
+export const getRooms = () => {
+  return API.get("/rooms").then((res) => res.data);
+};

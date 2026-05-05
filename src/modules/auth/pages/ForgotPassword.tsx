@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { sendOtp, resetPasswordOtp } from "../services/auth.api";
+import { ApiHttpError, sendOtp, resetPasswordOtp } from "../services/auth.api";
 import { LoaderCircle } from "lucide-react";
 
 export default function ForgotPassword() {
@@ -11,10 +11,17 @@ export default function ForgotPassword() {
   const navigate = useNavigate();
   const [isSending, setIsSending] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [otpError, setOtpError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [generalError, setGeneralError] = useState("");
 
   const handleSendOtp = async () => {
+    setEmailError("");
+    setGeneralError("");
+
     if (!email) {
-      alert("Vui lòng nhập email");
+      setEmailError("Vui lòng nhập email.");
       return;
     }
 
@@ -22,19 +29,30 @@ export default function ForgotPassword() {
       setIsSending(true);
 
       const res = await sendOtp({ email });
+      setGeneralError("");
       alert(res.message);
 
       setStep("reset");
-    } catch (err: any) {
-      alert(err.message);
+    } catch (error) {
+      if (error instanceof ApiHttpError) {
+        setEmailError(error.fieldErrors.email ?? "");
+        setGeneralError(error.message || "Gửi OTP thất bại.");
+      } else {
+        setGeneralError(error instanceof Error ? error.message : "Gửi OTP thất bại.");
+      }
     } finally {
       setIsSending(false);
     }
   };
 
   const handleReset = async () => {
+    setOtpError("");
+    setPasswordError("");
+    setGeneralError("");
+
     if (!otp || !password) {
-      alert("Vui lòng nhập đầy đủ OTP và mật khẩu");
+      if (!otp) setOtpError("Vui lòng nhập mã OTP.");
+      if (!password) setPasswordError("Vui lòng nhập mật khẩu mới.");
       return;
     }
 
@@ -50,8 +68,17 @@ export default function ForgotPassword() {
       alert(res.message);
 
       navigate("/login");
-    } catch (err: any) {
-      alert(err.message);
+    } catch (error) {
+      if (error instanceof ApiHttpError) {
+        setEmailError(error.fieldErrors.email ?? "");
+        setOtpError(error.fieldErrors.otp ?? "");
+        setPasswordError(
+          error.fieldErrors.password ?? error.fieldErrors.password_confirmation ?? ""
+        );
+        setGeneralError(error.message || "Đổi mật khẩu thất bại.");
+      } else {
+        setGeneralError(error instanceof Error ? error.message : "Đổi mật khẩu thất bại.");
+      }
     } finally {
       setIsResetting(false);
     }
@@ -80,8 +107,15 @@ export default function ForgotPassword() {
               className="w-full mt-2 p-3 border border-gray-200 rounded-xl 
             focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (emailError) setEmailError("");
+                if (generalError) setGeneralError("");
+              }}
             />
+            {emailError ? (
+              <p className="mt-2 text-sm font-medium text-[#d14343]">{emailError}</p>
+            ) : null}
 
             <button
               onClick={handleSendOtp}
@@ -118,8 +152,15 @@ export default function ForgotPassword() {
               className="w-full mt-2 p-3 border border-gray-200 rounded-xl 
             focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={otp}
-              onChange={(e) => setOtp(e.target.value)}
+              onChange={(e) => {
+                setOtp(e.target.value);
+                if (otpError) setOtpError("");
+                if (generalError) setGeneralError("");
+              }}
             />
+            {otpError ? (
+              <p className="mt-2 text-sm font-medium text-[#d14343]">{otpError}</p>
+            ) : null}
 
             <label className="text-sm font-semibold text-gray-600 mt-3 block">
               Mật khẩu mới
@@ -131,8 +172,15 @@ export default function ForgotPassword() {
               className="w-full mt-2 p-3 border border-gray-200 rounded-xl 
             focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (passwordError) setPasswordError("");
+                if (generalError) setGeneralError("");
+              }}
             />
+            {passwordError ? (
+              <p className="mt-2 text-sm font-medium text-[#d14343]">{passwordError}</p>
+            ) : null}
 
             <button
               onClick={handleReset}
@@ -156,6 +204,12 @@ export default function ForgotPassword() {
             </button>
           </>
         )}
+
+        {generalError ? (
+          <p className="mt-3 rounded-xl border border-[#f4caca] bg-[#fff3f3] px-4 py-2.5 text-sm font-medium text-[#c53c3c]">
+            {generalError}
+          </p>
+        ) : null}
 
         {/* BACK LOGIN */}
         <p

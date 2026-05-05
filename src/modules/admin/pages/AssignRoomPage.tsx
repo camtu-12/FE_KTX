@@ -8,7 +8,7 @@ import {
   getRegistrationRequests,
   getRegistrationRequestsInstant,
   type DormRoom,
-} from "../../../api/registrationMockApi";
+} from "../../../api/registrationService";
 import type { RegistrationRequest } from "../data/registrationRequests";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 

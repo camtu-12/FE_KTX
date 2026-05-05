@@ -9,7 +9,7 @@ import {
   getRegistrationRequestByIdInstant,
   getRegistrationRequests,
   type DormRoom,
-} from "../../../api/registrationMockApi";
+} from "../../../api/registrationService";
 import type { RegistrationRequest } from "../data/registrationRequests";
 
 type ToastState = { kind: "success" | "error"; message: string } | null;
