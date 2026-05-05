@@ -6,19 +6,18 @@ import {
   BedSingle,
   CheckCircle,
   Clock,
+  Home,
   ImagePlus,
   LoaderCircle,
   ShieldCheck,
   UserCircle2,
   Users,
-  Home,
 } from "lucide-react";
 import {
   getLatestRegistrationByEmail,
-  getMyRegistration,
   submitRegistration,
 } from "../../../api/registrationService";
-import { getStoredAuth } from "../../auth/utils/authStorage";
+import { useAuthStore } from "../../auth/store";
 import type { RegistrationRequest } from "../../admin/data/registrationRequests";
 import ProgressStep from "../components/ProgressStep";
 
@@ -103,6 +102,9 @@ const documentUploadHints: Record<DocumentField, string> = {
   cccdBackPhoto: "Ảnh rõ nét, không bị chói",
 };
 
+const phoneRegex = /^\d{10}$/;
+const cccdRegex = /^\d{12}$/;
+
 const createPreviewSvg = (title: string, subtitle: string, accent: string) =>
   `data:image/svg+xml;utf8,${encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480">
@@ -162,8 +164,7 @@ function ErrorMessage({ message }: { message: string }) {
 
 export default function RegistrationPage() {
   const navigate = useNavigate();
-  const storedAuth = getStoredAuth();
-  const studentEmail = storedAuth?.user.email ?? "";
+  const studentEmail = useAuthStore((state) => state.user?.email ?? "");
   const [registration, setRegistration] = useState<RegistrationWithAssignment | null>(null);
   const [status, setStatus] = useState<RegistrationStatus>("unregistered");
   const [formData, setFormData] = useState<FormData>(initialFormData);
@@ -175,7 +176,8 @@ export default function RegistrationPage() {
   const [isCheckingRegistration, setIsCheckingRegistration] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [documentErrors, setDocumentErrors] = useState<Partial<Record<DocumentField, string>>>({});
-  const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [isReviewingSubmittedForm, setIsReviewingSubmittedForm] = useState(false);
+  const [reviewDocumentUrls, setReviewDocumentUrls] = useState<Record<DocumentField, string>>(initialDocumentPreviewUrls);
   const formRef = useRef<HTMLFormElement | null>(null);
   const fieldRefs = useRef<
     Partial<Record<keyof FormData, HTMLInputElement | HTMLSelectElement | null>>
@@ -188,6 +190,12 @@ export default function RegistrationPage() {
     documentFieldConfigs.forEach(({ field }) => {
       const file = documentFiles[field];
       if (!file) {
+        // Show previously-uploaded document previews when available
+        // regardless of whether we're in strict review mode or resubmitting.
+        if (reviewDocumentUrls[field]) {
+          nextPreviewUrls[field] = reviewDocumentUrls[field];
+        }
+
         return;
       }
 
@@ -195,7 +203,7 @@ export default function RegistrationPage() {
     });
 
     return nextPreviewUrls;
-  }, [documentFiles]);
+  }, [documentFiles, isReviewingSubmittedForm, reviewDocumentUrls]);
 
   
 
@@ -206,60 +214,78 @@ export default function RegistrationPage() {
 
     return (await getLatestRegistrationByEmail(studentEmail)) as RegistrationWithAssignment | null;
   };
-useEffect(() => {
-  let isMounted = true;
 
-  const loadLatestStatus = async () => {
-    if (!studentEmail) {
-      if (isMounted) {
-        setRegistration(null);
-        setStatus("unregistered");
-        setRejectionReason("");
-      }
+  const openReview = async () => {
+    const data = await reloadRegistration();
+
+    if (!data) {
+      setIsReviewingSubmittedForm(false);
       return;
     }
 
-    try {
-      const data = await getRegistration();
-
-      if (!isMounted) return;
-
-      if (!data) {
-        setRegistration(null);
-        setStatus("unregistered");
-        setRejectionReason("");
-        return;
-      }
-
-      setRegistration(data);
-      setStatus(data.status);
-      setRejectionReason(data.rejectionReason ?? "");
-    } catch (error) {
-      console.log(error);
-    }
+    setIsReviewingSubmittedForm(true);
+    // optionally focus/scroll to form area
+    requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
   };
 
-  loadLatestStatus();
-
-  return () => {
-    isMounted = false;
+  const openResubmit = async () => {
+    // Clear any previous data and show an empty editable form for resubmission.
+    resetFormState();
+    setRegistration(null);
+    setStatus("unregistered");
+    setRejectionReason("");
+    setReviewDocumentUrls(initialDocumentPreviewUrls);
+    setIsReviewingSubmittedForm(false);
+    requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
   };
+useEffect(() => {
+  resetFormState();
+  setRegistration(null);
+  setStatus("unregistered");
+  setRejectionReason("");
+  setSubmitError("");
+  setIsReviewingSubmittedForm(false);
+  setReviewDocumentUrls(initialDocumentPreviewUrls);
+
+  if (studentEmail) {
+    // Load existing registration for the logged-in student so we can
+    // decide whether to show the form or the status/banner.
+    // We intentionally do NOT auto-open the read-only review UI here.
+    void reloadRegistration();
+  }
 }, [studentEmail]);
   const reloadRegistration = async () => {
     setIsCheckingRegistration(true);
 
     try {
       const data = await getRegistration();
-      setRegistration(data);
 
       if (!data) {
+        setRegistration(null);
         setStatus("unregistered");
         setRejectionReason("");
-        return;
+        setReviewDocumentUrls(initialDocumentPreviewUrls);
+        setIsReviewingSubmittedForm(false);
+        return null;
       }
 
+      setRegistration(data);
       setStatus(data.status);
       setRejectionReason(data.rejectionReason ?? "");
+      // Prefill formData so both review and resubmit flows can use it.
+      setFormData({ ...initialFormData, ...data.formData });
+      // Keep documentFiles empty (we don't have File objects). Store
+      // preview URLs so UI can show previews for review or resubmit.
+      setDocumentFiles({ ...initialDocumentFiles });
+      setReviewDocumentUrls(data.documents ?? initialDocumentPreviewUrls);
+      // Do not auto-enter the read-only review state here — callers
+      // should decide whether to open review (read-only) or resubmit (editable).
+      setIsReviewingSubmittedForm(false);
+      return data;
     } finally {
       setIsCheckingRegistration(false);
     }
@@ -466,6 +492,36 @@ useEffect(() => {
     setDraggingDocumentField(null);
   };
 
+  const handlePhoneBlur = () => {
+    const value = formData.phone.trim();
+
+    if (!value) {
+      return;
+    }
+
+    if (!phoneRegex.test(value)) {
+      setErrors((prev) => ({
+        ...prev,
+        phone: "Số điện thoại phải gồm đúng 10 chữ số.",
+      }));
+    }
+  };
+
+  const handleCccdBlur = () => {
+    const value = formData.cccd.trim();
+
+    if (!value) {
+      return;
+    }
+
+    if (!cccdRegex.test(value)) {
+      setErrors((prev) => ({
+        ...prev,
+        cccd: "Số CCCD phải gồm đúng 12 chữ số.",
+      }));
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError("");
@@ -478,6 +534,18 @@ useEffect(() => {
       if (!formData[field].trim()) {
         nextErrors[field] = `Vui lòng điền ${fieldLabels[field]}`;
       }
+    }
+
+    if (!formData.phone.trim()) {
+      nextErrors.phone = "Vui lòng nhập số điện thoại.";
+    } else if (!phoneRegex.test(formData.phone.trim())) {
+      nextErrors.phone = "Số điện thoại phải gồm đúng 10 chữ số.";
+    }
+
+    if (!formData.cccd.trim()) {
+      nextErrors.cccd = "Vui lòng nhập số CCCD.";
+    } else if (!cccdRegex.test(formData.cccd.trim())) {
+      nextErrors.cccd = "Số CCCD phải gồm đúng 12 chữ số.";
     }
 
     for (const { field } of documentFieldConfigs) {
@@ -528,7 +596,7 @@ useEffect(() => {
     setIsSubmitting(true);
 
     try {
-      const [portraitPhoto, cccdFrontPhoto, cccdBackPhoto] = await Promise.all([
+      await Promise.all([
         toDataUrl(documentFiles.portraitPhoto as File),
         toDataUrl(documentFiles.cccdFrontPhoto as File),
         toDataUrl(documentFiles.cccdBackPhoto as File),
@@ -560,10 +628,36 @@ useEffect(() => {
 
       const data = res;
 
+      if (!data) {
+        setSubmitError("Không thể gửi đơn. Vui lòng thử lại.");
+        return;
+      }
+
       setRegistration(data);
       setStatus(data.status);
-      setHasSubmitted(true);
+      setIsReviewingSubmittedForm(false);
     } catch (error) {
+      if (error && typeof error === "object" && "response" in error) {
+        const response = (error as { response?: { data?: any } }).response;
+        const responseData = response?.data;
+
+        if (responseData) {
+          if (typeof responseData.message === "string") {
+            setSubmitError(responseData.message);
+            return;
+          }
+
+          const validationMessages = responseData.errors
+            ? Object.values(responseData.errors).flat().filter(Boolean)
+            : [];
+
+          if (validationMessages.length > 0) {
+            setSubmitError(String(validationMessages[0]));
+            return;
+          }
+        }
+      }
+
       setSubmitError(error instanceof Error ? error.message : "Không thể gửi đơn. Vui lòng thử lại.");
     } finally {
       setIsSubmitting(false);
@@ -578,13 +672,7 @@ useEffect(() => {
     clearDocumentInputs();
   };
 
-  const handleReset = () => {
-    resetFormState();
-    setRegistration(null);
-    setStatus("unregistered");
-    setRejectionReason("");
-    setHasSubmitted(false);
-  };
+  
 
   const handleClearForm = () => {
     resetFormState();
@@ -629,7 +717,7 @@ useEffect(() => {
 
       <ProgressStep currentStep={currentProgressStep} />
 
-      {statusForView === "pending" && hasSubmitted && (
+      {statusForView === "pending" && (
         <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-[#b7ccef] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-5 text-center shadow-[0_12px_24px_rgba(36,76,184,0.10)] backdrop-blur-sm">
           <div className="flex items-center justify-center gap-2 text-[#2f63da]">
             <Clock className="h-5 w-5" />
@@ -638,6 +726,17 @@ useEffect(() => {
           <p className="mt-1.5 text-sm text-[#5C7094]">
             Vui lòng chờ. Kết quả sẽ có trong vòng 1-3 ngày làm việc.
           </p>
+          <button
+            type="button"
+            onClick={openReview}
+            disabled={isCheckingRegistration}
+            className="auth-btn-gloss mx-auto mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#b7ccef] bg-[linear-gradient(135deg,#edf4ff_0%,#dfeaff_100%)] px-4 text-sm font-semibold text-[#244cb8] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <span className="auth-btn-gloss__content inline-flex items-center justify-center gap-2">
+              {isCheckingRegistration ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
+              {isCheckingRegistration ? "Đang kiểm tra..." : "Kiểm tra lại"}
+            </span>
+          </button>
         </div>
       )}
 
@@ -704,7 +803,7 @@ useEffect(() => {
             </p>
             <button
               type="button"
-              onClick={reloadRegistration}
+              onClick={openReview}
               disabled={isCheckingRegistration}
               className="auth-btn-gloss mx-auto mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#b7ccef] bg-[linear-gradient(135deg,#edf4ff_0%,#dfeaff_100%)] px-4 text-sm font-semibold text-[#244cb8] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
             >
@@ -726,7 +825,7 @@ useEffect(() => {
           <p className="mt-1.5 text-sm text-red-700">Lý do: {rejectionReason}</p>
           <button
             type="button"
-            onClick={handleReset}
+            onClick={openResubmit}
             className="auth-btn-gloss mx-auto mt-4 rounded-xl bg-[linear-gradient(135deg,#e25569_0%,#cc3c4f_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_18px_rgba(204,60,79,0.20)] transition-all duration-200 hover:-translate-y-0.5 hover:brightness-105 active:scale-[0.98]"
           >
             <span className="auth-btn-gloss__content">Gửi lại đơn</span>
@@ -734,25 +833,23 @@ useEffect(() => {
         </div>
       )}
 
-      <motion.div
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35, delay: 0.08, ease: "easeOut" }}
-        className="auth-reveal is-visible mt-2 rounded-[24px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_75%,#deebff_100%)] px-5 pb-6 pt-5 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm sm:mt-3 sm:px-6 sm:pt-6"
-      >
-        {hasSubmitted && statusForView !== "unregistered" && statusForView !== "rejected" ? (
-          <div className="mb-5 rounded-2xl border border-[#b7ccef] bg-white/70 p-4 text-sm text-[#1F3152] shadow-[0_10px_20px_rgba(36,76,184,0.08)]">
-            {statusForView === "pending"
-              ? "Bạn đã gửi đơn. Mẫu vẫn được hiển thị để bạn xem lại thông tin đã nhập."
-              : "Mẫu đăng ký vẫn được hiển thị để bạn xem lại thông tin."}
-          </div>
-        ) : null}
-
+      {statusForView === "unregistered" || isReviewingSubmittedForm ? (
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.08, ease: "easeOut" }}
+          className="auth-reveal is-visible mt-2 rounded-[24px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_75%,#deebff_100%)] px-5 pb-6 pt-5 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm sm:mt-3 sm:px-6 sm:pt-6"
+        >
         <form
           ref={formRef}
           onSubmit={handleSubmit}
-          className="space-y-6"
+          className={`space-y-6 ${isReviewingSubmittedForm ? "pointer-events-none select-none" : ""}`}
         >
+          {isReviewingSubmittedForm ? (
+            <div className="mb-2 rounded-2xl border border-[#b7ccef] bg-white/70 p-4 text-sm text-[#1F3152] shadow-[0_10px_20px_rgba(36,76,184,0.08)]">
+              Đang hiển thị lại hồ sơ bạn đã nộp trước đó.
+            </div>
+          ) : null}
             <motion.div
               transition={{ duration: 0.22 }}
               className="space-y-4 rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] transition-all duration-300 ease-out hover:border-[#aac3ea] hover:shadow-[0_22px_44px_rgba(36,76,184,0.14)] sm:p-7"
@@ -881,6 +978,7 @@ useEffect(() => {
                     ref={(node) => {
                       fieldRefs.current.phone = node;
                     }}
+                    onBlur={handlePhoneBlur}
                     placeholder="Ví dụ: 0987654321"
                     className={getFieldClassName()}
                   />
@@ -922,6 +1020,7 @@ useEffect(() => {
                     ref={(node) => {
                       fieldRefs.current.cccd = node;
                     }}
+                    onBlur={handleCccdBlur}
                     placeholder="Ví dụ: 021234567890"
                     className={getStep2FieldClassName()}
                   />
@@ -1152,24 +1251,27 @@ useEffect(() => {
               </div>
             </motion.div>
 
-            <div className="flex justify-end gap-3 border-t border-[#DFE8F4] pt-6">
-              <button
-                type="button"
-                onClick={handleClearForm}
-                className="auth-btn-gloss rounded-2xl border border-[#c5d4f0] bg-[linear-gradient(135deg,#ffffff_0%,#f1f6ff_48%,#e8f0ff_100%)] px-6 py-2.5 text-sm font-semibold text-[#244CB8] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_22px_rgba(36,76,184,0.10)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#a9c0ea] hover:bg-[linear-gradient(135deg,#ffffff_0%,#edf4ff_40%,#dfeaff_100%)] hover:text-[#173D97] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_16px_28px_rgba(36,76,184,0.16)] active:scale-[0.98]"
-              >
-                <span className="auth-btn-gloss__content">Xóa</span>
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="auth-btn-gloss rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-6 py-2.5 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition-all duration-300 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_22px_40px_rgba(36,76,184,0.34)] active:scale-[0.98]"
-              >
-                <span className="auth-btn-gloss__content">{isSubmitting ? "Đang gửi..." : "Gửi đăng ký"}</span>
-              </button>
-            </div>
+            {!isReviewingSubmittedForm ? (
+              <div className="flex justify-end gap-3 border-t border-[#DFE8F4] pt-6">
+                <button
+                  type="button"
+                  onClick={handleClearForm}
+                  className="auth-btn-gloss rounded-2xl border border-[#c5d4f0] bg-[linear-gradient(135deg,#ffffff_0%,#f1f6ff_48%,#e8f0ff_100%)] px-6 py-2.5 text-sm font-semibold text-[#244CB8] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_22px_rgba(36,76,184,0.10)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#a9c0ea] hover:bg-[linear-gradient(135deg,#ffffff_0%,#edf4ff_40%,#dfeaff_100%)] hover:text-[#173D97] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_16px_28px_rgba(36,76,184,0.16)] active:scale-[0.98]"
+                >
+                  <span className="auth-btn-gloss__content">Xóa</span>
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="auth-btn-gloss rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-6 py-2.5 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition-all duration-300 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_22px_40px_rgba(36,76,184,0.34)] active:scale-[0.98]"
+                >
+                  <span className="auth-btn-gloss__content">{isSubmitting ? "Đang gửi..." : "Gửi đăng ký"}</span>
+                </button>
+              </div>
+            ) : null}
         </form>
-      </motion.div>
+        </motion.div>
+      ) : null}
     </motion.section>
   );
 }

@@ -10,7 +10,7 @@ export default function StudentLayout() {
   const navigate = useNavigate();
   const user = getStoredAuth()?.user ?? null;
   const userName = user?.fullName || user?.email || "Student User";
-  const studentCode = user?.studentCode || "DH52201699";
+  const studentCode = user?.studentCode || (user as typeof user & { student_code?: string })?.student_code || "";
   const userEmail = user?.email || "student@stu.edu.vn";
 
   const handleLogout = () => {
