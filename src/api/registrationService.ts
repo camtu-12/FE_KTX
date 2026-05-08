@@ -89,11 +89,24 @@ const normalizeRegistrationRequest = (raw: any): RegistrationRequest | null => {
     return null;
   }
 
+  const isRegistrationLike =
+    "id" in registration ||
+    "status" in registration ||
+    "semester" in registration ||
+    "student_id" in registration ||
+    "cccd_front_url" in registration ||
+    "cccd_back_url" in registration;
+
+  if (!isRegistrationLike) {
+    return null;
+  }
+
   const student = raw?.student ?? raw?.data?.student ?? registration.student ?? {};
+  const account = student.account ?? raw?.account ?? raw?.data?.account ?? registration.account ?? {};
   const existingFormData = registration.formData ?? raw?.formData ?? {};
 
-  const studentCode = existingFormData.mssv ?? student.student_code ?? "";
-  const fullName = existingFormData.fullName ?? student.full_name ?? "";
+  const studentCode = existingFormData.mssv ?? account.student_code ?? student.student_code ?? "";
+  const fullName = existingFormData.fullName ?? account.full_name ?? student.full_name ?? "";
   const gender = existingFormData.gender ?? student.gender ?? "";
   const className = existingFormData.class ?? student.class_name ?? "";
   const department = existingFormData.department ?? student.faculty ?? "";

@@ -4,6 +4,9 @@ type User = {
   id: number;
   email: string;
   role: "admin" | "student";
+  student_id?: number | null;
+  student_code?: string | null;
+  full_name?: string | null;
 };
 
 type AuthState = {

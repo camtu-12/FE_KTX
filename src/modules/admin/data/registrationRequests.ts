@@ -26,6 +26,13 @@ export type RegistrationRequest = {
   documents: Record<RegistrationDocumentField, string>;
   assigned_room_id?: number | null;
   bedId?: number | null;
+  student?: {
+    account?: {
+      student_code?: string;
+      full_name?: string;
+      email?: string;
+    };
+  };
 };
 
 const createPreviewSvg = (title: string, subtitle: string, accent: string) =>
@@ -71,10 +78,25 @@ export const relationshipOptions = [
   { value: "other", label: "Khác" },
 ];
 
-export const statusMap: Record<RegistrationStatus, string> = {
-  pending: "Chờ duyệt",
-  approved: "Đã duyệt",
-  rejected: "Bị từ chối",
+export const statusMap: Record<
+  RegistrationStatus,
+  {
+    label: string;
+    className: string;
+  }
+> = {
+  pending: {
+    label: "Chờ duyệt",
+    className: "border border-amber-200 bg-amber-50 text-amber-700",
+  },
+  approved: {
+    label: "Đã duyệt",
+    className: "border border-emerald-200 bg-emerald-50 text-emerald-700",
+  },
+  rejected: {
+    label: "Bị từ chối",
+    className: "border border-rose-200 bg-rose-50 text-rose-700",
+  },
 };
 
 export const registrationRequests: RegistrationRequest[] = [
@@ -83,6 +105,13 @@ export const registrationRequests: RegistrationRequest[] = [
     email: "student1@example.com",
     status: "pending",
     submittedAt: "2026-05-01",
+    student: {
+      account: {
+        student_code: "DH52201900",
+        full_name: "Nguyễn Văn A",
+        email: "student1@example.com",
+      },
+    },
     formData: {
       mssv: "DH52201900",
       fullName: "Nguyễn Văn A",
