@@ -24,6 +24,8 @@ function isValidUser(user: unknown): user is AuthUser {
 export function clearAuthStorage() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  sessionStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(USER_KEY);
 }
 
 export function setAuthStorage(token: string, user: AuthUser) {
