@@ -14,7 +14,7 @@ export type DormRoom = {
   room_number: number;
   totalBeds: number;
   availableBeds: number;
-  gender: "male" | "female";
+  gender?: string | null;
 };
 
 export type DormBed = {
