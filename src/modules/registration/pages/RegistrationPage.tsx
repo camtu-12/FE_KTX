@@ -17,6 +17,7 @@ import {
   getLatestRegistrationByEmail,
   submitRegistration,
 } from "../../../api/registrationService";
+import { checkStudentCodeExists } from "../../auth/services/auth.api";
 import { useAuthStore } from "../../auth/store";
 import type { RegistrationRequest } from "../../admin/data/registrationRequests";
 import ProgressStep from "../components/ProgressStep";
@@ -46,12 +47,12 @@ interface FormData {
   cccdIssueDate: string;
   cccdIssuePlace: string;
   address: string;
-  fatherName: string;
-  fatherPhone: string;
-  fatherJob: string;
-  motherName: string;
-  motherPhone: string;
-  motherJob: string;
+  father_name: string;
+  father_phone: string;
+  father_job: string;
+  mother_name: string;
+  mother_phone: string;
+  mother_job: string;
   familyContactAddress: string;
   relationName: string;
   relationPhone: string;
@@ -92,12 +93,12 @@ const initialFormData: FormData = {
   cccdIssueDate: "",
   cccdIssuePlace: "",
   address: "",
-  fatherName: "",
-  fatherPhone: "",
-  fatherJob: "",
-  motherName: "",
-  motherPhone: "",
-  motherJob: "",
+  father_name: "",
+  father_phone: "",
+  father_job: "",
+  mother_name: "",
+  mother_phone: "",
+  mother_job: "",
   familyContactAddress: "",
   relationName: "",
   relationPhone: "",
@@ -202,12 +203,12 @@ const formFieldLabels: Record<keyof FormData, string> = {
   cccdIssueDate: "ngày cấp",
   cccdIssuePlace: "nơi cấp",
   address: "địa chỉ thường trú",
-  fatherName: "họ tên cha",
-  fatherPhone: "SĐT cha",
-  fatherJob: "nghề nghiệp cha",
-  motherName: "họ tên mẹ",
-  motherPhone: "SĐT mẹ",
-  motherJob: "nghề nghiệp mẹ",
+  father_name: "họ tên cha",
+  father_phone: "SĐT cha",
+  father_job: "nghề nghiệp cha",
+  mother_name: "họ tên mẹ",
+  mother_phone: "SĐT mẹ",
+  mother_job: "nghề nghiệp mẹ",
   familyContactAddress: "địa chỉ liên hệ cha/mẹ",
   relationName: "người liên hệ khẩn cấp",
   relationPhone: "SĐT người liên hệ",
@@ -322,20 +323,7 @@ export default function RegistrationPage() {
     return (await getLatestRegistrationByEmail(studentEmail)) as RegistrationWithAssignment | null;
   };
 
-  const openReview = async () => {
-    const data = await reloadRegistration();
-
-    if (!data) {
-      setIsReviewingSubmittedForm(false);
-      return;
-    }
-
-    setIsReviewingSubmittedForm(true);
-    // optionally focus/scroll to form area
-    requestAnimationFrame(() => {
-      formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    });
-  };
+  // Removed openReview: reviewing the submitted form now must be explicit via resubmit flow.
 
   const openResubmit = async () => {
     // Clear any previous data and show an empty editable form for resubmission.
@@ -621,6 +609,34 @@ useEffect(() => {
     setDocumentFile(fieldName, nextFile);
   };
 
+  const [isCheckingMssv, setIsCheckingMssv] = useState(false);
+
+  const handleMssvBlur = async () => {
+    const code = formData.mssv?.trim();
+    if (!code) return;
+
+    setIsCheckingMssv(true);
+    try {
+      const res = await checkStudentCodeExists(code);
+      const exists = res?.exists ?? false;
+
+      if (!exists) {
+        setErrors((prev) => ({ ...prev, mssv: "MSSV sai. Vui lòng nhập MSSV đã đăng ký." }));
+      } else {
+        setErrors((prev) => {
+          if (!prev.mssv) return prev;
+          const copy = { ...prev };
+          delete copy.mssv;
+          return copy;
+        });
+      }
+    } catch (err) {
+      setErrors((prev) => ({ ...prev, mssv: "Không thể kiểm tra MSSV. Vui lòng thử lại." }));
+    } finally {
+      setIsCheckingMssv(false);
+    }
+  };
+
   const openDocumentPicker = (fieldName: DocumentField) => {
     documentRefs.current[fieldName]?.click();
   };
@@ -706,6 +722,24 @@ useEffect(() => {
       nextErrors.phone = "Số điện thoại phải gồm đúng 10 chữ số.";
     }
 
+    if (!formData.father_phone.trim()) {
+      nextErrors.father_phone = "Vui lòng nhập số điện thoại cha.";
+    } else if (!phoneRegex.test(formData.father_phone.trim())) {
+      nextErrors.father_phone = "Số điện thoại cha phải gồm đúng 10 chữ số.";
+    }
+
+    if (!formData.mother_phone.trim()) {
+      nextErrors.mother_phone = "Vui lòng nhập số điện thoại mẹ.";
+    } else if (!phoneRegex.test(formData.mother_phone.trim())) {
+      nextErrors.mother_phone = "Số điện thoại mẹ phải gồm đúng 10 chữ số.";
+    }
+
+    if (!formData.relationPhone.trim()) {
+      nextErrors.relationPhone = "Vui lòng nhập SĐT người liên hệ.";
+    } else if (!phoneRegex.test(formData.relationPhone.trim())) {
+      nextErrors.relationPhone = "Số điện thoại liên hệ phải gồm đúng 10 chữ số.";
+    }
+
     if (!formData.cccd.trim()) {
       nextErrors.cccd = "Vui lòng nhập số CCCD.";
     } else if (!cccdRegex.test(formData.cccd.trim())) {
@@ -781,18 +815,39 @@ useEffect(() => {
 
       form.append("student_code", formData.mssv);
       form.append("full_name", formData.fullName);
+      form.append("date_of_birth", formData.birthDate);
       form.append("gender", formData.gender);
       form.append("class_name", formData.class);
       form.append("faculty", formData.department);
+      form.append("course_year", formData.class);
       form.append("phone", formData.phone);
       form.append("cccd", formData.cccd);
+      form.append("cccd_issued_date", formData.cccdIssueDate);
+      form.append("cccd_issued_place", formData.cccdIssuePlace);
+      form.append("nationality", formData.nationality);
+      form.append("ethnicity", formData.ethnicity);
+      form.append("religion", formData.religion);
       form.append("permanent_address", formData.address);
 
       form.append("parent_name", formData.relationName);
       form.append("parent_phone", formData.relationPhone);
       form.append("parent_relationship", formData.relationship);
 
-      form.append("commitment_confirmed", "true");
+      // Parent / family details
+      form.append("father_name", formData.father_name);
+      form.append("father_phone", formData.father_phone);
+      form.append("father_job", formData.father_job);
+      form.append("mother_name", formData.mother_name);
+      form.append("mother_phone", formData.mother_phone);
+      form.append("mother_job", formData.mother_job);
+      form.append("parent_address", formData.familyContactAddress || formData.address || "");
+
+      // Stay dates
+      form.append("stay_from_date", formData.dormStartDate || "");
+      form.append("stay_to_date", formData.dormEndDate || "");
+
+      form.append("commitment_confirmed", commitmentConfirmed ? "true" : "false");
+      form.append("commitment_confirm", commitmentConfirmed ? "1" : "0");
 
       form.append("avatar", documentFiles.portraitPhoto as File);
       form.append("cccd_front", documentFiles.cccdFrontPhoto as File);
@@ -921,7 +976,7 @@ useEffect(() => {
   };
 
   const studentInfoFields: FormFieldConfig[] = [
-    { name: "mssv", label: "MSSV", placeholder: "Ví dụ: Nhập MSSV", required: true },
+    { name: "mssv", label: "MSSV", placeholder: "Ví dụ: Nhập MSSV", required: true, onBlur: handleMssvBlur, helperText: isCheckingMssv ? "Đang kiểm tra MSSV..." : undefined },
     { name: "fullName", label: "Họ và tên", placeholder: "Nhập họ và tên", required: true },
     { name: "birthDate", label: "Ngày sinh", required: true },
     {
@@ -948,12 +1003,12 @@ useEffect(() => {
   ];
 
   const familyFields: FormFieldConfig[] = [
-    { name: "fatherName", label: "Họ tên cha", placeholder: "Nhập họ tên cha", required: true },
-    { name: "fatherPhone", label: "SĐT cha", type: "tel", placeholder: "Số điện thoại cha", required: true },
-    { name: "fatherJob", label: "Nghề nghiệp cha", placeholder: "Nhập nghề nghiệp cha", required: true },
-    { name: "motherName", label: "Họ tên mẹ", placeholder: "Nhập họ tên mẹ", required: true },
-    { name: "motherPhone", label: "SĐT mẹ", type: "tel", placeholder: "Số điện thoại mẹ", required: true },
-    { name: "motherJob", label: "Nghề nghiệp mẹ", placeholder: "Nhập nghề nghiệp mẹ", required: true },
+    { name: "father_name", label: "Họ tên cha", placeholder: "Nhập họ tên cha", required: true },
+    { name: "father_phone", label: "SĐT cha", type: "tel", placeholder: "Số điện thoại cha", required: true },
+    { name: "father_job", label: "Nghề nghiệp cha", placeholder: "Nhập nghề nghiệp cha", required: true },
+    { name: "mother_name", label: "Họ tên mẹ", placeholder: "Nhập họ tên mẹ", required: true },
+    { name: "mother_phone", label: "SĐT mẹ", type: "tel", placeholder: "Số điện thoại mẹ", required: true },
+    { name: "mother_job", label: "Nghề nghiệp mẹ", placeholder: "Nhập nghề nghiệp mẹ", required: true },
     { name: "familyContactAddress", label: "Địa chỉ liên hệ cha/mẹ", placeholder: "Nhập địa chỉ liên hệ", fullWidth: true, required: true },
     { name: "relationName", label: "Người liên hệ khẩn cấp", placeholder: "Nhập tên người liên hệ", required: true },
     { name: "relationPhone", label: "SĐT người liên hệ", type: "tel", placeholder: "Nhập số điện thoại", required: true },
@@ -1002,7 +1057,7 @@ useEffect(() => {
           </p>
           <button
             type="button"
-            onClick={openReview}
+            onClick={() => void reloadRegistration()}
             disabled={isCheckingRegistration}
             className="auth-btn-gloss mx-auto mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#b7ccef] bg-[linear-gradient(135deg,#edf4ff_0%,#dfeaff_100%)] px-4 text-sm font-semibold text-[#244cb8] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
           >
@@ -1077,7 +1132,7 @@ useEffect(() => {
             </p>
             <button
               type="button"
-              onClick={openReview}
+              onClick={() => void reloadRegistration()}
               disabled={isCheckingRegistration}
               className="auth-btn-gloss mx-auto mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#b7ccef] bg-[linear-gradient(135deg,#edf4ff_0%,#dfeaff_100%)] px-4 text-sm font-semibold text-[#244cb8] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
             >
