@@ -20,6 +20,23 @@ const statusIconMap: Record<RegistrationStatus, typeof Clock3> = {
   rejected: CircleAlert,
 };
 
+const formatDateTime = (iso?: string | null) => {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return String(iso);
+    return d.toLocaleString("vi-VN", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return String(iso);
+  }
+};
+
 export default function AdminRegistrationsPage() {
   const { headerSearchValue } = useOutletContext<AdminLayoutOutletContext>();
   const location = useLocation();
@@ -668,7 +685,8 @@ export default function AdminRegistrationsPage() {
                   <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
                     <p className="text-[#5570a0]">MSSV: <span className="font-semibold text-[#1b3766]">{selectedRequest.formData.mssv}</span></p>
                     <p className="text-[#5570a0]">Trạng thái: <span className="font-semibold text-[#1b3766]">{statusMap[selectedRequest.status].label}</span></p>
-                    <p className="text-[#5570a0]">Lớp: <span className="font-semibold text-[#1b3766]">{selectedRequest.formData.class}</span></p>                    <p className="text-[#5570a0]">Nộp lúc: <span className="font-semibold text-[#1b3766]">{selectedRequest.submittedAt}</span></p>
+                    <p className="text-[#5570a0]">Lớp: <span className="font-semibold text-[#1b3766]">{selectedRequest.formData.class}</span></p>
+                    <p className="text-[#5570a0]">Nộp lúc: <span className="font-semibold text-[#1b3766]">{formatDateTime(selectedRequest.submittedAt)}</span></p>
                     <p className="text-[#5570a0]">Khoa: <span className="font-semibold text-[#1b3766]">{selectedRequest.formData.department}</span></p>
 
                   </div>
@@ -703,7 +721,7 @@ export default function AdminRegistrationsPage() {
                             {itemStatus.label}
                           </span>
                         </div>
-                        <p className="mt-2 text-sm text-[#5570a0]">Nộp lúc: {historyRequest.submittedAt}</p>
+                        <p className="mt-2 text-sm text-[#5570a0]">Nộp lúc: {formatDateTime(historyRequest.submittedAt)}</p>
                         {historyRequest.rejectionReason ? (
                           <p className="mt-1 text-sm text-[#bf3e53]">Lý do: {historyRequest.rejectionReason}</p>
                         ) : null}
