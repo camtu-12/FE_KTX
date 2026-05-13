@@ -22,7 +22,11 @@ export default function AdminLayout() {
   const isRegistrationsPage = location.pathname === "/admin/registrations";
   const isAssignRoomListPage = location.pathname === "/admin/assign-room";
   const isBedManagementPage = location.pathname === "/admin/bed-management";
-  const isSearchEnabled = isRegistrationsPage || isAssignRoomListPage || isBedManagementPage;
+  const isRoomManagementPage = location.pathname === "/admin/rooms";
+  const isSearchEnabled = isRegistrationsPage || isAssignRoomListPage || isBedManagementPage || isRoomManagementPage;
+  const searchPlaceholder = isRoomManagementPage
+    ? "Tìm theo số phòng..."
+    : "Tìm theo MSSV, họ tên hoặc email";
 
   const handleLogout = () => {
     clearAuthStorage();
@@ -36,7 +40,7 @@ export default function AdminLayout() {
         userName={userName}
         userEmail={userEmail}
         searchValue={isSearchEnabled ? headerSearchValue : undefined}
-        searchPlaceholder={isSearchEnabled ? "Tìm theo MSSV, họ tên hoặc email" : undefined}
+        searchPlaceholder={isSearchEnabled ? searchPlaceholder : undefined}
         onSearchChange={isSearchEnabled ? setHeaderSearchValue : undefined}
         onLogout={handleLogout}
         isSidebarOpen={isSidebarOpen}

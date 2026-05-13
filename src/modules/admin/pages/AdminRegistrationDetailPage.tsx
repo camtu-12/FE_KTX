@@ -1,16 +1,32 @@
 import { motion } from "framer-motion";
-import { ArrowLeft, ArrowUp, CheckCircle2, CircleAlert, Clock3, ShieldCheck, UserCircle2, Users } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowUp,
+  CheckCircle,
+  CheckCircle2,
+  CircleAlert,
+  Clock3,
+  ExternalLink,
+  ImageOff,
+  ShieldCheck,
+  UserCircle2,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   departmentOptions,
   documentLabels,
+  genderOptions,
   relationshipOptions,
   statusMap,
+  type RegistrationDocumentField,
+  type RegistrationFormData,
   type RegistrationRequest,
   type RegistrationStatus,
 } from "../data/registrationRequests";
 import { getRegistrationById } from "../../../api/registrationService";
+import { createPortal } from "react-dom";
 
 const statusIconMap: Record<RegistrationStatus, typeof Clock3> = {
   pending: Clock3,
@@ -19,9 +35,9 @@ const statusIconMap: Record<RegistrationStatus, typeof Clock3> = {
 };
 
 const readOnlyFieldClassName =
-  "mt-1 h-11 w-full rounded-xl border border-[#D6E2F1] bg-[#F6F9FD] px-4 text-sm text-[#1F3152] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]";
+  "mt-1 h-11 w-full rounded-xl border border-[#D6E2F1] bg-[#F6F9FD] px-4 text-sm text-[#1F3152] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] read-only:cursor-default read-only:bg-[#F6F9FD] focus:outline-none";
 
-const readOnlySelectClassName = `${readOnlyFieldClassName} appearance-none`;
+const readOnlySelectClassName = `${readOnlyFieldClassName} appearance-none disabled:cursor-default disabled:opacity-100`;
 
 const createPreviewSvg = (title: string, subtitle: string, accent: string) =>
   `data:image/svg+xml;utf8,${encodeURIComponent(
@@ -48,10 +64,92 @@ const previewByField = {
   cccdBackPhoto: createPreviewSvg("CCCD mặt sau", "Ảnh hồ sơ", "#31b7d4"),
 } as const;
 
+void previewByField;
+
+const documentFieldConfigs = [
+  { field: "portraitPhoto" },
+  { field: "cccdFrontPhoto" },
+  { field: "cccdBackPhoto" },
+] as const;
+
+const createEmptyDocumentErrorState = (): Record<RegistrationDocumentField, boolean> => ({
+  portraitPhoto: false,
+  cccdFrontPhoto: false,
+  cccdBackPhoto: false,
+});
+
+const commitmentSections = [
+  {
+    title: "I. Về trách nhiệm chấp hành quy định",
+    items: [
+      "Chấp hành nghiêm túc nội quy, quy chế Ký túc xá, các quy định của Nhà trường và pháp luật Nhà nước.",
+      "Tôn trọng, chấp hành sự điều hành và hướng dẫn của Nhà trường, Ban Quản lý Ký túc xá (BQL KTX).",
+      "Có thái độ ứng xử văn minh, lịch sự, đoàn kết, tương trợ với các sinh viên cùng lưu trú.",
+      "Tự chịu trách nhiệm và bảo quản tài sản cá nhân có giá trị (tiền, laptop, điện thoại, đồ trang sức,...), công cụ, dụng cụ cá nhân.",
+      "Sử dụng điện, nước và tài sản ký túc xá tiết kiệm, đúng mục đích, có ý thức bảo quản tài sản chung.",
+    ],
+  },
+  {
+    title: "II. Về nghĩa vụ tài chính và quản lý cư trú",
+    items: [
+      "Thực hiện đầy đủ nghĩa vụ đóng phí lưu trú, điện, nước và các khoản phí phát sinh (nếu có) đúng thời hạn theo thông báo của Nhà trường.",
+      "Không dẫn khách lạ vào ký túc xá; nếu là phụ huynh thì phải có sự đồng ý của BQL KTX. Khi phát hiện người lạ, có hành vi xâm phạm, phá hoại tài sản, trộm cắp kịp thời báo ngay cho BQL KTX.",
+      "Thực hiện đăng ký tạm trú, tạm vắng theo quy định của pháp luật và thông báo với BQL KTX khi có thay đổi.",
+      "Khi có nhu cầu ngưng lưu trú, phải báo cho BQL KTX để hướng dẫn làm thủ tục theo quy định.",
+    ],
+  },
+  {
+    title: "III. Cam kết về hành vi cá nhân và an ninh trật tự",
+    items: [
+      "Không sử dụng, tàng trữ chất cấm, chất cháy nổ, không sử dụng và phát tán các tài liệu, phim ảnh đồi trụy, phản động hoặc truy cập các website có nội dung không lành mạnh; không sử dụng mạng xã hội vào mục đích tuyên truyền, kết nối với các tổ chức liên quan đến khủng bố.",
+      "Không tổ chức tụ tập đông người, gây mất trật tự; không tham gia đánh bạc dưới mọi hình thức; không uống rượu, bia, chất có cồn, hút thuốc trong phòng, khuôn viên ký túc xá và nội bộ khuôn viên trường.",
+      "Thực hiện nghiêm túc các quy định về phòng cháy chữa cháy; không nấu ăn, đốt lửa và sử dụng các thiết bị điện công suất lớn trái quy định trong phòng ở, khu vực ký túc xá, khuôn viên trường.",
+      "Tham gia đầy đủ các buổi họp, phổ biến nội quy, diễn tập phòng cháy chữa cháy, phòng chống dịch bệnh hoặc các hoạt động khác do Nhà trường, BQL KTX tổ chức.",
+    ],
+  },
+] as const;
+
 type DetailRouteState = {
   request?: RegistrationRequest;
   returnToModal?: boolean;
 };
+
+type FieldConfig = {
+  name: keyof RegistrationFormData;
+  label: string;
+  type?: "text" | "tel" | "select";
+  options?: Array<{ value: string; label: string }>;
+  fullWidth?: boolean;
+  helperText?: string;
+};
+
+const genderLabelMap = new Map(genderOptions.map((option) => [option.value, option.label]));
+const departmentLabelMap = new Map(departmentOptions.map((option) => [option, option]));
+const relationshipLabelMap = new Map(relationshipOptions.map((option) => [option.value, option.label]));
+
+const formatDateDisplay = (value: string) => {
+  if (!value) {
+    return "";
+  }
+
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
+    return value;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return parsed.toLocaleDateString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+};
+
+const isDateField = (field: keyof RegistrationFormData) =>
+  field === "birthDate" || field === "cccdIssueDate" || field === "dormStartDate" || field === "dormEndDate";
 
 export default function AdminRegistrationDetailPage() {
   const navigate = useNavigate();
@@ -59,27 +157,59 @@ export default function AdminRegistrationDetailPage() {
   const { registrationId } = useParams();
   const routeState = location.state as DetailRouteState | null;
   const [isScrollToTopVisible, setIsScrollToTopVisible] = useState(false);
+  const [imagePreview, setImagePreview] = useState<{ src: string; title: string } | null>(null);
+  const [failedDocuments, setFailedDocuments] = useState<Record<RegistrationDocumentField, boolean>>(() =>
+    createEmptyDocumentErrorState(),
+  );
 
   const [request, setRequest] = useState<RegistrationRequest | null>(routeState?.request ?? null);
 
   useEffect(() => {
     const load = async () => {
-      if (request) return;
+      let id = Number(registrationId);
+      if (Number.isNaN(id) || id <= 0) {
+        // fall back to routeState.request.id when route param is not present
+        id = Number(routeState?.request?.id ?? NaN);
+      }
 
-      const id = Number(registrationId);
-      if (Number.isNaN(id)) return;
+      if (Number.isNaN(id) || id <= 0) {
+        return;
+      }
 
       try {
         const res = await getRegistrationById(id);
         setRequest(res);
+        setFailedDocuments(createEmptyDocumentErrorState());
       } catch (err) {
         console.log(err);
         setRequest(null);
+        setFailedDocuments(createEmptyDocumentErrorState());
       }
     };
 
-    load();
-  }, [registrationId]);
+    void load();
+  }, [registrationId, routeState?.request?.id]);
+
+  useEffect(() => {
+    if (!imagePreview) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setImagePreview(null);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [imagePreview]);
 
   useEffect(() => {
     const scrollContainer = document.querySelector(".auth-scrollbar") as HTMLElement | null;
@@ -118,7 +248,79 @@ export default function AdminRegistrationDetailPage() {
     navigate("/admin/registrations");
   };
 
-  if (!request) {
+  const formData = request?.formData;
+
+  const resolveDocumentSrc = (field: RegistrationDocumentField) => {
+    if (!request) {
+      return "";
+    }
+
+    if (field === "portraitPhoto") {
+      return request.avatarUrl || request.documents[field] || "";
+    }
+
+    if (field === "cccdFrontPhoto") {
+      return request.cccdFrontUrl || request.documents[field] || "";
+    }
+
+    return request.cccdBackUrl || request.documents[field] || "";
+  };
+
+  const relationshipLabel = useMemo(() => {
+    if (!formData) {
+      return "";
+    }
+
+    return relationshipLabelMap.get(formData.relationship) ?? formData.relationship;
+  }, [formData]);
+
+  const renderField = (config: FieldConfig) => {
+    if (!formData) {
+      return null;
+    }
+
+    const fieldValue = formData[config.name] ?? "";
+    const displayValue = isDateField(config.name)
+      ? formatDateDisplay(fieldValue)
+      : config.name === "gender"
+        ? genderLabelMap.get(fieldValue) ?? fieldValue
+        : config.name === "department"
+          ? departmentLabelMap.get(fieldValue) ?? fieldValue
+          : config.name === "relationship"
+            ? relationshipLabel
+            : fieldValue;
+    const fieldId = `registration-${String(config.name)}`;
+
+    return (
+      <div key={String(config.name)} className={config.fullWidth ? "md:col-span-2" : ""}>
+        <label htmlFor={fieldId} className="block text-sm font-medium text-[#5A7094]">
+          {config.label}
+        </label>
+        {config.type === "select" ? (
+          <select id={fieldId} value={fieldValue} disabled className={readOnlySelectClassName}>
+            <option value="">{config.label}</option>
+            {config.options?.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            id={fieldId}
+            type={config.type === "tel" ? "tel" : "text"}
+            value={displayValue}
+            readOnly
+            tabIndex={-1}
+            className={readOnlyFieldClassName}
+          />
+        )}
+        {config.helperText ? <p className="mt-1 text-xs text-[#6F89B5]">{config.helperText}</p> : null}
+      </div>
+    );
+  };
+
+  if (!request || !formData) {
     return (
       <section className="flex h-full items-center justify-center px-6 py-10">
         <div className="w-full max-w-xl rounded-[28px] border border-[#d4e1f2] bg-white p-8 text-center shadow-[0_18px_42px_rgba(15,23,42,0.10)]">
@@ -140,8 +342,45 @@ export default function AdminRegistrationDetailPage() {
 
   const statusUi = statusMap[request.status];
   const StatusIcon = statusIconMap[request.status];
-  const relationshipLabel =
-    relationshipOptions.find((option) => option.value === request.formData.relationship)?.label ?? "Khác";
+  const commitmentConfirmed = request.commitmentConfirmed ?? true;
+
+  const studentInfoFields: FieldConfig[] = [
+    { name: "mssv", label: "MSSV" },
+    { name: "fullName", label: "Họ và tên" },
+    { name: "birthDate", label: "Ngày sinh" },
+    { name: "gender", label: "Giới tính", type: "select", options: genderOptions },
+    { name: "class", label: "Lớp" },
+    { name: "department", label: "Khoa", type: "select", options: departmentOptions.map((department) => ({ value: department, label: department })) },
+    { name: "nationality", label: "Quốc tịch" },
+    { name: "ethnicity", label: "Dân tộc" },
+    { name: "religion", label: "Tôn giáo" },
+  ];
+
+  const identityFields: FieldConfig[] = [
+    { name: "phone", label: "Số điện thoại", type: "tel" },
+    { name: "cccd", label: "Số CCCD" },
+    { name: "cccdIssueDate", label: "Ngày cấp" },
+    { name: "cccdIssuePlace", label: "Nơi cấp" },
+    { name: "address", label: "Địa chỉ thường trú", fullWidth: true },
+  ];
+
+  const familyFields: FieldConfig[] = [
+    { name: "father_name", label: "Họ tên cha" },
+    { name: "father_phone", label: "SĐT cha", type: "tel" },
+    { name: "father_job", label: "Nghề nghiệp cha" },
+    { name: "mother_name", label: "Họ tên mẹ" },
+    { name: "mother_phone", label: "SĐT mẹ", type: "tel" },
+    { name: "mother_job", label: "Nghề nghiệp mẹ" },
+    { name: "familyContactAddress", label: "Địa chỉ liên hệ cha/mẹ", fullWidth: true },
+    { name: "relationName", label: "Người liên hệ khẩn cấp" },
+    { name: "relationPhone", label: "SĐT người liên hệ", type: "tel" },
+    { name: "relationship", label: "Quan hệ", type: "select", options: relationshipOptions },
+  ];
+
+  const accommodationFields: FieldConfig[] = [
+    { name: "dormStartDate", label: "Từ ngày" },
+    { name: "dormEndDate", label: "Đến ngày" },
+  ];
 
   return (
     <motion.section
@@ -158,7 +397,7 @@ export default function AdminRegistrationDetailPage() {
           <button
             type="button"
             onClick={handleBack}
-            aria-label="Quay lại popup xem đơn"
+            aria-label="Quay lại danh sách đơn"
             className="absolute left-0 top-1/2 inline-flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-[#c4d7f2] bg-white/90 text-[#40619a] shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:border-[#9cb9e7] hover:text-[#244cb8]"
           >
             <ArrowLeft className="h-5 w-5" />
@@ -166,11 +405,9 @@ export default function AdminRegistrationDetailPage() {
 
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <h1 className="text-[28px] font-bold tracking-tight text-[#1a2d52]">
-                Đơn đăng ký nội trú
-              </h1>
+              <h1 className="text-[28px] font-bold tracking-tight text-[#1a2d52]">Chi tiết đơn đăng ký</h1>
               <p className="mt-1.5 max-w-3xl text-sm leading-7 text-[#5c7094]">
-                Bản xem chi tiết hồ sơ sinh viên đã nộp. Quản trị viên chỉ có thể xem, không thể chỉnh sửa.
+                Bản xem lại hồ sơ sinh viên đã nộp, giữ nguyên toàn bộ nội dung và chỉ cho phép xem.
               </p>
             </div>
 
@@ -182,8 +419,6 @@ export default function AdminRegistrationDetailPage() {
             </div>
           </div>
         </div>
-
-
       </motion.div>
 
       <motion.div
@@ -202,48 +437,142 @@ export default function AdminRegistrationDetailPage() {
             </div>
             <div>
               <span className="text-xs font-semibold uppercase tracking-wide text-[#2F83C9]">Bước 1</span>
-              <h2 className="text-lg font-semibold text-[#1F3152]">Thông tin cơ bản</h2>
+              <h2 className="text-lg font-semibold text-[#1F3152]">Thông tin cá nhân</h2>
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-[#5A7094]">MSSV</label>
-              <input readOnly value={request.formData.mssv} className={readOnlyFieldClassName} />
+            {studentInfoFields.map(renderField)}
+          </div>
+
+          <div className="border-t border-[#d9e6f7] pt-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-[#5578AC]">Giấy tờ và liên hệ</h3>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-[#5A7094]">Họ và tên</label>
-              <input readOnly value={request.formData.fullName} className={readOnlyFieldClassName} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-[#5A7094]">Giới tính</label>
-              <select disabled value={request.formData.gender} className={readOnlySelectClassName}>
-                <option value="">Chọn giới tính</option>
-                <option value="male">Nam</option>
-                <option value="female">Nữ</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-[#5A7094]">Lớp</label>
-              <input readOnly value={request.formData.class} className={readOnlyFieldClassName} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-[#5A7094]">Khoa</label>
-              <select disabled value={request.formData.department} className={readOnlySelectClassName}>
-                <option value="">Chọn khoa</option>
-                {departmentOptions.map((department) => (
-                  <option key={department} value={department}>
-                    {department}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-[#5A7094]">Số điện thoại</label>
-              <input readOnly value={request.formData.phone} className={readOnlyFieldClassName} />
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {identityFields.map(renderField)}
             </div>
           </div>
         </motion.div>
+
+        <motion.div
+          transition={{ duration: 0.22 }}
+          className="rounded-[22px] border border-[#c9d8ef] bg-[linear-gradient(180deg,#eef5ff_0%,#e7f0ff_42%,#edf4fd_100%)] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] sm:p-6"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-base font-semibold uppercase tracking-wide text-[#5578AC]">Hồ sơ ảnh đính kèm</h3>
+              <p className="mt-1 text-sm text-[#6981aa]">Bản xem tài liệu sinh viên đã tải lên.</p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2 lg:[grid-template-columns:repeat(3,minmax(0,15rem))] lg:justify-between lg:gap-8">
+            {documentFieldConfigs.map(({ field }) => {
+              const src = resolveDocumentSrc(field);
+              const isFailed = failedDocuments[field];
+              const canPreview = Boolean(src) && !isFailed;
+
+              return (
+                <div
+                  key={field}
+                  className="rounded-3xl border border-[#bfd2ec] bg-[linear-gradient(180deg,#f5f9ff_0%,#edf4ff_100%)] p-3 shadow-[inset_0_0_0_1px_rgba(185,205,234,0.24)]"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-[#204178]">{documentLabels[field]}</p>
+                    </div>
+                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(180deg,#eef4ff_0%,#e2ecff_100%)] text-[#244CB8]">
+                      <CheckCircle2 className="h-5 w-5" />
+                    </div>
+                  </div>
+
+                  <div className="mt-4 overflow-hidden rounded-2xl border border-[#cfdbef] bg-white">
+                    {canPreview ? (
+                      <img
+                        src={src}
+                        alt={documentLabels[field]}
+                        className="h-48 w-full cursor-zoom-in object-cover"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setImagePreview({ src, title: documentLabels[field] })}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setImagePreview({ src, title: documentLabels[field] });
+                          }
+                        }}
+                        onError={() => {
+                          setFailedDocuments((prev) => ({ ...prev, [field]: true }));
+                        }}
+                      />
+                    ) : (
+                      <div className="flex h-48 w-full flex-col items-center justify-center gap-2 bg-white px-4 text-center">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f3f7ff] text-[#6b86b5]">
+                          <ImageOff className="h-6 w-6" />
+                        </div>
+                        <p className="text-xs font-semibold text-[#5a739e]">
+                          {isFailed ? "Không tải được ảnh" : "Chưa có ảnh"}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </motion.div>
+
+        {imagePreview
+          ? createPortal(
+              <div
+                className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/70 p-4 backdrop-blur-[2px]"
+                role="dialog"
+                aria-modal="true"
+                aria-label={imagePreview.title}
+                onMouseDown={(event) => {
+                  if (event.target === event.currentTarget) {
+                    setImagePreview(null);
+                  }
+                }}
+              >
+                <div className="w-full max-w-5xl overflow-hidden rounded-3xl border border-white/10 bg-white shadow-[0_30px_80px_rgba(0,0,0,0.35)]">
+                  <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-800">{imagePreview.title}</p>
+                      <a
+                        href={imagePreview.src}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-[#244CB8] hover:underline"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        Mở ở tab mới
+                      </a>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setImagePreview(null)}
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] transition hover:bg-slate-50"
+                      aria-label="Đóng xem ảnh"
+                      title="Đóng (Esc)"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  <div className="flex max-h-[calc(100vh-10rem)] items-center justify-center bg-slate-50 p-4 sm:p-6">
+                    <img
+                      src={imagePreview.src}
+                      alt={imagePreview.title}
+                      className="max-h-[calc(100vh-14rem)] w-full object-contain"
+                    />
+                  </div>
+                </div>
+              </div>,
+              document.body,
+            )
+          : null}
 
         <motion.div
           transition={{ duration: 0.22 }}
@@ -255,69 +584,12 @@ export default function AdminRegistrationDetailPage() {
             </div>
             <div>
               <span className="text-xs font-semibold uppercase tracking-wide text-[#2F83C9]">Bước 2</span>
-              <h2 className="text-lg font-semibold text-[#1F3152]">Chứng thực</h2>
+              <h2 className="text-lg font-semibold text-[#1F3152]">Thông tin người thân</h2>
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-              <label className="block text-sm font-semibold uppercase tracking-wide text-[#5A7094]">Số CCCD</label>
-              <input readOnly value={request.formData.cccd} className={readOnlyFieldClassName} />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold uppercase tracking-wide text-[#5A7094]">
-                Địa chỉ thường trú
-              </label>
-              <input readOnly value={request.formData.address} className={readOnlyFieldClassName} />
-            </div>
-          </div>
-
-          <div className="rounded-[22px] border border-[#c9d8ef] bg-[linear-gradient(180deg,#eef5ff_0%,#e7f0ff_42%,#edf4fd_100%)] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] sm:p-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="text-base font-semibold uppercase tracking-wide text-[#5578AC]">Hồ sơ ảnh đính kèm</h3>
-                <p className="mt-1 text-sm text-[#6981aa]">Bản xem tài liệu sinh viên đã tải lên.</p>
-              </div>
-
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2 lg:[grid-template-columns:repeat(3,minmax(0,15rem))] lg:justify-between lg:gap-8">
-              {Object.entries(request.documents).map(([field, src]) => {
-                const fallbackSrc = previewByField[field as keyof typeof previewByField];
-
-                return (
-                <div
-                  key={field}
-                  className="rounded-3xl border border-[#bfd2ec] bg-[linear-gradient(180deg,#f5f9ff_0%,#edf4ff_100%)] p-3 shadow-[inset_0_0_0_1px_rgba(185,205,234,0.24)]"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-semibold text-[#204178]">
-                        {documentLabels[field as keyof typeof documentLabels]}
-                      </p>
-                    </div>
-                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(180deg,#eef4ff_0%,#e2ecff_100%)] text-[#244CB8]">
-                      <CheckCircle2 className="h-5 w-5" />
-                    </div>
-                  </div>
-
-                  <div className="mt-4 overflow-hidden rounded-2xl border border-[#cfdbef] bg-white">
-                    <img
-                      src={src || fallbackSrc}
-                      alt={documentLabels[field as keyof typeof documentLabels]}
-                      className="h-48 w-full object-cover"
-                      onError={(event) => {
-                        const image = event.currentTarget;
-                        if (image.src !== fallbackSrc) {
-                          image.src = fallbackSrc;
-                        }
-                      }}
-                    />
-                  </div>
-                </div>
-                );
-              })}
-            </div>
+            {familyFields.map(renderField)}
           </div>
         </motion.div>
 
@@ -326,27 +598,57 @@ export default function AdminRegistrationDetailPage() {
           className="space-y-4 rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] sm:p-7"
         >
           <div className="flex items-start gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-[#315ec7] bg-[radial-gradient(circle_at_30%_30%,#2558c7_0%,#214cb3_55%,#193d8f_100%)] text-[#9fd4ff] shadow-[inset_0_1px_0_rgba(120,169,255,0.26),0_12px_24px_rgba(36,76,184,0.18)]">
-              <Users className="h-5 w-5 stroke-[2.2]" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-[#3a67cf] bg-[radial-gradient(circle_at_30%_30%,#2b63da_0%,#244cb8_58%,#1c3f99_100%)] text-[#9ee5ff] shadow-[inset_0_1px_0_rgba(136,181,255,0.28),0_12px_24px_rgba(36,76,184,0.20)]">
+              <Clock3 className="h-5 w-5 stroke-[2.2]" />
             </div>
             <div>
               <span className="text-xs font-semibold uppercase tracking-wide text-[#2F83C9]">Bước 3</span>
-              <h2 className="text-lg font-semibold text-[#1F3152]">Người thân</h2>
+              <h2 className="text-lg font-semibold text-[#1F3152]">Thông tin lưu trú</h2>
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-[#5A7094]">Tên người thân</label>
-              <input readOnly value={request.formData.relationName} className={readOnlyFieldClassName} />
+            {accommodationFields.map(renderField)}
+          </div>
+        </motion.div>
+
+        <motion.div
+          transition={{ duration: 0.22 }}
+          className="space-y-4 rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] sm:p-7 xl:col-span-2"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-[#3a67cf] bg-[radial-gradient(circle_at_30%_30%,#2b63da_0%,#244cb8_58%,#1c3f99_100%)] text-[#9ee5ff] shadow-[inset_0_1px_0_rgba(136,181,255,0.28),0_12px_24px_rgba(36,76,184,0.20)]">
+              <CheckCircle className="h-5 w-5 stroke-[2.2]" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-[#5A7094]">Số điện thoại</label>
-              <input readOnly value={request.formData.relationPhone} className={readOnlyFieldClassName} />
+              <h2 className="text-lg font-semibold text-[#1F3152]">Cam kết của sinh viên</h2>
+              <p className="mt-1 text-sm text-[#5C7094]">Phải đảm bảo tuân thủ các quy định và nội quy của ký túc xá</p>
             </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-[#5A7094]">Quan hệ</label>
-              <input readOnly value={relationshipLabel} className={readOnlyFieldClassName} />
+          </div>
+
+          <div className="mt-6 space-y-5 text-sm leading-7 text-[#324B76]">
+            {commitmentSections.map((section) => (
+              <div key={section.title} className="rounded-[22px] border border-[#d8e5f6] bg-[linear-gradient(180deg,#f8fbff_0%,#eef5ff_100%)] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]">
+                <h3 className="text-base font-semibold text-[#1F3152]">{section.title}</h3>
+                <ol className="mt-4 list-decimal space-y-2 pl-5">
+                  {section.items.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ol>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-start gap-4 rounded-2xl border border-[#d8e5f6] bg-[linear-gradient(180deg,#f8fbff_0%,#eef5ff_100%)] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]">
+            <input
+              type="checkbox"
+              checked={commitmentConfirmed}
+              readOnly
+              disabled
+              className="mt-1 h-5 w-5 flex-shrink-0 rounded-lg border-2 border-[#b7ccee] bg-white text-[#244CB8] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] accent-[#244CB8]"
+            />
+            <div className="flex-1 text-sm leading-6 text-[#324B76]">
+              <p>Tôi cam kết thực hiện đúng nội quy, quy định của Nhà trường và chịu trách nhiệm về các thông tin đã kê khai. Nếu vi phạm, tôi xin chịu hoàn toàn trách nhiệm trước Nhà trường và pháp luật.</p>
             </div>
           </div>
         </motion.div>

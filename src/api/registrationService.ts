@@ -31,9 +31,19 @@ export type DormBedPair = {
   lower: DormBed;
 };
 
-const extract = <T>(res: any): T => {
-  if (!res) return res;
-  if (Object.prototype.hasOwnProperty.call(res, "data")) return res.data;
+type JsonRecord = Record<string, unknown>;
+
+const isRecord = (value: unknown): value is JsonRecord => typeof value === "object" && value !== null;
+
+const extract = <T>(res: unknown): T => {
+  if (!isRecord(res)) {
+    return res as T;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(res, "data")) {
+    return (res as { data: T }).data;
+  }
+
   return res as T;
 };
 
@@ -74,7 +84,7 @@ const toPublicAssetUrl = (value?: string | null) => {
   return `http://127.0.0.1:8000/storage/${normalized}`;
 };
 
-const normalizeStatus = (value: any): RegistrationStatus => {
+const normalizeStatus = (value: unknown): RegistrationStatus => {
   if (value === "approved" || value === "rejected" || value === "pending") {
     return value;
   }
@@ -82,10 +92,47 @@ const normalizeStatus = (value: any): RegistrationStatus => {
   return "pending";
 };
 
-const normalizeRegistrationRequest = (raw: any): RegistrationRequest | null => {
-  const registration = raw?.registration ?? raw?.data?.registration ?? raw?.data ?? raw;
+const firstDefinedString = (...values: unknown[]) => {
+  for (const value of values) {
+    if (value === undefined || value === null) {
+      continue;
+    }
 
-  if (!registration || typeof registration !== "object") {
+    const text = String(value).trim();
+    if (text) {
+      return text;
+    }
+  }
+
+  return "";
+};
+
+const readRecord = (...values: unknown[]): JsonRecord | null => {
+  for (const value of values) {
+    if (isRecord(value)) {
+      return value;
+    }
+  }
+
+  return null;
+};
+
+const toNumberOrNull = (value: unknown) => {
+  const text = firstDefinedString(value);
+  if (!text) {
+    return null;
+  }
+
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null => {
+  const rawRecord = isRecord(raw) ? raw : null;
+  const dataRecord = readRecord(rawRecord?.data);
+  const registration = readRecord(rawRecord?.registration, dataRecord?.registration, dataRecord, rawRecord);
+
+  if (!registration) {
     return null;
   }
 
@@ -101,87 +148,165 @@ const normalizeRegistrationRequest = (raw: any): RegistrationRequest | null => {
     return null;
   }
 
-  const student = raw?.student ?? raw?.data?.student ?? registration.student ?? {};
-  const account = student.account ?? raw?.account ?? raw?.data?.account ?? registration.account ?? {};
-  const existingFormData = registration.formData ?? raw?.formData ?? {};
+  const student = readRecord(rawRecord?.student, dataRecord?.student, registration.student) ?? {};
+  const account = readRecord(student.account, rawRecord?.account, dataRecord?.account, registration.account) ?? {};
+  const existingFormData = readRecord(registration.formData, rawRecord?.formData, dataRecord?.formData) ?? {};
 
-  const studentCode = existingFormData.mssv ?? account.student_code ?? student.student_code ?? "";
-  const fullName = existingFormData.fullName ?? account.full_name ?? student.full_name ?? "";
-  const gender = existingFormData.gender ?? student.gender ?? "";
-  const className = existingFormData.class ?? student.class_name ?? "";
-  const department = existingFormData.department ?? student.faculty ?? "";
-  const phone = existingFormData.phone ?? student.phone ?? "";
-  const cccd = existingFormData.cccd ?? student.cccd ?? "";
-  const address = existingFormData.address ?? student.permanent_address ?? "";
-  const relationName = existingFormData.relationName ?? student.parent_name ?? "";
-  const relationPhone = existingFormData.relationPhone ?? student.parent_phone ?? "";
-  const relationship = existingFormData.relationship ?? student.parent_relationship ?? "";
+  const studentCode = firstDefinedString(existingFormData.mssv, account.student_code, student.student_code);
+  const fullName = firstDefinedString(existingFormData.fullName, account.full_name, student.full_name);
+  const birthDate = firstDefinedString(
+    existingFormData.birthDate,
+    registration.birthDate,
+    registration.date_of_birth,
+    registration.dateOfBirth,
+    student.date_of_birth,
+    student.birth_date,
+  );
+  const gender = firstDefinedString(existingFormData.gender, registration.gender, student.gender);
+  const className = firstDefinedString(existingFormData.class, registration.class, student.class_name, student.class);
+  const department = firstDefinedString(existingFormData.department, registration.department, student.faculty, student.department);
+  const nationality = firstDefinedString(existingFormData.nationality, registration.nationality, student.nationality);
+  const ethnicity = firstDefinedString(existingFormData.ethnicity, registration.ethnicity, student.ethnicity);
+  const religion = firstDefinedString(existingFormData.religion, registration.religion, student.religion);
+  const phone = firstDefinedString(existingFormData.phone, registration.phone, student.phone);
+  const cccd = firstDefinedString(existingFormData.cccd, registration.cccd, student.cccd);
+  const cccdIssueDate = firstDefinedString(
+    existingFormData.cccdIssueDate,
+    registration.cccdIssueDate,
+    registration.cccd_issued_date,
+    registration.cccdIssuedDate,
+    student.cccd_issued_date,
+  );
+  const cccdIssuePlace = firstDefinedString(
+    existingFormData.cccdIssuePlace,
+    registration.cccdIssuePlace,
+    registration.cccd_issued_place,
+    registration.cccdIssuedPlace,
+    student.cccd_issued_place,
+  );
+  const address = firstDefinedString(existingFormData.address, registration.address, student.permanent_address, student.address);
+  const fatherName = firstDefinedString(existingFormData.father_name, registration.father_name, student.father_name);
+  const fatherPhone = firstDefinedString(existingFormData.father_phone, registration.father_phone, student.father_phone);
+  const fatherJob = firstDefinedString(existingFormData.father_job, registration.father_job, student.father_job);
+  const motherName = firstDefinedString(existingFormData.mother_name, registration.mother_name, student.mother_name);
+  const motherPhone = firstDefinedString(existingFormData.mother_phone, registration.mother_phone, student.mother_phone);
+  const motherJob = firstDefinedString(existingFormData.mother_job, registration.mother_job, student.mother_job);
+  const familyContactAddress = firstDefinedString(
+    existingFormData.familyContactAddress,
+    registration.familyContactAddress,
+    registration.parent_address,
+    student.parent_address,
+  );
+  const relationName = firstDefinedString(existingFormData.relationName, registration.parent_name, student.parent_name);
+  const relationPhone = firstDefinedString(existingFormData.relationPhone, registration.parent_phone, student.parent_phone);
+  const relationship = firstDefinedString(existingFormData.relationship, registration.parent_relationship, student.parent_relationship, "parent");
+  const dormStartDate = firstDefinedString(existingFormData.dormStartDate, registration.stay_from_date, registration.dormStartDate);
+  const dormEndDate = firstDefinedString(existingFormData.dormEndDate, registration.stay_to_date, registration.dormEndDate);
 
   const formData: RegistrationFormData = {
     mssv: studentCode,
     fullName,
+    birthDate,
     gender,
     class: className,
     department,
+    nationality,
+    ethnicity,
+    religion,
     phone,
     cccd,
+    cccdIssueDate,
+    cccdIssuePlace,
     address,
-    relationName,
-    relationPhone,
+    father_name: fatherName,
+    father_phone: fatherPhone,
+    father_job: fatherJob,
+    mother_name: motherName,
+    mother_phone: motherPhone,
+    mother_job: motherJob,
+    familyContactAddress,
+    relationName: relationName || fatherName,
+    relationPhone: relationPhone || fatherPhone,
     relationship,
+    dormStartDate,
+    dormEndDate,
   };
 
   const baseTitle = studentCode || fullName || "Sinh viên";
-  const documents = registration.documents ?? raw?.documents ?? {};
+  const documents = readRecord(registration.documents, rawRecord?.documents, dataRecord?.documents) ?? {};
+
+  // Prefer real uploaded assets; do not fabricate preview/mock images here.
+  const portraitPhotoUrl = toPublicAssetUrl(firstDefinedString(student.avatar, documents.portraitPhoto, documents.avatar));
+  const cccdFrontPhotoUrl = toPublicAssetUrl(
+    firstDefinedString(registration.cccd_front_url, documents.cccdFrontPhoto, documents.cccdFrontUrl),
+  );
+  const cccdBackPhotoUrl = toPublicAssetUrl(
+    firstDefinedString(registration.cccd_back_url, documents.cccdBackPhoto, documents.cccdBackUrl),
+  );
 
   const portraitPhoto =
-    toPublicAssetUrl(documents.portraitPhoto ?? student.avatar) ||
+    toPublicAssetUrl(firstDefinedString(documents.portraitPhoto, student.avatar)) ||
     createPreviewSvg("Ảnh thẻ", baseTitle, "#2f63da");
 
   const cccdFrontPhoto =
-    toPublicAssetUrl(documents.cccdFrontPhoto ?? registration.cccd_front_url) ||
+    toPublicAssetUrl(firstDefinedString(documents.cccdFrontPhoto, registration.cccd_front_url)) ||
     createPreviewSvg("CCCD mặt trước", baseTitle, "#2f63da");
 
   const cccdBackPhoto =
-    toPublicAssetUrl(documents.cccdBackPhoto ?? registration.cccd_back_url) ||
+    toPublicAssetUrl(firstDefinedString(documents.cccdBackPhoto, registration.cccd_back_url)) ||
     createPreviewSvg("CCCD mặt sau", baseTitle, "#31b7d4");
 
+  // Keep legacy preview variables referenced to satisfy strict TS settings.
+  void baseTitle;
+  void portraitPhoto;
+  void cccdFrontPhoto;
+  void cccdBackPhoto;
+
+  const rawCommitment = registration.commitmentConfirmed ?? registration.commitment_confirmed ?? registration.commitment_confirm;
+  const commitmentConfirmed = rawCommitment === true || rawCommitment === 1 || rawCommitment === "1" || rawCommitment === "true";
+
   return {
-    id: Number(registration.id ?? 0),
-    email: registration.email ?? student.email ?? "",
+    id: toNumberOrNull(registration.id) ?? 0,
+    email: firstDefinedString(registration.email, student.email),
     status: normalizeStatus(registration.status),
-    rejectionReason: registration.rejectionReason ?? registration.reason ?? undefined,
-    submittedAt: registration.submittedAt ?? registration.created_at ?? "Không rõ",
+    rejectionReason: firstDefinedString(registration.rejectionReason, registration.reason) || undefined,
+    submittedAt: firstDefinedString(registration.submittedAt, registration.created_at) || "Không rõ",
     formData,
     documents: {
-      portraitPhoto,
-      cccdFrontPhoto,
-      cccdBackPhoto,
+      portraitPhoto: portraitPhotoUrl,
+      cccdFrontPhoto: cccdFrontPhotoUrl,
+      cccdBackPhoto: cccdBackPhotoUrl,
     },
-    assigned_room_id: registration.assigned_room_id ?? null,
-    bedId: registration.bedId ?? null,
+    avatarUrl: portraitPhotoUrl,
+    cccdFrontUrl: cccdFrontPhotoUrl,
+    cccdBackUrl: cccdBackPhotoUrl,
+    commitmentConfirmed,
+    assigned_room_id: toNumberOrNull(registration.assigned_room_id) ?? null,
+    bedId: toNumberOrNull(registration.bedId ?? registration.assigned_bed_id) ?? null,
   };
 };
 
-const normalizeRegistrationList = (rows: any[]) =>
+const normalizeRegistrationList = (rows: unknown[]) =>
   rows.map((row) => normalizeRegistrationRequest(row)).filter(Boolean) as RegistrationRequest[];
 
 export const getRegistrationRequests = async () => {
   const res = await regApi.getRegistrations();
-  return normalizeRegistrationList(extract<any[]>(res) ?? []);
+  return normalizeRegistrationList(extract<unknown[]>(res) ?? []);
 };
 
 export const getRegistrations = getRegistrationRequests;
 
-export const getRegistrationRequestsInstant = (): any[] => {
+export const getRegistrationRequestsInstant = (): RegistrationRequest[] => {
   return [];
 };
 
-export const getRegistrationRequestByIdInstant = (_id: number) => {
+export const getRegistrationRequestByIdInstant = (_id: number): RegistrationRequest | null => {
+  void _id;
   return null;
 };
 
-export const getLatestRegistrationByEmailInstant = (_email: string) => {
+export const getLatestRegistrationByEmailInstant = (_email: string): RegistrationRequest | null => {
+  void _email;
   return null;
 };
 
@@ -190,10 +315,12 @@ export const getDormRoomsInstant = (): DormRoom[] => {
 };
 
 export const getDormBedsForRoomInstant = (_roomId: number): DormBed[] => {
+  void _roomId;
   return [];
 };
 
 export const getDormBedPairsForRoomInstant = (_roomId: number): DormBedPair[] => {
+  void _roomId;
   return [];
 };
 
@@ -202,14 +329,14 @@ export const getRooms = async (): Promise<DormRoom[]> => {
   return extract<DormRoom[]>(res) ?? [];
 };
 
-export const getRegistrationById = async (id: number) => {
+export const getRegistrationById = async (id: number): Promise<RegistrationRequest | null> => {
   const res = await regApi.getRegistrationById(id);
-  return normalizeRegistrationRequest(extract<any>(res));
+  return normalizeRegistrationRequest(extract<unknown>(res));
 };
 
-export const getLatestRegistrationByEmail = async (email: string) => {
+export const getLatestRegistrationByEmail = async (email: string): Promise<RegistrationRequest | null> => {
   const res = await regApi.getMyRegistration(email);
-  return normalizeRegistrationRequest(extract<any>(res));
+  return normalizeRegistrationRequest(extract<unknown>(res));
 };
 
 export const updateRegistrationStatus = async ({
@@ -220,56 +347,72 @@ export const updateRegistrationStatus = async ({
   id: number;
   status: "approved" | "rejected";
   rejectionReason?: string;
-}) => {
+}): Promise<RegistrationRequest> => {
   try {
     if (status === "approved") {
-      const res = await axios.put(`${BASE_URL}/registration/${id}/approve`);
+      await axios.put(`${BASE_URL}/registration/${id}/approve`);
       const updated = await getRegistrationById(id);
-      return updated ?? extract<any>(res);
+      if (!updated) {
+        throw new Error("Không thể tải lại đơn đăng ký sau khi duyệt.");
+      }
+
+      return updated;
     }
 
-    const res = await axios.put(`${BASE_URL}/registration/${id}/reject`, {
+    await axios.put(`${BASE_URL}/registration/${id}/reject`, {
       rejectionReason: rejectionReason?.trim() ?? "",
     });
     const updated = await getRegistrationById(id);
-    return updated ?? extract<any>(res);
-  } catch (err: any) {
-    const message = err?.response?.data?.message ?? err?.message ?? "Không thể cập nhật trạng thái đơn đăng ký.";
+    if (!updated) {
+      throw new Error("Không thể tải lại đơn đăng ký sau khi từ chối.");
+    }
+
+    return updated;
+  } catch (err: unknown) {
+    const error = isRecord(err) ? err : null;
+    const response = readRecord(error?.response);
+    const responseData = readRecord(response?.data);
+    const message = firstDefinedString(responseData?.message, error?.message, "Không thể cập nhật trạng thái đơn đăng ký.");
     throw new Error(message);
   }
 };
 
 // Admin actions: best-effort wrappers — backend may expose different endpoints.
-export const assignRoomToRegistration = async ({ requestId, roomId }: { requestId: number; roomId: number }) => {
+export const assignRoomToRegistration = async ({ requestId, roomId }: { requestId: number; roomId: number }): Promise<RegistrationRequest | null> => {
   try {
     const res = await axios.put(`${BASE_URL}/registration/${requestId}/assign-room`, { room_id: roomId });
-    return extract<any>(res);
-  } catch (err: any) {
-    // Surface backend error message when available
-    const message = err?.response?.data?.message ?? err?.message ?? "Không thể phân phòng (backend chưa hỗ trợ).";
+    void res;
+    return getRegistrationById(requestId);
+  } catch (err: unknown) {
+    const error = isRecord(err) ? err : null;
+    const response = readRecord(error?.response);
+    const responseData = readRecord(response?.data);
+    const message = firstDefinedString(responseData?.message, error?.message, "Không thể phân phòng (backend chưa hỗ trợ).");
     throw new Error(message);
   }
 };
 
 export const selectBedForRegistration = async ({ email, bedId }: { email: string; bedId: number }) => {
   try {
-    // Assuming backend uses route with request id or email — try an email-based endpoint first
     const res = await axios.put(`${BASE_URL}/registration/select-bed`, { email, bed_id: bedId });
-    return extract<any>(res);
-  } catch (err: any) {
-    const message = err?.response?.data?.message ?? err?.message ?? "Không thể chọn giường (backend chưa hỗ trợ).";
+    return extract<unknown>(res);
+  } catch (err: unknown) {
+    const error = isRecord(err) ? err : null;
+    const response = readRecord(error?.response);
+    const responseData = readRecord(response?.data);
+    const message = firstDefinedString(responseData?.message, error?.message, "Không thể chọn giường (backend chưa hỗ trợ).");
     throw new Error(message);
   }
 };
 
-export const submitRegistration = async (formData: FormData) => {
+export const submitRegistration = async (formData: FormData): Promise<RegistrationRequest | null> => {
   const res = await regApi.submitRegistration(formData);
-  return normalizeRegistrationRequest(extract<any>(res));
+  return normalizeRegistrationRequest(extract<unknown>(res));
 };
 
-export const getMyRegistration = async (email: string) => {
+export const getMyRegistration = async (email: string): Promise<RegistrationRequest | null> => {
   const res = await regApi.getMyRegistration(email);
-  return extract<any>(res);
+  return normalizeRegistrationRequest(extract<unknown>(res));
 };
 
 export default {

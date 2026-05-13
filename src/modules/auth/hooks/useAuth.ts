@@ -6,6 +6,7 @@ type RegisterRequest = {
   student_code: string;
   email: string;
   password: string;
+  password_confirmation: string;
 };
 
 export const useAuth = () => {

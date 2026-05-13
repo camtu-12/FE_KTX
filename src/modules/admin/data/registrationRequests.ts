@@ -5,15 +5,30 @@ export type RegistrationDocumentField = "portraitPhoto" | "cccdFrontPhoto" | "cc
 export type RegistrationFormData = {
   mssv: string;
   fullName: string;
+  birthDate: string;
   gender: string;
   class: string;
   department: string;
+  nationality: string;
+  ethnicity: string;
+  religion: string;
   phone: string;
   cccd: string;
+  cccdIssueDate: string;
+  cccdIssuePlace: string;
   address: string;
+  father_name: string;
+  father_phone: string;
+  father_job: string;
+  mother_name: string;
+  mother_phone: string;
+  mother_job: string;
+  familyContactAddress: string;
   relationName: string;
   relationPhone: string;
   relationship: string;
+  dormStartDate: string;
+  dormEndDate: string;
 };
 
 export type RegistrationRequest = {
@@ -24,6 +39,10 @@ export type RegistrationRequest = {
   submittedAt: string;
   formData: RegistrationFormData;
   documents: Record<RegistrationDocumentField, string>;
+  avatarUrl?: string;
+  cccdFrontUrl?: string;
+  cccdBackUrl?: string;
+  commitmentConfirmed?: boolean;
   assigned_room_id?: number | null;
   bedId?: number | null;
   student?: {
@@ -54,6 +73,8 @@ const createPreviewSvg = (title: string, subtitle: string, accent: string) =>
     </svg>`,
   )}`;
 
+void createPreviewSvg;
+
 export const documentLabels: Record<RegistrationDocumentField, string> = {
   portraitPhoto: "Ảnh thẻ",
   cccdFrontPhoto: "CCCD mặt trước",
@@ -71,10 +92,17 @@ export const departmentOptions = [
   "Xây Dựng",
 ];
 
+export const genderOptions = [
+  { value: "male", label: "Nam" },
+  { value: "female", label: "Nữ" },
+];
+
 export const relationshipOptions = [
   { value: "parent", label: "Cha/Mẹ" },
   { value: "sibling", label: "Anh/Chị/Em" },
   { value: "grandparent", label: "Ông/Bà" },
+  { value: "aunt", label: "Cô/Dì" },
+  { value: "uncle", label: "Chú/Bác" },
   { value: "other", label: "Khác" },
 ];
 
@@ -99,7 +127,8 @@ export const statusMap: Record<
   },
 };
 
-export const registrationRequests: RegistrationRequest[] = [
+export const registrationRequests: RegistrationRequest[] = [];
+/*
   {
     id: 1,
     email: "student1@example.com",
@@ -115,15 +144,30 @@ export const registrationRequests: RegistrationRequest[] = [
     formData: {
       mssv: "DH52201900",
       fullName: "Nguyễn Văn A",
+      birthDate: "01/01/2004",
       gender: "male",
       class: "DA22TH",
       department: "Công nghệ thông tin",
+      nationality: "Việt Nam",
+      ethnicity: "Kinh",
+      religion: "Không",
       phone: "0912345678",
       cccd: "123456789012",
+      cccdIssueDate: "01/01/2022",
+      cccdIssuePlace: "Cục Cảnh sát QLHC về TTXH",
       address: "123 Đường ABC, TP.HCM",
+      father_name: "Nguyễn Văn B",
+      father_phone: "0987654321",
+      father_job: "Công nhân",
+      mother_name: "Trần Thị C",
+      mother_phone: "0977888999",
+      mother_job: "Nội trợ",
+      familyContactAddress: "123 Đường ABC, TP.HCM",
       relationName: "Nguyễn Văn B",
       relationPhone: "0987654321",
       relationship: "parent",
+      dormStartDate: "01/09/2026",
+      dormEndDate: "31/05/2027",
     },
     documents: {
       portraitPhoto: createPreviewSvg("Ảnh thẻ", "DH52201900", "#2f63da"),
@@ -132,7 +176,7 @@ export const registrationRequests: RegistrationRequest[] = [
     },
   },
 ];
+*/
 
-export const getRegistrationRequestById = (id: number) =>
-  registrationRequests.find((request) => request.id === id) ?? null;
+export const getRegistrationRequestById = () => null;
 

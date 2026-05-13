@@ -225,7 +225,7 @@ export default function RegisterForm() {
       setTimeout(() => navigate("/login"), 1200);
     } catch (error) {
       if (error instanceof ApiHttpError) {
-        const backendFieldErrors = error.fieldErrors;
+        const backendFieldErrors = error.fieldErrors as Record<string, string>;
 
         setErrors((prev) => ({
           ...prev,
