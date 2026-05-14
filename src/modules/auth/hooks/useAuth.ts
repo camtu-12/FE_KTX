@@ -14,7 +14,7 @@ export const useAuth = () => {
 
   const login = async (data: { email: string; password: string }) => {
     const res = await loginApi(data);
-    // Lưu token + user vào store
+    // Lưu token + user vào kho trạng thái
     setAuth(res.user, res.token);
     return res;
   };

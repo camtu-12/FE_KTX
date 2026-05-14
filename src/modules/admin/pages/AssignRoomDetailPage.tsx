@@ -44,9 +44,9 @@ export default function AssignRoomDetailPage() {
   const [buildingFilter, setBuildingFilter] = useState<string>("all");
   const [floorFilter, setFloorFilter] = useState<string>("all");
   const [isScrollToTopVisible, setIsScrollToTopVisible] = useState(false);
-  // Show scroll-to-top button when the scroll container is actually scrollable
-  // and the user has scrolled a small amount (improves visibility on moderately
-  // long pages where previous threshold was too large).
+  // Hiển thị nút cuộn lên đầu khi vùng cuộn thực sự có thể cuộn
+  // và người dùng đã cuộn một đoạn ngắn (giúp dễ thấy hơn trên các
+  // trang dài vừa phải mà ngưỡng cũ quá lớn).
   useEffect(() => {
     const scrollContainer = document.querySelector('.auth-scrollbar') as HTMLElement | null;
     if (!scrollContainer) return;
@@ -93,7 +93,7 @@ export default function AssignRoomDetailPage() {
   }, [numericRequestId]);
 
   useEffect(() => {
-    // Scroll the main container (auth-scrollbar) to top on navigation
+    // Cuộn container chính (auth-scrollbar) lên đầu khi chuyển hướng
     const scrollContainer = document.querySelector('.auth-scrollbar') as HTMLElement | null;
     if (scrollContainer) {
       scrollContainer.scrollTo({ top: 0, behavior: 'auto' });

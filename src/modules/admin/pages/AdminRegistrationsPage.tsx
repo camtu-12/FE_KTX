@@ -247,7 +247,7 @@ export default function AdminRegistrationsPage() {
       const updated = await updateRegistrationStatus({ id, status: "approved" });
       setRequests((prev) => prev.map((request) => (request.id === id ? updated : request)));
     } catch {
-      // Ignore stale-row actions when status was already updated.
+      // Bỏ qua thao tác trên dòng cũ khi trạng thái đã được cập nhật.
     } finally {
       setIsUpdatingStatus(false);
     }
@@ -281,7 +281,7 @@ export default function AdminRegistrationsPage() {
         prev.map((request) => (request.id === rejectingRequestId ? updated : request)),
       );
     } catch {
-      // Ignore stale-row actions when status was already updated.
+      // Bỏ qua thao tác trên dòng cũ khi trạng thái đã được cập nhật.
     } finally {
       setIsUpdatingStatus(false);
     }

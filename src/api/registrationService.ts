@@ -235,7 +235,7 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
   const baseTitle = studentCode || fullName || "Sinh viên";
   const documents = readRecord(registration.documents, rawRecord?.documents, dataRecord?.documents) ?? {};
 
-  // Prefer real uploaded assets; do not fabricate preview/mock images here.
+  // Ưu tiên tài sản tải lên thật; không tự tạo ảnh xem trước/mô phỏng ở đây.
   const portraitPhotoUrl = toPublicAssetUrl(firstDefinedString(student.avatar, documents.portraitPhoto, documents.avatar));
   const cccdFrontPhotoUrl = toPublicAssetUrl(
     firstDefinedString(registration.cccd_front_url, documents.cccdFrontPhoto, documents.cccdFrontUrl),
@@ -256,7 +256,7 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
     toPublicAssetUrl(firstDefinedString(documents.cccdBackPhoto, registration.cccd_back_url)) ||
     createPreviewSvg("CCCD mặt sau", baseTitle, "#31b7d4");
 
-  // Keep legacy preview variables referenced to satisfy strict TS settings.
+  // Giữ các biến xem trước cũ được tham chiếu để thỏa điều kiện TypeScript nghiêm ngặt.
   void baseTitle;
   void portraitPhoto;
   void cccdFrontPhoto;
@@ -377,7 +377,7 @@ export const updateRegistrationStatus = async ({
   }
 };
 
-// Admin actions: best-effort wrappers — backend may expose different endpoints.
+// Các tác vụ admin: wrapper tốt nhất - backend có thể cung cấp endpoint khác.
 export const assignRoomToRegistration = async ({ requestId, roomId }: { requestId: number; roomId: number }): Promise<RegistrationRequest | null> => {
   try {
     const res = await axios.put(`${BASE_URL}/registration/${requestId}/assign-room`, { room_id: roomId });

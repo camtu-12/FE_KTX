@@ -160,7 +160,7 @@ export default function RegisterForm() {
       confirmPassword: fields.confirmPassword.trim(),
     };
 
-    // 🔹 Họ và tên
+    // Họ và tên
     if (!trimmed.full_name) {
       nextErrors.full_name = "Vui lòng nhập họ và tên.";
     } else if (!nameRegex.test(trimmed.full_name)) {
@@ -168,7 +168,7 @@ export default function RegisterForm() {
         "Họ tên chỉ được chứa chữ cái, không có số hoặc ký tự đặc biệt.";
     }
 
-    // 🔹 MSSV
+    // MSSV
     if (!trimmed.student_code) {
       nextErrors.student_code = "Vui lòng nhập MSSV.";
     } else if (!studentCodeRegex.test(trimmed.student_code)) {
@@ -176,14 +176,14 @@ export default function RegisterForm() {
         "MSSV phải gồm chữ và số, không chứa ký tự đặc biệt.";
     }
 
-    // 🔹 Email (chỉ student.stu.edu.vn)
+    // Email (chỉ student.stu.edu.vn)
     if (!trimmed.email) {
       nextErrors.email = "Vui lòng nhập email.";
     } else if (!emailRegex.test(trimmed.email)) {
       nextErrors.email = "Email phải đúng định dạng abc@student.stu.edu.vn.";
     }
 
-    // 🔹 Password
+    // Mật khẩu
     if (!trimmed.password) {
       nextErrors.password = "Vui lòng nhập mật khẩu.";
     } else if (!passwordRegex.test(trimmed.password)) {
@@ -191,7 +191,7 @@ export default function RegisterForm() {
         "Mật khẩu phải nhiều hơn 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.";
     }
 
-    // 🔹 Confirm password
+    // Xác nhận mật khẩu
     if (!trimmed.confirmPassword) {
       nextErrors.confirmPassword = "Vui lòng nhập lại mật khẩu.";
     } else if (trimmed.confirmPassword !== trimmed.password) {
@@ -209,7 +209,7 @@ export default function RegisterForm() {
     setIsSubmitting(true);
 
     try {
-      // 🔥 FIX QUAN TRỌNG: đúng key backend
+      // Sửa quan trọng: đúng key của backend
       await register({
         full_name: trimmed.full_name,
         student_code: trimmed.student_code,

@@ -298,8 +298,8 @@ export default function RegistrationPage() {
     documentFieldConfigs.forEach(({ field }) => {
       const file = documentFiles[field];
       if (!file) {
-        // Show previously-uploaded document previews when available
-        // regardless of whether we're in strict review mode or resubmitting.
+        // Hiển thị preview tài liệu đã tải lên nếu có
+        // bất kể đang ở chế độ duyệt nghiêm ngặt hay đang gửi lại.
         if (reviewDocumentUrls[field]) {
           nextPreviewUrls[field] = reviewDocumentUrls[field];
         }
@@ -323,10 +323,10 @@ export default function RegistrationPage() {
     return (await getLatestRegistrationByEmail(studentEmail)) as RegistrationWithAssignment | null;
   };
 
-  // Removed openReview: reviewing the submitted form now must be explicit via resubmit flow.
+  // Đã bỏ openReview: việc xem lại form đã nộp giờ phải được kích hoạt rõ ràng qua luồng nộp lại.
 
   const openResubmit = async () => {
-    // Clear any previous data and show an empty editable form for resubmission.
+    // Xóa mọi dữ liệu trước đó và hiển thị một form trống có thể chỉnh sửa để nộp lại.
     resetFormState();
     setRegistration(null);
     setStatus("unregistered");
@@ -334,7 +334,16 @@ export default function RegistrationPage() {
     setReviewDocumentUrls(initialDocumentPreviewUrls);
     setIsReviewingSubmittedForm(false);
     requestAnimationFrame(() => {
-      formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      requestAnimationFrame(() => {
+        const scrollContainer =
+          formRef.current?.closest(".auth-scrollbar") ?? document.querySelector(".auth-scrollbar");
+        if (scrollContainer instanceof HTMLElement) {
+          scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
+          return;
+        }
+
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
     });
   };
 useEffect(() => {
@@ -407,14 +416,14 @@ useEffect(() => {
       setRegistration(data);
       setStatus(data.status);
       setRejectionReason(data.rejectionReason ?? "");
-      // Prefill formData so both review and resubmit flows can use it.
+      // Điền sẵn formData để cả luồng xem lại và nộp lại đều dùng được.
       setFormData({ ...initialFormData, ...data.formData });
-      // Keep documentFiles empty (we don't have File objects). Store
-      // preview URLs so UI can show previews for review or resubmit.
+      // Giữ documentFiles trống (không có File object). Lưu
+      // các URL preview để UI có thể hiển thị ảnh xem trước cho luồng xem lại hoặc nộp lại.
       setDocumentFiles({ ...initialDocumentFiles });
       setReviewDocumentUrls(data.documents ?? initialDocumentPreviewUrls);
-      // Do not auto-enter the read-only review state here — callers
-      // should decide whether to open review (read-only) or resubmit (editable).
+      // Không tự động vào trạng thái xem lại chỉ đọc ở đây - nơi gọi
+      // nên tự quyết định mở xem lại (chỉ đọc) hay nộp lại (có thể chỉnh sửa).
       setIsReviewingSubmittedForm(false);
       return data;
     } finally {
@@ -476,7 +485,7 @@ useEffect(() => {
     });
 
   const toDataUrl = async (file: File) => {
-    // Keep tiny files unchanged to avoid unnecessary quality loss.
+    // Giữ nguyên các tệp nhỏ để tránh giảm chất lượng không cần thiết.
     if (file.size <= 350 * 1024) {
       return readFileAsDataUrl(file);
     }
@@ -833,7 +842,7 @@ useEffect(() => {
       form.append("parent_phone", formData.relationPhone);
       form.append("parent_relationship", formData.relationship);
 
-      // Parent / family details
+      // Thông tin cha / gia đình
       form.append("father_name", formData.father_name);
       form.append("father_phone", formData.father_phone);
       form.append("father_job", formData.father_job);
@@ -842,7 +851,7 @@ useEffect(() => {
       form.append("mother_job", formData.mother_job);
       form.append("parent_address", formData.familyContactAddress || formData.address || "");
 
-      // Stay dates
+      // Ngày lưu trú
       form.append("stay_from_date", formData.dormStartDate || "");
       form.append("stay_to_date", formData.dormEndDate || "");
 

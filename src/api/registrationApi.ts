@@ -4,14 +4,14 @@ const API = axios.create({
   baseURL: "http://127.0.0.1:8000/api", // BE Laravel
 });
 
-// ================== GET ==================
+// ================== LẤY ==================
 export const getMyRegistration = (email: string) => {
   return API.get(`/registration/me`, {
     params: { email },
   }).then((res) => res.data);
 };
 
-// ================== POST ==================
+// ================== GỬI ==================
 export const submitRegistration = (formData: FormData) => {
   return API.post(`/registration`, formData, {
     headers: {

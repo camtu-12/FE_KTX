@@ -16,7 +16,7 @@ type AuthState = {
   logout: () => void;
 };
 
-// 🔥 lấy từ localStorage khi reload
+// Lấy từ localStorage khi tải lại
 const storedUser = localStorage.getItem("user");
 const storedToken = localStorage.getItem("token");
 

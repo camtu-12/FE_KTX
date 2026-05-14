@@ -168,7 +168,7 @@ export default function AdminRegistrationDetailPage() {
     const load = async () => {
       let id = Number(registrationId);
       if (Number.isNaN(id) || id <= 0) {
-        // fall back to routeState.request.id when route param is not present
+        // quay về routeState.request.id khi tham số route không tồn tại
         id = Number(routeState?.request?.id ?? NaN);
       }
 

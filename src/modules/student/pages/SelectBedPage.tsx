@@ -220,7 +220,7 @@ export default function SelectBedPage() {
         window.location.replace(clean);
       }
     } catch {
-      // ignore in non-browser env
+      // Bỏ qua trong môi trường không phải trình duyệt
     }
   }, []);
 

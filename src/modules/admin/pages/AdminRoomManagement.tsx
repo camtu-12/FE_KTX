@@ -475,7 +475,7 @@ export default function AdminRoomManagement() {
       }),
     );
 
-    // if editing the currently selected room, update selectedRoom reference
+    // nếu đang sửa phòng hiện được chọn, cập nhật tham chiếu selectedRoom
     if (selectedRoom?.id === roomId) {
       const updated = rooms.find((r) => r.id === roomId) ?? selectedRoom;
       setSelectedRoom(updated ?? null);
