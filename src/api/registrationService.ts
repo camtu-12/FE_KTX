@@ -6,7 +6,8 @@ import type {
   RegistrationStatus,
 } from "../modules/admin/data/registrationRequests";
 
-const BASE_URL = "http://127.0.0.1:8000/api";
+const API_BASE = ((import.meta.env.VITE_API_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
+const BASE_URL = `${API_BASE}/api`;
 
 export type DormRoom = {
   id: number;
@@ -67,21 +68,16 @@ const createPreviewSvg = (title: string, subtitle: string, accent: string) =>
   )}`;
 
 const toPublicAssetUrl = (value?: string | null) => {
-  if (!value) {
-    return "";
-  }
+  if (!value) return "";
+  if (/^(data:|https?:\/\/)/i.test(value)) return value;
 
-  if (/^(data:|https?:\/\/)/i.test(value)) {
-    return value;
-  }
-
-  const normalized = value.replace(/^\/+/, "");
+  const normalized = String(value).replace(/^\/+/, "");
 
   if (normalized.startsWith("storage/")) {
-    return `http://127.0.0.1:8000/${normalized}`;
+    return `${API_BASE}/${normalized}`;
   }
 
-  return `http://127.0.0.1:8000/storage/${normalized}`;
+  return `${API_BASE}/storage/${normalized}`;
 };
 
 const normalizeStatus = (value: unknown): RegistrationStatus => {

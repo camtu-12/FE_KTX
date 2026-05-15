@@ -1,7 +1,9 @@
 import axios from "axios";
 
+const API_BASE = ((import.meta.env.VITE_API_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
+
 const API = axios.create({
-  baseURL: "http://127.0.0.1:8000/api", // BE Laravel
+  baseURL: `${API_BASE}/api`, // BE Laravel
 });
 
 // ================== LẤY ==================
