@@ -388,7 +388,21 @@ useEffect(() => {
       setRejectionReason(data.rejectionReason ?? "");
       setFormData({ ...initialFormData, ...data.formData });
       setDocumentFiles({ ...initialDocumentFiles });
-      setReviewDocumentUrls(data.documents ?? initialDocumentPreviewUrls);
+      const buildStorageUrl = (path?: string) => {
+        if (!path) return "";
+
+        if (path.startsWith("http")) {
+          return path;
+        }
+
+        return `${import.meta.env.VITE_API_BASE_URL}/storage/${path}`;
+      };
+
+setReviewDocumentUrls({
+  portraitPhoto: buildStorageUrl(data.documents?.portraitPhoto),
+  cccdFrontPhoto: buildStorageUrl(data.documents?.cccdFrontPhoto),
+  cccdBackPhoto: buildStorageUrl(data.documents?.cccdBackPhoto),
+});
       setIsReviewingSubmittedForm(false);
     } finally {
       setIsCheckingRegistration(false);
