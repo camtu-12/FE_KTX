@@ -6,7 +6,7 @@ import type {
   RegistrationStatus,
 } from "../modules/admin/data/registrationRequests";
 
-const API_BASE = ((import.meta.env.VITE_API_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
+const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
 const BASE_URL = `${API_BASE}/api`;
 
 export type DormRoom = {
@@ -232,7 +232,11 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
   const documents = readRecord(registration.documents, rawRecord?.documents, dataRecord?.documents) ?? {};
 
   // Ưu tiên tài sản tải lên thật; không tự tạo ảnh xem trước/mô phỏng ở đây.
-  const portraitPhotoUrl = toPublicAssetUrl(firstDefinedString(student.avatar, documents.portraitPhoto, documents.avatar));
+  // Ưu tiên ảnh được nộp kèm trong hồ sơ (`documents.portraitPhoto`) trước,
+  // sau đó mới tới avatar hiện tại của student nếu có.
+  const portraitPhotoUrl = toPublicAssetUrl(
+    firstDefinedString(documents.portraitPhoto, registration.avatar, student.avatar, documents.avatar),
+  );
   const cccdFrontPhotoUrl = toPublicAssetUrl(
     firstDefinedString(registration.cccd_front_url, documents.cccdFrontPhoto, documents.cccdFrontUrl),
   );
@@ -335,6 +339,15 @@ export const getLatestRegistrationByEmail = async (email: string): Promise<Regis
   return normalizeRegistrationRequest(extract<unknown>(res));
 };
 
+export const getRegistrationHistoryByEmailSemester = async (
+  email: string,
+  semester: string
+): Promise<RegistrationRequest[]> => {
+  const res = await regApi.getRegistrationHistory(email, semester);
+  const rows = Array.isArray(res) ? res : [];
+  return rows.map((row) => normalizeRegistrationRequest(row)).filter(Boolean) as RegistrationRequest[];
+};
+
 export const updateRegistrationStatus = async ({
   id,
   status,
@@ -423,6 +436,7 @@ export default {
   getRooms,
   getRegistrationById,
   getLatestRegistrationByEmail,
+  getRegistrationHistoryByEmailSemester,
   updateRegistrationStatus,
   submitRegistration,
   getMyRegistration,

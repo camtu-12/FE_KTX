@@ -165,30 +165,48 @@ export default function AdminRegistrationDetailPage() {
   const [request, setRequest] = useState<RegistrationRequest | null>(routeState?.request ?? null);
 
   useEffect(() => {
+    const id = Number(registrationId);
+    console.log('[AdminRegistrationDetailPage] registrationId param:', registrationId, 'parsed id:', id);
+
+    if (Number.isNaN(id) || id <= 0) {
+      console.log('[AdminRegistrationDetailPage] invalid registrationId from URL, clearing');
+      setRequest(null);
+      return;
+    }
+
+    // Nếu navigated từ modal và modal truyền snapshot (routeState.request) và returnToModal=true,
+    // thì ưu tiên dùng snapshot đó để hiển thị dữ liệu lịch sử chính xác (không bị ghi đè bởi latest).
+    if (routeState?.request && routeState.returnToModal && routeState.request.id === id) {
+      console.log('[AdminRegistrationDetailPage] using routeState.request snapshot for id:', id);
+      setRequest(routeState.request);
+      setFailedDocuments(createEmptyDocumentErrorState());
+      return;
+    }
+
+    let cancelled = false;
+
     const load = async () => {
-      let id = Number(registrationId);
-      if (Number.isNaN(id) || id <= 0) {
-        // quay về routeState.request.id khi tham số route không tồn tại
-        id = Number(routeState?.request?.id ?? NaN);
-      }
-
-      if (Number.isNaN(id) || id <= 0) {
-        return;
-      }
-
       try {
+        console.log('[AdminRegistrationDetailPage] calling getRegistrationById with id:', id);
         const res = await getRegistrationById(id);
+        if (cancelled) return;
+        console.log('[AdminRegistrationDetailPage] API response id:', res?.id, 'status:', res?.status);
         setRequest(res);
         setFailedDocuments(createEmptyDocumentErrorState());
       } catch (err) {
-        console.log(err);
+        if (cancelled) return;
+        console.log('[AdminRegistrationDetailPage] API error:', err);
         setRequest(null);
         setFailedDocuments(createEmptyDocumentErrorState());
       }
     };
 
     void load();
-  }, [registrationId, routeState?.request?.id]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [registrationId, routeState?.request, routeState?.returnToModal]);
 
   useEffect(() => {
     if (!imagePreview) {
