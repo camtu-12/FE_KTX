@@ -41,7 +41,7 @@ const adminMenu: MenuItem[] = [
     icon: BedSingle,
   },
   {
-    label: "Quản lý giường",
+    label: "Phân giường",
     to: "/admin/bed-management",
     icon: BedDouble,
   },

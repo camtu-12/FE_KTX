@@ -218,7 +218,7 @@ export default function BedManagementPage() {
       className="flex min-h-full flex-col gap-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
     >
       <div className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
-        <h1 className="text-[28px] font-bold tracking-tight text-[#1a2d52]">Quản lý giường</h1>
+        <h1 className="text-[28px] font-bold tracking-tight text-[#1a2d52]">Phân giường</h1>
         <p className="mt-1 text-sm text-[#62789f]">
           Danh sách sinh viên đã được phân phòng và trạng thái chọn giường.
         </p>
