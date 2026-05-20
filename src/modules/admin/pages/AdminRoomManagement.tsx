@@ -13,11 +13,12 @@ import {
 import { useOutletContext } from "react-router-dom";
 import { createPortal } from "react-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
+import { initialRooms, createBeds, ROOM_CAPACITY } from "../../../mocks/roommanagement";
 
 type RoomStatus = "AVAILABLE" | "FULL" | "MAINTENANCE";
 type BedStatus = "EMPTY" | "OCCUPIED" | "MAINTENANCE";
 type BedPosition = "UPPER" | "LOWER";
-type RoomGender = "MALE" | "FEMALE" | "MIXED";
+type RoomGender = "MALE" | "FEMALE";
 
 type Room = {
   id: number;
@@ -53,8 +54,6 @@ type BedPair = {
   lower: Bed;
 };
 
-const ROOM_CAPACITY = 14;
-
 const statusMeta: Record<RoomStatus, { label: string; className: string }> = {
   AVAILABLE: {
     label: "AVAILABLE",
@@ -88,7 +87,6 @@ const bedStatusMeta: Record<BedStatus, { label: string; className: string }> = {
 const genderLabel: Record<RoomGender, string> = {
   MALE: "Nam",
   FEMALE: "Nữ",
-  MIXED: "Hỗn hợp",
 };
 
 const initialFormState: RoomFormState = {
@@ -98,92 +96,12 @@ const initialFormState: RoomFormState = {
   status: "AVAILABLE",
 };
 
-function createBeds(roomId: number, occupiedBeds: number, maintenanceBeds: number[] = []): Bed[] {
-  return Array.from({ length: ROOM_CAPACITY }, (_, index) => {
-    const bedIndex = index + 1;
-    const isMaintenance = maintenanceBeds.includes(bedIndex);
-
-    let status: BedStatus = "EMPTY";
-    if (isMaintenance) {
-      status = "MAINTENANCE";
-    } else if (bedIndex <= occupiedBeds) {
-      status = "OCCUPIED";
-    }
-
-    return {
-      id: roomId * 100 + bedIndex,
-      bed_number: String(bedIndex),
-      position: bedIndex % 2 === 1 ? "UPPER" : "LOWER",
-      status,
-    };
-  });
-}
-
-const initialRooms: RoomWithBeds[] = [
-  {
-    id: 1,
-    building_code: "A",
-    room_number: "101",
-    gender: "MALE",
-    capacity: ROOM_CAPACITY,
-    occupied_beds: 6,
-    status: "AVAILABLE",
-    beds: createBeds(1, 6),
-  },
-  {
-    id: 2,
-    building_code: "A",
-    room_number: "102",
-    gender: "FEMALE",
-    capacity: ROOM_CAPACITY,
-    occupied_beds: 14,
-    status: "FULL",
-    beds: createBeds(2, 14),
-  },
-  {
-    id: 3,
-    building_code: "B",
-    room_number: "201",
-    gender: "MALE",
-    capacity: ROOM_CAPACITY,
-    occupied_beds: 8,
-    status: "AVAILABLE",
-    beds: createBeds(3, 8, [14]),
-  },
-  {
-    id: 4,
-    building_code: "B",
-    room_number: "202",
-    gender: "FEMALE",
-    capacity: ROOM_CAPACITY,
-    occupied_beds: 10,
-    status: "MAINTENANCE",
-    beds: createBeds(4, 10, [5, 12]),
-  },
-  {
-    id: 5,
-    building_code: "C",
-    room_number: "301",
-    gender: "MIXED",
-    capacity: ROOM_CAPACITY,
-    occupied_beds: 4,
-    status: "AVAILABLE",
-    beds: createBeds(5, 4),
-  },
-  {
-    id: 6,
-    building_code: "C",
-    room_number: "302",
-    gender: "FEMALE",
-    capacity: ROOM_CAPACITY,
-    occupied_beds: 14,
-    status: "FULL",
-    beds: createBeds(6, 14),
-  },
-];
-
 function getOccupiedBeds(beds: Bed[]) {
   return beds.filter((bed) => bed.status === "OCCUPIED").length;
+}
+
+function getEmptyBeds(beds: Bed[]) {
+  return beds.filter((bed) => bed.status === "EMPTY").length;
 }
 
 function getRoomCode(room: Pick<Room, "building_code" | "room_number">) {
@@ -234,10 +152,11 @@ function SelectField(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
 
 export default function AdminRoomManagement() {
   const { headerSearchValue } = useOutletContext<AdminLayoutOutletContext>();
-  const [rooms, setRooms] = useState<RoomWithBeds[]>(initialRooms);
+  const [rooms, setRooms] = useState<RoomWithBeds[]>(initialRooms as unknown as RoomWithBeds[]);
   const [filterBuilding, setFilterBuilding] = useState<string>("all");
   const [filterFloor, setFilterFloor] = useState<string>("all");
   const [filterGender, setFilterGender] = useState<"all" | RoomGender>("all");
+  const [filterStatus, setFilterStatus] = useState<"all" | RoomStatus>("all");
 
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
   const [editingRoomId, setEditingRoomId] = useState<number | null>(null);
@@ -302,14 +221,65 @@ export default function AdminRoomManagement() {
       const matchedBuilding = filterBuilding === "all" ? true : room.building_code === filterBuilding;
       const matchedFloor = filterFloor === "all" ? true : roomFloor === Number(filterFloor);
       const matchedGender = filterGender === "all" ? true : room.gender === filterGender;
-      return matchedKeyword && matchedBuilding && matchedFloor && matchedGender;
+      const matchedStatus = filterStatus === "all" ? true : room.status === filterStatus;
+      return matchedKeyword && matchedBuilding && matchedFloor && matchedGender && matchedStatus;
     });
-  }, [rooms, headerSearchValue, filterBuilding, filterFloor, filterGender]);
+  }, [rooms, headerSearchValue, filterBuilding, filterFloor, filterGender, filterStatus]);
 
   const totalRooms = filteredRooms.length;
   const totalBeds = filteredRooms.reduce((sum, room) => sum + room.capacity, 0);
   const totalOccupiedBeds = filteredRooms.reduce((sum, room) => sum + getOccupiedBeds(room.beds), 0);
   const totalEmptyBeds = totalBeds - totalOccupiedBeds;
+
+  const editingRoom = useMemo(() => {
+    if (!editingRoomId) return null;
+    return rooms.find((room) => room.id === editingRoomId) ?? null;
+  }, [rooms, editingRoomId]);
+
+  const editingRoomOccupiedBeds = editingRoom ? getOccupiedBeds(editingRoom.beds) : 0;
+  const editingRoomEmptyBeds = editingRoom ? getEmptyBeds(editingRoom.beds) : 0;
+
+  const formOccupiedBeds = editingRoomId ? editingRoomOccupiedBeds : 0;
+  const formEmptyBeds = editingRoomId ? editingRoomEmptyBeds : ROOM_CAPACITY;
+
+  const isMaintenanceBlocked = roomForm.status === "MAINTENANCE" && formOccupiedBeds > 0;
+  const isFullBlocked =
+    roomForm.status === "FULL"
+    && (formEmptyBeds > 0 || formOccupiedBeds === 0 || Boolean(editingRoom?.status === "MAINTENANCE"));
+  const isAvailableBlocked = roomForm.status === "AVAILABLE" && formEmptyBeds === 0;
+
+  const isRoomStatusBlocked = Boolean(isMaintenanceBlocked || isFullBlocked || isAvailableBlocked);
+
+  const blockedStatusMessage = useMemo(() => {
+    if (isMaintenanceBlocked) {
+      return `Phòng đang có ${formOccupiedBeds} sinh viên ở. Cần di dời trước khi chuyển sang BẢO TRÌ.`;
+    }
+
+    if (isAvailableBlocked) {
+      return "Phòng không còn giường trống nên không thể chuyển sang AVAILABLE. Hãy chuyển ít nhất 1 giường về EMPTY trước.";
+    }
+
+    if (isFullBlocked) {
+      if (editingRoom?.status === "MAINTENANCE") {
+        return "Phòng đang BẢO TRÌ. Hãy chuyển về AVAILABLE trước khi cho sinh viên ở.";
+      }
+
+      if (formOccupiedBeds === 0) {
+        return "Không thể chuyển sang FULL khi phòng chưa có sinh viên ở.";
+      }
+
+      return `Phòng vẫn còn ${formEmptyBeds} giường trống nên không thể chuyển sang FULL. Hãy phân phòng hết trước.`;
+    }
+
+    return "";
+  }, [
+    editingRoom?.status,
+    formEmptyBeds,
+    formOccupiedBeds,
+    isAvailableBlocked,
+    isFullBlocked,
+    isMaintenanceBlocked,
+  ]);
 
   const resetRoomForm = () => {
     setRoomForm(initialFormState);
@@ -377,6 +347,35 @@ export default function AdminRoomManagement() {
       return;
     }
 
+    if (roomForm.status === "MAINTENANCE" && formOccupiedBeds > 0) {
+      setRoomFormError(
+        `Chỉ được chuyển phòng sang BẢO TRÌ khi phòng không có sinh viên ở. Hiện đang có ${formOccupiedBeds} sinh viên.`,
+      );
+      return;
+    }
+
+    if (roomForm.status === "FULL") {
+      if (editingRoom?.status === "MAINTENANCE") {
+        setRoomFormError("Phòng đang BẢO TRÌ. Hãy chuyển về AVAILABLE trước khi cho sinh viên ở.");
+        return;
+      }
+
+      if (formOccupiedBeds === 0) {
+        setRoomFormError("Không thể chuyển sang FULL khi phòng chưa có sinh viên ở.");
+        return;
+      }
+
+      if (formEmptyBeds > 0) {
+        setRoomFormError("Không thể chuyển sang FULL khi phòng vẫn còn giường trống. Hãy phân phòng hết trước.");
+        return;
+      }
+    }
+
+    if (roomForm.status === "AVAILABLE" && formEmptyBeds === 0) {
+      setRoomFormError("Không thể chuyển sang AVAILABLE khi phòng không còn giường trống.");
+      return;
+    }
+
     const normalizedBuildingCode = roomForm.building_code.trim().toUpperCase();
     const normalizedRoomNumber = roomForm.room_number.trim().toUpperCase();
 
@@ -422,6 +421,15 @@ export default function AdminRoomManagement() {
   };
 
   const handleDeleteRoom = (room: RoomWithBeds) => {
+    const occupiedBeds = getOccupiedBeds(room.beds);
+    if (occupiedBeds > 0) {
+      showConfirm(
+        `Không thể xóa phòng ${getRoomCode(room)} vì đang có sinh viên ở`,
+        () => {},
+      );
+      return;
+    }
+
     showConfirm(`Bạn có chắc muốn xóa phòng ${room.room_number}?`, () => {
       setRooms((prevRooms) => prevRooms.filter((item) => item.id !== room.id));
       if (selectedRoom?.id === room.id) {
@@ -466,12 +474,30 @@ export default function AdminRoomManagement() {
     if (!editingBed || !editingBed.bed) return;
     const { roomId, bed } = editingBed;
 
+    const room = rooms.find((r) => r.id === roomId);
+    if (room?.status === "MAINTENANCE" && editingBedStatus === "OCCUPIED") {
+      showConfirm("Phòng đang ở trạng thái BẢO TRÌ nên không thể có sinh viên ở. Hãy chuyển phòng về AVAILABLE trước.", () => {});
+      return;
+    }
+
     setRooms((prev) =>
       prev.map((r) => {
         if (r.id !== roomId) return r;
         const updatedBeds = r.beds.map((b) => (b.id === bed.id ? { ...b, status: editingBedStatus } : b));
         const occupied = updatedBeds.filter((b) => b.status === "OCCUPIED").length;
-        return { ...r, beds: updatedBeds, occupied_beds: occupied };
+        const empty = updatedBeds.filter((b) => b.status === "EMPTY").length;
+
+        // Auto-update room status based on beds
+        let newRoomStatus = r.status;
+        if (empty === 0 && occupied > 0) {
+          // Tất cả giường (không tính maintenance) đều chiếm -> phòng FULL
+          newRoomStatus = "FULL";
+        } else if (empty > 0 && r.status === "FULL") {
+          // Có giường trống lại, nếu phòng hiện là FULL -> chuyển AVAILABLE
+          newRoomStatus = "AVAILABLE";
+        }
+
+        return { ...r, beds: updatedBeds, occupied_beds: occupied, status: newRoomStatus };
       }),
     );
 
@@ -513,7 +539,7 @@ export default function AdminRoomManagement() {
           </button>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
           <SelectField
             value={filterBuilding}
             onChange={(event) => setFilterBuilding(event.target.value)}
@@ -545,7 +571,15 @@ export default function AdminRoomManagement() {
             <option value="all">Tất cả giới tính</option>
             <option value="MALE">Nam</option>
             <option value="FEMALE">Nữ</option>
-            <option value="MIXED">Hỗn hợp</option>
+          </SelectField>
+          <SelectField
+            value={filterStatus}
+            onChange={(event) => setFilterStatus(event.target.value as "all" | RoomStatus)}
+          >
+            <option value="all">Tất cả trạng thái</option>
+            <option value="AVAILABLE">AVAILABLE</option>
+            <option value="FULL">FULL</option>
+            <option value="MAINTENANCE">MAINTENANCE</option>
           </SelectField>
         </div>
       </header>
@@ -738,7 +772,12 @@ export default function AdminRoomManagement() {
                     className="mt-2 w-full rounded-md border px-3 py-2"
                   >
                     <option value="EMPTY">EMPTY</option>
-                    <option value="OCCUPIED">OCCUPIED</option>
+                    <option
+                      value="OCCUPIED"
+                      disabled={rooms.find((r) => r.id === editingBed.roomId)?.status === "MAINTENANCE"}
+                    >
+                      OCCUPIED
+                    </option>
                     <option value="MAINTENANCE">MAINTENANCE</option>
                   </select>
                 </div>
@@ -803,7 +842,7 @@ export default function AdminRoomManagement() {
                       <InputField
                         value={roomForm.room_number}
                         onChange={(event) => setRoomForm((prev) => ({ ...prev, room_number: event.target.value }))}
-                        placeholder="Ví dụ: 101"
+                        placeholder="Ví dụ: A101"
                       />
                     </div>
 
@@ -815,7 +854,6 @@ export default function AdminRoomManagement() {
                       >
                         <option value="MALE">Nam</option>
                         <option value="FEMALE">Nữ</option>
-                        <option value="MIXED">Hỗn hợp</option>
                       </SelectField>
                     </div>
 
@@ -823,17 +861,23 @@ export default function AdminRoomManagement() {
                       <label className="text-sm font-medium text-slate-600">Trạng thái phòng</label>
                       <SelectField
                         value={roomForm.status}
-                        onChange={(event) => setRoomForm((prev) => ({ ...prev, status: event.target.value as RoomStatus }))}
+                        onChange={(event) => {
+                          setRoomForm((prev) => ({ ...prev, status: event.target.value as RoomStatus }));
+                          setRoomFormError("");
+                        }}
                       >
                         <option value="AVAILABLE">AVAILABLE</option>
                         <option value="FULL">FULL</option>
                         <option value="MAINTENANCE">MAINTENANCE</option>
                       </SelectField>
+                      {isRoomStatusBlocked ? (
+                        <p className="mt-2 text-xs font-medium text-amber-700">
+                          {blockedStatusMessage}
+                        </p>
+                      ) : null}
                     </div>
 
-                    <div className="rounded-xl border border-[#dbe6f7] bg-[#f5f9ff] px-3 py-2 text-sm text-[#46608f]">
-                      Sức chứa cố định theo nghiệp vụ: <span className="font-semibold">14 giường / phòng (7 cặp trên-dưới)</span>
-                    </div>
+                    
                   </div>
 
                   {roomFormError ? (
@@ -852,7 +896,9 @@ export default function AdminRoomManagement() {
                     </button>
                     <button
                       type="submit"
-                      className="inline-flex h-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_45%,#1f46ad_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(36,76,184,0.28)] transition hover:-translate-y-0.5 hover:brightness-110"
+                      disabled={isRoomStatusBlocked}
+                      title={isRoomStatusBlocked ? blockedStatusMessage : undefined}
+                      className="inline-flex h-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_45%,#1f46ad_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(36,76,184,0.28)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:brightness-100"
                     >
                       {editingRoomId ? "Lưu thay đổi" : "Thêm phòng"}
                     </button>
