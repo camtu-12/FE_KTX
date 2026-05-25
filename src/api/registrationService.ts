@@ -5,8 +5,8 @@ import type {
   RegistrationStatus,
 } from "../modules/admin/data/registrationRequests";
 
-// Sử dụng Railway URL từ environment variables
-const API_BASE = (import.meta.env.VITE_API_BASE_URL as string).replace(/\/+$/, "");
+// Sử dụng Railway URL từ environment variables (có fallback nếu biến không được set)
+const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) || "http://127.0.0.1:8000").replace(/\/+$/, "");
 
 
 console.log("API_BASE:", API_BASE); // Debug - kiểm tra URL đúng không
