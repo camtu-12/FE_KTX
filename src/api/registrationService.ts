@@ -6,8 +6,11 @@ import type {
   RegistrationStatus,
 } from "../modules/admin/data/registrationRequests";
 
-const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
+// Sử dụng Railway URL từ environment variables
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8000").replace(/\/+$/, "");
 const BASE_URL = `${API_BASE}/api`;
+
+console.log("API_BASE:", API_BASE); // Debug - kiểm tra URL đúng không
 
 export type DormRoom = {
   id: number;
