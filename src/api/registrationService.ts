@@ -7,7 +7,7 @@ import type {
 } from "../modules/admin/data/registrationRequests";
 
 // Sử dụng Railway URL từ environment variables
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8000").replace(/\/+$/, "");
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string).replace(/\/+$/, "");
 const BASE_URL = `${API_BASE}/api`;
 
 console.log("API_BASE:", API_BASE); // Debug - kiểm tra URL đúng không

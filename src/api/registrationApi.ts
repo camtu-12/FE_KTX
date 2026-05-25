@@ -1,8 +1,7 @@
 import axios from "axios";
 
-// ✅ ĐÚNG - Lấy từ environment variables
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8000").replace(/\/+$/, "");
-
+//Lấy từ environment variables
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string).replace(/\/+$/, "");
 console.log("[API] Base URL:", API_BASE); // Debug log
 
 const API = axios.create({
