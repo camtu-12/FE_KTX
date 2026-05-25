@@ -362,7 +362,7 @@ export const updateRegistrationStatus = async ({
 }): Promise<RegistrationRequest> => {
   try {
     if (status === "approved") {
-      await axios.put(`${BASE_URL}/registration/${id}/approve`);
+      await regApi.API.put(`/registration/${id}/approve`);
       const updated = await getRegistrationById(id);
       if (!updated) {
         throw new Error("Không thể tải lại đơn đăng ký sau khi duyệt.");
@@ -371,7 +371,7 @@ export const updateRegistrationStatus = async ({
       return updated;
     }
 
-    await axios.put(`${BASE_URL}/registration/${id}/reject`, {
+    await regApi.API.put(`/registration/${id}/reject`, {
       rejectionReason: rejectionReason?.trim() ?? "",
     });
     const updated = await getRegistrationById(id);

@@ -1,24 +1,10 @@
 import axios from "axios";
 
-//Lấy từ environment variables
-const API_BASE = (import.meta.env.VITE_API_BASE_URL as string).replace(/\/+$/, "");
-console.log("[API] Base URL:", API_BASE); // Debug log
+const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
 
-const API = axios.create({
-  baseURL: `${API_BASE}/api`,
-  headers: {
-    "Content-Type": "application/json",
-  },
+export const API = axios.create({
+  baseURL: `${API_BASE}/api`, // BE Laravel
 });
-
-// Thêm interceptor để log requests/errors
-API.interceptors.response.use(
-  response => response,
-  error => {
-    console.error("[API Error]", error.config?.url, error.message);
-    return Promise.reject(error);
-  }
-);
 
 // ================== LẤY ==================
 export const getMyRegistration = (email: string) => {
@@ -43,11 +29,9 @@ export const submitRegistration = (formData: FormData) => {
 export const getRegistrationById = (id: number) => {
   return API.get(`/registration/${id}`).then((res) => res.data);
 };
-
 export const getRegistrations = () => {
   return API.get("/registration").then((res) => res.data);
 };
-
 export const getRooms = () => {
   return API.get("/rooms").then((res) => res.data);
 };
