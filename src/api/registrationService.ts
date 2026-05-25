@@ -8,7 +8,7 @@ import type {
 
 // Sử dụng Railway URL từ environment variables
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string).replace(/\/+$/, "");
-const BASE_URL = `${API_BASE}/api`;
+
 
 console.log("API_BASE:", API_BASE); // Debug - kiểm tra URL đúng không
 
@@ -392,7 +392,7 @@ export const updateRegistrationStatus = async ({
 // Các tác vụ admin: wrapper tốt nhất - backend có thể cung cấp endpoint khác.
 export const assignRoomToRegistration = async ({ requestId, roomId }: { requestId: number; roomId: number }): Promise<RegistrationRequest | null> => {
   try {
-    const res = await axios.put(`${BASE_URL}/registration/${requestId}/assign-room`, { room_id: roomId });
+    const res = await regApi.API.put(`/registration/${requestId}/assign-room`,{ room_id: roomId });
     void res;
     return getRegistrationById(requestId);
   } catch (err: unknown) {
@@ -406,7 +406,7 @@ export const assignRoomToRegistration = async ({ requestId, roomId }: { requestI
 
 export const selectBedForRegistration = async ({ email, bedId }: { email: string; bedId: number }) => {
   try {
-    const res = await axios.put(`${BASE_URL}/registration/select-bed`, { email, bed_id: bedId });
+    const res = await regApi.API.put(`/registration/select-bed`, { email, bed_id: bedId });
     return extract<unknown>(res);
   } catch (err: unknown) {
     const error = isRecord(err) ? err : null;
