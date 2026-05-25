@@ -23,9 +23,13 @@ export default function AdminLayout() {
   const isAssignRoomListPage = location.pathname === "/admin/assign-room";
   const isBedManagementPage = location.pathname === "/admin/bed-management";
   const isRoomManagementPage = location.pathname === "/admin/rooms";
-  const isSearchEnabled = isRegistrationsPage || isAssignRoomListPage || isBedManagementPage || isRoomManagementPage;
+  const isBuildingManagementPage = location.pathname === "/admin/buildings";
+  const isSearchEnabled =
+    isRegistrationsPage || isAssignRoomListPage || isBedManagementPage || isRoomManagementPage || isBuildingManagementPage;
   const searchPlaceholder = isRoomManagementPage
     ? "Tìm theo số phòng..."
+    : isBuildingManagementPage
+      ? "Tìm theo mã, tên hoặc địa chỉ tòa..."
     : "Tìm theo MSSV, họ tên hoặc email";
 
   const handleLogout = () => {
@@ -62,12 +66,12 @@ export default function AdminLayout() {
           )}
         </AnimatePresence>
 
-        <div className="flex h-full min-h-0 flex-1 flex-col">
+        <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, delay: 0.08, ease: "easeOut" }}
-            className="auth-scrollbar flex-1 overflow-y-auto bg-white/35 px-6 pb-6 pt-1"
+            className="auth-scrollbar min-w-0 flex-1 overflow-y-auto bg-white/35 px-6 pb-6 pt-1"
           >
             <Outlet context={{ headerSearchValue, setHeaderSearchValue }} />
           </motion.div>

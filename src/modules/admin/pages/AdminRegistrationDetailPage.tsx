@@ -164,13 +164,37 @@ export default function AdminRegistrationDetailPage() {
 
   const [request, setRequest] = useState<RegistrationRequest | null>(routeState?.request ?? null);
 
+  function asyncSetRequest(next: RegistrationRequest | null) {
+    // Defer update to avoid synchronous setState in effect body which can cause cascading renders warning
+    setTimeout(() => {
+      setRequest((prev) => {
+        if (prev === next) return prev;
+        if (prev && next && prev.id === next.id) return prev;
+        return next;
+      });
+    }, 0);
+  }
+
+  function asyncSetFailedDocuments(next: Record<RegistrationDocumentField, boolean>) {
+    setTimeout(() => {
+      setFailedDocuments((prev) => {
+        try {
+          if (JSON.stringify(prev) === JSON.stringify(next)) return prev;
+        } catch {
+          // fallback to update
+        }
+        return next;
+      });
+    }, 0);
+  }
+
   useEffect(() => {
     const id = Number(registrationId);
     console.log('[AdminRegistrationDetailPage] registrationId param:', registrationId, 'parsed id:', id);
 
     if (Number.isNaN(id) || id <= 0) {
       console.log('[AdminRegistrationDetailPage] invalid registrationId from URL, clearing');
-      setRequest(null);
+      asyncSetRequest(null);
       return;
     }
 
@@ -178,8 +202,8 @@ export default function AdminRegistrationDetailPage() {
     // thì ưu tiên dùng snapshot đó để hiển thị dữ liệu lịch sử chính xác (không bị ghi đè bởi latest).
     if (routeState?.request && routeState.returnToModal && routeState.request.id === id) {
       console.log('[AdminRegistrationDetailPage] using routeState.request snapshot for id:', id);
-      setRequest(routeState.request);
-      setFailedDocuments(createEmptyDocumentErrorState());
+      asyncSetRequest(routeState.request ?? null);
+      asyncSetFailedDocuments(createEmptyDocumentErrorState());
       return;
     }
 
@@ -191,13 +215,13 @@ export default function AdminRegistrationDetailPage() {
         const res = await getRegistrationById(id);
         if (cancelled) return;
         console.log('[AdminRegistrationDetailPage] API response id:', res?.id, 'status:', res?.status);
-        setRequest(res);
-        setFailedDocuments(createEmptyDocumentErrorState());
+        asyncSetRequest(res ?? null);
+        asyncSetFailedDocuments(createEmptyDocumentErrorState());
       } catch (err) {
         if (cancelled) return;
         console.log('[AdminRegistrationDetailPage] API error:', err);
-        setRequest(null);
-        setFailedDocuments(createEmptyDocumentErrorState());
+        asyncSetRequest(null);
+        asyncSetFailedDocuments(createEmptyDocumentErrorState());
       }
     };
 

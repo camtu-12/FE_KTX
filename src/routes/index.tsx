@@ -7,6 +7,8 @@ import AdminRegistrationDetailPage from "../modules/admin/pages/AdminRegistratio
 import AdminRegistrationsPage from "../modules/admin/pages/AdminRegistrationsPage";
 import BedManagementPage from "../modules/admin/pages/BedManagementPage";
 import AdminRoomManagement from "../modules/admin/pages/AdminRoomManagement";
+import AdminBuildingManagement from "../modules/admin/pages/AdminBuildingManagement";
+import AdminBuildingDetailPage from "../modules/admin/pages/AdminBuildingDetailPage";
 import AssignRoomPage from "../modules/admin/pages/AssignRoomPage.tsx";
 import AssignRoomDetailPage from "../modules/admin/pages/AssignRoomDetailPage";
 import AdminStudentsPage from "../modules/admin/pages/AdminStudentsPage";
@@ -50,6 +52,8 @@ export default function AppRoutes() {
           <Route path="bed-management" element={<BedManagementPage />} />
           <Route path="students" element={<AdminStudentsPage />} />
           <Route path="rooms" element={<AdminRoomManagement />} />
+          <Route path="buildings" element={<AdminBuildingManagement />} />
+          <Route path="buildings/:buildingId" element={<AdminBuildingDetailPage />} />
         </Route>
 
         <Route

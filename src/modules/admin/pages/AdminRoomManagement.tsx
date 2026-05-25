@@ -1,14 +1,16 @@
 import { useMemo, useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import {
-  BedDouble,
-  Building2,
-  DoorOpen,
+  BedSingle,
   Eye,
   Pencil,
   Plus,
+  Settings2,
   Trash2,
+  Users,
   User,
   X,
+  ArrowUp,
 } from "lucide-react";
 import { useOutletContext } from "react-router-dom";
 import { createPortal } from "react-dom";
@@ -56,15 +58,15 @@ type BedPair = {
 
 const statusMeta: Record<RoomStatus, { label: string; className: string }> = {
   AVAILABLE: {
-    label: "AVAILABLE",
+    label: "Còn trống",
     className: "border-emerald-200 bg-emerald-50 text-emerald-700",
   },
   FULL: {
-    label: "FULL",
+    label: "Đầy",
     className: "border-red-200 bg-red-50 text-red-700",
   },
   MAINTENANCE: {
-    label: "MAINTENANCE",
+    label: "Bảo trì",
     className: "border-amber-200 bg-amber-50 text-amber-700",
   },
 };
@@ -162,6 +164,8 @@ export default function AdminRoomManagement() {
   const [editingRoomId, setEditingRoomId] = useState<number | null>(null);
   const [roomForm, setRoomForm] = useState<RoomFormState>(initialFormState);
   const [roomFormError, setRoomFormError] = useState("");
+  const [roomValidationErrors, setRoomValidationErrors] = useState<{ room_number?: string; building_code?: string }>({});
+  const [roomSubmitAttempted, setRoomSubmitAttempted] = useState(false);
 
   const [isBedsModalOpen, setIsBedsModalOpen] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState<RoomWithBeds | null>(null);
@@ -192,6 +196,43 @@ export default function AdminRoomManagement() {
       if (authScrollEl) authScrollEl.style.overflow = originalAuthOverflow;
     };
   }, [isBedsModalOpen, isRoomModalOpen]);
+
+  const [isScrollToTopVisible, setIsScrollToTopVisible] = useState(false);
+
+  const handleScrollToTop = () => {
+    const scrollContainer = document.querySelector(".auth-scrollbar") as HTMLElement | null;
+    if (scrollContainer) {
+      scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const scrollContainer = document.querySelector<HTMLElement>(".auth-scrollbar");
+    if (!scrollContainer) return;
+
+    const updateVisibility = () => {
+      const threshold = Math.max(180, scrollContainer.clientHeight * 0.6);
+      setIsScrollToTopVisible(scrollContainer.scrollTop > threshold);
+    };
+
+    updateVisibility();
+    scrollContainer.addEventListener("scroll", updateVisibility, { passive: true });
+
+    return () => scrollContainer.removeEventListener("scroll", updateVisibility);
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const authScrollEl = document.querySelector<HTMLElement>(".auth-scrollbar");
+    if (authScrollEl) {
+      authScrollEl.scrollTo({ top: 0 });
+    } else {
+      window.scrollTo({ top: 0 });
+    }
+  }, []);
 
   const buildingOptions = useMemo(() => {
     const buildings = new Set(rooms.map((room) => room.building_code));
@@ -225,6 +266,18 @@ export default function AdminRoomManagement() {
       return matchedKeyword && matchedBuilding && matchedFloor && matchedGender && matchedStatus;
     });
   }, [rooms, headerSearchValue, filterBuilding, filterFloor, filterGender, filterStatus]);
+  // Display rooms oldest-first (id ascending)
+  // Keep this separate so filtering logic stays clear
+  const displayedRooms = useMemo(() => {
+    return [...filteredRooms].sort((a, b) => a.id - b.id);
+  }, [filteredRooms]);
+
+  const resetAllFilters = () => {
+    setFilterBuilding("all");
+    setFilterFloor("all");
+    setFilterGender("all");
+    setFilterStatus("all");
+  };
 
   const totalRooms = filteredRooms.length;
   const totalBeds = filteredRooms.reduce((sum, room) => sum + room.capacity, 0);
@@ -285,12 +338,38 @@ export default function AdminRoomManagement() {
     setRoomForm(initialFormState);
     setRoomFormError("");
     setEditingRoomId(null);
+    setRoomValidationErrors({});
+    setRoomSubmitAttempted(false);
   };
 
   const openAddRoomModal = () => {
-    resetRoomForm();
+    // prepare form with expected next room number for selected/default building
+    const defaultBuilding = buildingOptions.length > 0 ? buildingOptions[0] : initialFormState.building_code;
+    const expected = computeExpectedNextRoomNumber(defaultBuilding);
+    setRoomForm({ ...initialFormState, building_code: defaultBuilding, room_number: String(expected) });
+    setRoomFormError("");
+    setRoomValidationErrors({});
+    setEditingRoomId(null);
+    setRoomSubmitAttempted(false);
     setIsRoomModalOpen(true);
   };
+
+  // Compute expected next room number for a building (numeric part)
+  const computeExpectedNextRoomNumber = (buildingCode: string) => {
+    const normalized = buildingCode.trim().toUpperCase();
+    const nums = rooms
+      .filter((r) => r.building_code.trim().toUpperCase() === normalized)
+      .map((r) => {
+        const n = r.room_number.replace(/\D/g, "");
+        return n ? Number(n) : NaN;
+      })
+      .filter((v) => !Number.isNaN(v));
+
+    const max = nums.length ? Math.max(...nums) : null;
+    return max !== null ? max + 1 : 101; // default first room = 101
+  };
+
+  // removed effect-based auto-fill to avoid cascading renders
 
   const openEditRoomModal = (room: RoomWithBeds) => {
     setEditingRoomId(room.id);
@@ -301,6 +380,8 @@ export default function AdminRoomManagement() {
       status: room.status,
     });
     setRoomFormError("");
+    setRoomValidationErrors({});
+    setRoomSubmitAttempted(false);
     setIsRoomModalOpen(true);
   };
 
@@ -312,7 +393,6 @@ export default function AdminRoomManagement() {
   const validateRoomForm = () => {
     const normalizedRoomNumber = roomForm.room_number.trim().toUpperCase();
     const normalizedBuildingCode = roomForm.building_code.trim().toUpperCase();
-
     if (!normalizedRoomNumber) {
       return "Vui lòng nhập số phòng.";
     }
@@ -335,15 +415,46 @@ export default function AdminRoomManagement() {
       return "Phòng đã tồn tại trong tòa này. Vui lòng kiểm tra lại.";
     }
 
+    // Enforce sequential numeric room number when adding (not editing)
+    if (!editingRoomId) {
+      const numericPart = (s: string) => {
+        const n = s.replace(/\D/g, "");
+        return n ? Number(n) : NaN;
+      };
+
+      const expected = computeExpectedNextRoomNumber(normalizedBuildingCode);
+      const entered = numericPart(normalizedRoomNumber);
+      if (Number.isNaN(entered) || entered !== expected) {
+        return `Khi thêm phòng cho tòa ${normalizedBuildingCode}, số phòng bắt buộc phải là ${expected}.`;
+      }
+    }
+
     return "";
   };
 
   const handleSubmitRoom = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setRoomSubmitAttempted(true);
+    setRoomValidationErrors({});
+
+    const normalizedRoomNumber = roomForm.room_number.trim().toUpperCase();
+    const normalizedBuildingCode = roomForm.building_code.trim().toUpperCase();
+    const fieldErrors: { room_number?: string; building_code?: string } = {};
+    if (!normalizedRoomNumber) fieldErrors.room_number = "Vui lòng nhập Số phòng";
+    if (!normalizedBuildingCode) fieldErrors.building_code = "Vui lòng chọn Tòa";
+    if (Object.keys(fieldErrors).length > 0) {
+      setRoomValidationErrors(fieldErrors);
+      return;
+    }
 
     const validationError = validateRoomForm();
     if (validationError) {
-      setRoomFormError(validationError);
+      // If duplicate room detected, show error on the specific fields
+      if (validationError.includes("Phòng đã tồn tại")) {
+        setRoomValidationErrors({ room_number: "Phòng đã tồn tại trong tòa này", building_code: undefined });
+      } else {
+        setRoomFormError(validationError);
+      }
       return;
     }
 
@@ -376,8 +487,7 @@ export default function AdminRoomManagement() {
       return;
     }
 
-    const normalizedBuildingCode = roomForm.building_code.trim().toUpperCase();
-    const normalizedRoomNumber = roomForm.room_number.trim().toUpperCase();
+    // use previously-normalized values above
 
     if (editingRoomId) {
       setRooms((prevRooms) =>
@@ -516,23 +626,44 @@ export default function AdminRoomManagement() {
   };
 
   return (
-    <section className="relative isolate space-y-6 rounded-[28px] border border-[#cfdbef] bg-[radial-gradient(circle_at_top_right,#ffffff_0%,#f3f8ff_55%,#eef4ff_100%)] p-4 shadow-[0_18px_44px_rgba(15,23,42,0.10)] sm:p-6">
+    <motion.section
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+      className="flex min-h-full flex-col gap-6 rounded-[28px] border border-[#cfdbef] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 shadow-[0_18px_44px_rgba(15,23,42,0.10)] sm:p-6"
+    >
+      {typeof document !== "undefined" && isScrollToTopVisible
+        ? createPortal(
+            <div className="fixed bottom-6 right-6 z-[70]">
+              <button
+                type="button"
+                onClick={handleScrollToTop}
+                className="group inline-flex h-12 w-12 items-center justify-center rounded-full bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_42%,#31b7d4_100%)] text-white shadow-[0_16px_32px_rgba(36,76,184,0.28)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.98]"
+                aria-label="Về đầu trang"
+                title="Về đầu trang"
+              >
+                <ArrowUp className="h-5 w-5 transition-transform duration-200 group-hover:-translate-y-0.5" />
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-[28px]">
         <div className="absolute -left-20 top-0 h-56 w-56 rounded-full bg-[#244cb8]/10 blur-3xl" />
         <div className="absolute -bottom-24 right-0 h-64 w-64 rounded-full bg-[#31b7d4]/10 blur-3xl" />
       </div>
 
-      <header className="rounded-2xl border border-[#d5e2f5] bg-white/80 p-4 shadow-sm backdrop-blur-sm sm:p-5">
+      <header className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-[#1a2d52] sm:text-3xl">Quản lý phòng</h1>
-            <p className="mt-1 text-sm text-[#61779d]">Quản lý phòng, giường và trạng thái lưu trú trong ký túc xá.</p>
+            <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">Quản lý phòng</h1>
+            <p className="mt-1 text-sm text-[#62789f]">Quản lý phòng, giường và trạng thái lưu trú trong ký túc xá.</p>
           </div>
 
           <button
             type="button"
             onClick={openAddRoomModal}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_45%,#1f46ad_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(36,76,184,0.28)] transition hover:-translate-y-0.5 hover:brightness-110"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(36,76,184,0.28)] transition hover:-translate-y-0.5 hover:brightness-110"
           >
             <Plus className="h-4 w-4" />
             Thêm phòng
@@ -577,9 +708,9 @@ export default function AdminRoomManagement() {
             onChange={(event) => setFilterStatus(event.target.value as "all" | RoomStatus)}
           >
             <option value="all">Tất cả trạng thái</option>
-            <option value="AVAILABLE">AVAILABLE</option>
-            <option value="FULL">FULL</option>
-            <option value="MAINTENANCE">MAINTENANCE</option>
+            <option value="AVAILABLE">Còn trống</option>
+            <option value="FULL">Đầy</option>
+            <option value="MAINTENANCE">Bảo trì</option>
           </SelectField>
         </div>
       </header>
@@ -587,24 +718,24 @@ export default function AdminRoomManagement() {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <article className="rounded-2xl border border-[#d7e3f5] bg-white p-4 shadow-sm">
           <p className="text-xs font-semibold uppercase text-[#5f78a4]">Tổng phòng</p>
-          <p className="mt-2 text-2xl font-bold text-[#1a2d52]">{totalRooms}</p>
+          <p className="mt-4 text-2xl font-extrabold text-[#1a2d52]">{totalRooms}</p>
         </article>
         <article className="rounded-2xl border border-[#d7e3f5] bg-white p-4 shadow-sm">
           <p className="text-xs font-semibold uppercase text-[#5f78a4]">Tổng giường</p>
-          <p className="mt-2 text-2xl font-bold text-[#1a2d52]">{totalBeds}</p>
+          <p className="mt-4 text-2xl font-extrabold text-[#1a2d52]">{totalBeds}</p>
         </article>
         <article className="rounded-2xl border border-[#d7e3f5] bg-white p-4 shadow-sm">
           <p className="text-xs font-semibold uppercase text-[#5f78a4]">Đã sử dụng</p>
-          <p className="mt-2 text-2xl font-bold text-[#1a2d52]">{totalOccupiedBeds}</p>
+          <p className="mt-4 text-2xl font-extrabold text-[#1a2d52]">{totalOccupiedBeds}</p>
         </article>
         <article className="rounded-2xl border border-[#d7e3f5] bg-white p-4 shadow-sm">
           <p className="text-xs font-semibold uppercase text-[#5f78a4]">Giường trống</p>
-          <p className="mt-2 text-2xl font-bold text-emerald-700">{totalEmptyBeds}</p>
+          <p className="mt-4 text-2xl font-extrabold text-emerald-700">{totalEmptyBeds}</p>
         </article>
       </div>
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3">
-        {filteredRooms.map((room) => {
+        {displayedRooms.map((room) => {
           const occupiedBeds = getOccupiedBeds(room.beds);
           const emptyBeds = room.capacity - occupiedBeds;
 
@@ -630,18 +761,25 @@ export default function AdminRoomManagement() {
               <div className="mt-4 space-y-2 text-sm text-slate-600">
                 <p className="flex items-center gap-2">
                   <User className="h-4 w-4 text-slate-400" />
-                  Giới tính áp dụng: <span className="font-semibold text-slate-700">{genderLabel[room.gender]}</span>
+                  Giới tính áp dụng:
+                  <span
+                    className={`ml-1 rounded-full px-2 py-0.5 text-sm font-semibold ${
+                      room.gender === "MALE" ? "bg-sky-100 text-sky-700" : "bg-pink-100 text-pink-700"
+                    }`}
+                  >
+                    {genderLabel[room.gender]}
+                  </span>
                 </p>
                 <p className="flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-slate-400" />
-                  Cấu hình chuẩn: <span className="font-semibold text-slate-700">14 giường (7 cặp)</span>
+                  <Settings2 className="h-4 w-4 text-slate-400" />
+                  Cấu hình chuẩn: <span className="font-semibold text-slate-700">14 giường</span>
                 </p>
                 <p className="flex items-center gap-2">
-                  <BedDouble className="h-4 w-4 text-slate-400" />
+                  <Users className="h-4 w-4 text-slate-400" />
                   Đã dùng/Tổng: <span className="font-semibold text-slate-700">{occupiedBeds}/{room.capacity}</span>
                 </p>
                 <p className="flex items-center gap-2">
-                  <DoorOpen className="h-4 w-4 text-slate-400" />
+                  <BedSingle className="h-4 w-4 text-slate-400" />
                   Giường trống: <span className="font-semibold text-emerald-700">{emptyBeds}</span>
                 </p>
               </div>
@@ -677,9 +815,12 @@ export default function AdminRoomManagement() {
         })}
       </div>
 
-      {filteredRooms.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-[#c9d8ef] bg-white/75 p-8 text-center text-sm text-[#61779d]">
-          Không tìm thấy phòng phù hợp với bộ lọc hiện tại.
+      {displayedRooms.length === 0 ? (
+        <div className="mx-auto flex max-w-md flex-col items-center justify-center rounded-[28px] border border-dashed border-[#cfdcf0] bg-[#f8fbff] px-6 py-10 text-center">
+          <p className="text-sm font-semibold text-[#1a2d52]">Không tìm thấy phòng phù hợp với bộ lọc hiện tại</p>
+          <button type="button" onClick={resetAllFilters} className="mt-5 inline-flex h-9 items-center justify-center rounded-xl bg-[#244cb8] px-4 text-sm font-semibold text-white transition hover:bg-[#1f44a4]">
+            Bỏ bộ lọc
+          </button>
         </div>
       ) : null}
 
@@ -711,7 +852,6 @@ export default function AdminRoomManagement() {
                       key={pair.pairNumber}
                       className="rounded-2xl border border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-3 shadow-sm"
                     >
-                      <p className="text-sm font-semibold text-[#1f3152]">Cặp {pair.pairNumber}</p>
                       <div className="mt-3 space-y-2">
                                 {[pair.upper, pair.lower].map((bed) => (
                                   <div
@@ -816,10 +956,18 @@ export default function AdminRoomManagement() {
                 <form onSubmit={handleSubmitRoom} className="mt-5 space-y-4">
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="sm:col-span-2">
-                      <label className="text-sm font-medium text-slate-600">Tòa</label>
+                      <label className="text-sm font-medium text-slate-600">Tòa <span className="ml-1 text-red-500">*</span></label>
                       <SelectField
                         value={roomForm.building_code}
-                        onChange={(event) => setRoomForm((prev) => ({ ...prev, building_code: event.target.value }))}
+                        onChange={(event) => {
+                          const newCode = event.target.value;
+                          setRoomForm((prev) => ({
+                            ...prev,
+                            building_code: newCode,
+                            room_number: !editingRoomId ? String(computeExpectedNextRoomNumber(newCode)) : prev.room_number,
+                          }));
+                          setRoomValidationErrors({});
+                        }}
                       >
                         {buildingOptions.length > 0 ? (
                           buildingOptions.map((buildingCode) => (
@@ -835,19 +983,29 @@ export default function AdminRoomManagement() {
                           </>
                         )}
                       </SelectField>
+                      {roomSubmitAttempted && roomValidationErrors.building_code ? (
+                        <div className="mt-1 text-xs text-red-600">{roomValidationErrors.building_code}</div>
+                      ) : null}
                     </div>
 
                     <div className="sm:col-span-2">
-                      <label className="text-sm font-medium text-slate-600">Số phòng</label>
+                      <label className="text-sm font-medium text-slate-600">Số phòng <span className="ml-1 text-red-500">*</span></label>
                       <InputField
                         value={roomForm.room_number}
-                        onChange={(event) => setRoomForm((prev) => ({ ...prev, room_number: event.target.value }))}
-                        placeholder="Ví dụ: A101"
+                        onChange={(event) => { setRoomForm((prev) => ({ ...prev, room_number: event.target.value })); setRoomValidationErrors({}); }}
+                        readOnly={!editingRoomId}
+                      
                       />
+                      {!editingRoomId ? (
+                        <div className="mt-1 text-xs text-slate-500">Số phòng bắt buộc: {computeExpectedNextRoomNumber(roomForm.building_code)} — để đúng thứ tự số phòng trong tòa {roomForm.building_code}.</div>
+                      ) : null}
+                      {roomSubmitAttempted && roomValidationErrors.room_number ? (
+                        <div className="mt-1 text-xs text-red-600">{roomValidationErrors.room_number}</div>
+                      ) : null}
                     </div>
 
                     <div>
-                      <label className="text-sm font-medium text-slate-600">Giới tính</label>
+                      <label className="text-sm font-medium text-slate-600">Giới tính <span className="ml-1 text-red-500">*</span></label>
                       <SelectField
                         value={roomForm.gender}
                         onChange={(event) => setRoomForm((prev) => ({ ...prev, gender: event.target.value as RoomGender }))}
@@ -858,7 +1016,7 @@ export default function AdminRoomManagement() {
                     </div>
 
                     <div>
-                      <label className="text-sm font-medium text-slate-600">Trạng thái phòng</label>
+                      <label className="text-sm font-medium text-slate-600">Trạng thái phòng <span className="ml-1 text-red-500">*</span></label>
                       <SelectField
                         value={roomForm.status}
                         onChange={(event) => {
@@ -866,9 +1024,9 @@ export default function AdminRoomManagement() {
                           setRoomFormError("");
                         }}
                       >
-                        <option value="AVAILABLE">AVAILABLE</option>
-                        <option value="FULL">FULL</option>
-                        <option value="MAINTENANCE">MAINTENANCE</option>
+                        <option value="AVAILABLE">Còn trống</option>
+                        <option value="FULL">Đầy</option>
+                        <option value="MAINTENANCE">Bảo trì</option>
                       </SelectField>
                       {isRoomStatusBlocked ? (
                         <p className="mt-2 text-xs font-medium text-amber-700">
@@ -898,7 +1056,7 @@ export default function AdminRoomManagement() {
                       type="submit"
                       disabled={isRoomStatusBlocked}
                       title={isRoomStatusBlocked ? blockedStatusMessage : undefined}
-                      className="inline-flex h-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_45%,#1f46ad_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(36,76,184,0.28)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:brightness-100"
+                      className="inline-flex h-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#1f5fd1_0%,#244cb8_42%,#31b7d4_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(36,76,184,0.28)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:brightness-100"
                     >
                       {editingRoomId ? "Lưu thay đổi" : "Thêm phòng"}
                     </button>
@@ -909,6 +1067,6 @@ export default function AdminRoomManagement() {
             document.body,
           )
         : null}
-    </section>
+    </motion.section>
   );
 }

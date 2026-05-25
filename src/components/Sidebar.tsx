@@ -1,8 +1,9 @@
 import {
-  BedDouble,
   BedSingle,
+  Building2,
   ClipboardList,
   CreditCard,
+  DoorOpen,
   FileCheck2,
   FilePenLine,
   LayoutDashboard,
@@ -38,17 +39,22 @@ const adminMenu: MenuItem[] = [
   {
     label: "Phân phòng",
     to: "/admin/assign-room",
-    icon: BedSingle,
+    icon: DoorOpen,
   },
   {
     label: "Phân giường",
     to: "/admin/bed-management",
-    icon: BedDouble,
+    icon: BedSingle,
   },
   {
     label: "Quản lý phòng",
     to: "/admin/rooms",
     icon: School,
+  },
+  {
+    label: "Quản lý tòa",
+    to: "/admin/buildings",
+    icon: Building2,
   },
   {
     label: "Quản lý sinh viên",
