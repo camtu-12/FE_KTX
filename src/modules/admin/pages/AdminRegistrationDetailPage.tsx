@@ -268,21 +268,48 @@ export default function AdminRegistrationDetailPage() {
 
   const formData = request?.formData;
 
-  const resolveDocumentSrc = (field: RegistrationDocumentField) => {
-    if (!request) {
-      return "";
-    }
+  const buildStorageUrl = (path?: string) => {
+  if (!path) return "";
 
-    if (field === "portraitPhoto") {
-      return request.avatarUrl || request.documents[field] || "";
-    }
+  if (/^https?:\/\//i.test(path) || path.startsWith("data:")) {
+    return path;
+  }
 
-    if (field === "cccdFrontPhoto") {
-      return request.cccdFrontUrl || request.documents[field] || "";
-    }
+  const apiBase = (
+    (import.meta.env.VITE_API_BASE_URL as string) ||
+    "http://127.0.0.1:8000"
+  ).replace(/\/+$/, "");
 
-    return request.cccdBackUrl || request.documents[field] || "";
-  };
+  const storageBase = apiBase.endsWith("/api")
+    ? apiBase.slice(0, -4)
+    : apiBase;
+
+  const normalizedPath = path.replace(/^\/+/, "");
+
+  return `${storageBase}/storage/${normalizedPath}`;
+};
+
+const resolveDocumentSrc = (field: RegistrationDocumentField) => {
+  if (!request) {
+    return "";
+  }
+
+  if (field === "portraitPhoto") {
+    return buildStorageUrl(
+      request.avatarUrl || request.documents[field]
+    );
+  }
+
+  if (field === "cccdFrontPhoto") {
+    return buildStorageUrl(
+      request.cccdFrontUrl || request.documents[field]
+    );
+  }
+
+  return buildStorageUrl(
+    request.cccdBackUrl || request.documents[field]
+  );
+};
 
   const relationshipLabel = useMemo(() => {
     if (!formData) {

@@ -439,7 +439,33 @@ setReviewDocumentUrls({
       // Giữ documentFiles trống (không có File object). Lưu
       // các URL preview để UI có thể hiển thị ảnh xem trước cho luồng xem lại hoặc nộp lại.
       setDocumentFiles({ ...initialDocumentFiles });
-      setReviewDocumentUrls(data.documents ?? initialDocumentPreviewUrls);
+      const buildStorageUrl = (path?: string) => {
+  if (!path) return "";
+
+  if (/^https?:\/\//i.test(path) || path.startsWith("data:")) {
+    return path;
+  }
+
+  const apiBase = (
+    (import.meta.env.VITE_API_BASE_URL as string) ||
+    "http://127.0.0.1:8000"
+  ).replace(/\/+$/, "");
+
+  const storageBase = apiBase.endsWith("/api")
+    ? apiBase.slice(0, -4)
+    : apiBase;
+
+  const normalizedPath = path.replace(/^\/+/, "");
+
+  return `${storageBase}/storage/${normalizedPath}`;
+};
+
+setReviewDocumentUrls({
+  portraitPhoto: buildStorageUrl(data.documents?.portraitPhoto),
+  cccdFrontPhoto: buildStorageUrl(data.documents?.cccdFrontPhoto),
+  cccdBackPhoto: buildStorageUrl(data.documents?.cccdBackPhoto),
+});
+      
       // Không tự động vào trạng thái xem lại chỉ đọc ở đây - nơi gọi
       // nên tự quyết định mở xem lại (chỉ đọc) hay nộp lại (có thể chỉnh sửa).
       setIsReviewingSubmittedForm(false);
