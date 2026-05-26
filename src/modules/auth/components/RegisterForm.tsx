@@ -128,6 +128,15 @@ export default function RegisterForm() {
     const code = fields.student_code.trim();
     if (!code) return;
 
+    // Validate prefix: phải bắt đầu bằng 'DH'
+    if (!/^DH/i.test(code)) {
+      setErrors((prev) => ({
+        ...prev,
+        student_code: "MSSV phải bắt đầu bằng 'DH'.",
+      }));
+      return;
+    }
+
     if (!studentCodeRegex.test(code)) {
       setErrors((prev) => ({
         ...prev,
@@ -171,6 +180,8 @@ export default function RegisterForm() {
     // MSSV
     if (!trimmed.student_code) {
       nextErrors.student_code = "Vui lòng nhập MSSV.";
+    } else if (!/^DH/i.test(trimmed.student_code)) {
+      nextErrors.student_code = "MSSV phải bắt đầu bằng 'DH'.";
     } else if (!studentCodeRegex.test(trimmed.student_code)) {
       nextErrors.student_code =
         "MSSV phải gồm chữ và số, không chứa ký tự đặc biệt.";

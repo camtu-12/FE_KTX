@@ -769,6 +769,8 @@ setReviewDocumentUrls({
       nextErrors.cccd = "Số CCCD phải gồm đúng 12 chữ số.";
     }
 
+    
+
     for (const { field } of documentFieldConfigs) {
       if (!documentFiles[field]) {
         nextDocumentErrors[field] = `Vui lòng tải lên ${documentLabels[field]}`;
