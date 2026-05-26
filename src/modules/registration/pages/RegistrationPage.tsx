@@ -391,11 +391,15 @@ useEffect(() => {
       const buildStorageUrl = (path?: string) => {
         if (!path) return "";
 
-        if (path.startsWith("http")) {
+        if (/^https?:\/\//i.test(path) || path.startsWith("data:")) {
           return path;
         }
 
-        return `${import.meta.env.VITE_API_BASE_URL}/storage/${path}`;
+        const apiBase = ((import.meta.env.VITE_API_BASE_URL as string) || "http://127.0.0.1:8000").replace(/\/+$/, "");
+        const storageBase = apiBase.endsWith("/api") ? apiBase.slice(0, -4) : apiBase;
+        const normalizedPath = path.replace(/^\/+/, "");
+
+        return `${storageBase}/storage/${normalizedPath}`;
       };
 
 setReviewDocumentUrls({
