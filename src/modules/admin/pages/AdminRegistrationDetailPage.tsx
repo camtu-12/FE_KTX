@@ -177,11 +177,9 @@ export default function AdminRegistrationDetailPage() {
       return;
     }
 
-    // If navigated from modal with snapshot data, use it
     const snapshotRequest = routeState?.request;
     if (snapshotRequest && routeState.returnToModal && snapshotRequest.id === id) {
       console.log('[AdminRegistrationDetailPage] using routeState.request snapshot for id:', id);
-      // Defer setting state to avoid synchronous setState within effect which can cause cascading renders
       queueMicrotask(() => {
         setRequest(snapshotRequest);
         setFailedDocuments(createEmptyDocumentErrorState());
@@ -197,12 +195,24 @@ export default function AdminRegistrationDetailPage() {
         console.log('[AdminRegistrationDetailPage] calling getRegistrationById with id:', id);
         const res = await getRegistrationById(id);
         if (cancelled) return;
-        console.log('[AdminRegistrationDetailPage] API response id:', res?.id, 'status:', res?.status);
+        
+        // Detailed logging of the response
+        console.log('[AdminRegistrationDetailPage] Full API Response:', {
+          id: res?.id,
+          status: res?.status,
+          avatarUrl: res?.avatarUrl,
+          cccdFrontUrl: res?.cccdFrontUrl,
+          cccdBackUrl: res?.cccdBackUrl,
+          documents: res?.documents,
+          student: res?.student
+        });
+        
         console.log('[AdminRegistrationDetailPage] Image URLs:', {
           avatarUrl: res?.avatarUrl,
           cccdFrontUrl: res?.cccdFrontUrl,
           cccdBackUrl: res?.cccdBackUrl,
         });
+        
         setRequest(res);
         setFailedDocuments(createEmptyDocumentErrorState());
         setImageLoadErrors({});
@@ -296,8 +306,6 @@ export default function AdminRegistrationDetailPage() {
     const apiBase = (import.meta.env.VITE_API_BASE_URL as string) || "http://127.0.0.1:8000";
     const cleanApiBase = apiBase.replace(/\/+$/, "");
     
-    // For Railway volume files, the API should return full URLs already
-    // If we get a relative path here, it's likely from local storage
     const storageBase = cleanApiBase.endsWith("/api") ? cleanApiBase.slice(0, -4) : cleanApiBase;
     const normalizedPath = path.replace(/^\/+/, "");
     
@@ -308,16 +316,24 @@ export default function AdminRegistrationDetailPage() {
 
   const resolveDocumentSrc = (field: RegistrationDocumentField) => {
     if (!request) {
+      console.log('[resolveDocumentSrc] No request object');
       return "";
     }
 
     let rawUrl = "";
     if (field === "portraitPhoto") {
-      rawUrl = request.avatarUrl || request.documents[field] || "";
+      rawUrl = request.avatarUrl || request.documents?.[field] || "";
+      console.log('[resolveDocumentSrc] portraitPhoto - request.avatarUrl:', request.avatarUrl);
+      console.log('[resolveDocumentSrc] portraitPhoto - request.documents.portraitPhoto:', request.documents?.portraitPhoto);
+      console.log('[resolveDocumentSrc] portraitPhoto - rawUrl:', rawUrl);
     } else if (field === "cccdFrontPhoto") {
-      rawUrl = request.cccdFrontUrl || request.documents[field] || "";
+      rawUrl = request.cccdFrontUrl || request.documents?.[field] || "";
+      console.log('[resolveDocumentSrc] cccdFrontPhoto - request.cccdFrontUrl:', request.cccdFrontUrl);
+      console.log('[resolveDocumentSrc] cccdFrontPhoto - rawUrl:', rawUrl);
     } else {
-      rawUrl = request.cccdBackUrl || request.documents[field] || "";
+      rawUrl = request.cccdBackUrl || request.documents?.[field] || "";
+      console.log('[resolveDocumentSrc] cccdBackPhoto - request.cccdBackUrl:', request.cccdBackUrl);
+      console.log('[resolveDocumentSrc] cccdBackPhoto - rawUrl:', rawUrl);
     }
 
     if (!rawUrl) {
@@ -326,6 +342,7 @@ export default function AdminRegistrationDetailPage() {
     }
 
     const finalUrl = buildStorageUrl(rawUrl);
+    console.log(`[resolveDocumentSrc] ${field} finalUrl:`, finalUrl);
     return finalUrl;
   };
 
