@@ -29,7 +29,6 @@ type RegistrationWithAssignment = RegistrationRequest & {
   assigned_room_id?: number | null;
   building_code?: string;
   room_number?: number;
-
 };
 
 interface FormData {
@@ -269,6 +268,34 @@ function ErrorMessage({ message }: { message: string }) {
   );
 }
 
+// Helper function to build image URLs for both local and Railway environments
+const buildImageUrl = (path?: string): string => {
+  if (!path) return "";
+
+  // If it's already a full URL (data URL, external URL, or Railway API URL)
+  if (path.startsWith("http://") || path.startsWith("https://") || path.startsWith("data:")) {
+    console.log('[buildImageUrl] Using existing URL:', path.substring(0, 100));
+    return path;
+  }
+
+  const apiBase = (import.meta.env.VITE_API_BASE_URL as string || "http://127.0.0.1:8000").replace(/\/+$/, "");
+  const normalizedPath = path.replace(/^\/+/, "");
+
+  // Check if this is a Railway volume path (starts with students/ or registrations/)
+  if (normalizedPath.startsWith('students/') || normalizedPath.startsWith('registrations/')) {
+    // Use the API storage endpoint for Railway volume files
+    const url = `${apiBase}/storage/${normalizedPath}`;
+    console.log('[buildImageUrl] Railway volume URL:', url);
+    return url;
+  }
+
+  // Local development - use public storage
+  const storageBase = apiBase.endsWith("/api") ? apiBase.slice(0, -4) : apiBase;
+  const url = `${storageBase}/storage/${normalizedPath}`;
+  console.log('[buildImageUrl] Local storage URL:', url);
+  return url;
+};
+
 export default function RegistrationPage() {
   const navigate = useNavigate();
   const studentEmail = useAuthStore((state) => state.user?.email ?? "");
@@ -299,11 +326,9 @@ export default function RegistrationPage() {
       const file = documentFiles[field];
       if (!file) {
         // Hiển thị preview tài liệu đã tải lên nếu có
-        // bất kể đang ở chế độ duyệt nghiêm ngặt hay đang gửi lại.
         if (reviewDocumentUrls[field]) {
           nextPreviewUrls[field] = reviewDocumentUrls[field];
         }
-
         return;
       }
 
@@ -313,20 +338,14 @@ export default function RegistrationPage() {
     return nextPreviewUrls;
   }, [documentFiles, reviewDocumentUrls]);
 
-  
-
   const getRegistration = async (): Promise<RegistrationWithAssignment | null> => {
     if (!studentEmail) {
       return null;
     }
-
     return (await getLatestRegistrationByEmail(studentEmail)) as RegistrationWithAssignment | null;
   };
 
-  // Đã bỏ openReview: việc xem lại form đã nộp giờ phải được kích hoạt rõ ràng qua luồng nộp lại.
-
   const openResubmit = async () => {
-    // Xóa mọi dữ liệu trước đó và hiển thị một form trống có thể chỉnh sửa để nộp lại.
     resetFormState();
     setRegistration(null);
     setStatus("unregistered");
@@ -341,80 +360,79 @@ export default function RegistrationPage() {
           scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
           return;
         }
-
         window.scrollTo({ top: 0, behavior: "smooth" });
       });
     });
   };
-useEffect(() => {
-  const syncRegistrationState = async () => {
-    setFormData({ ...initialFormData });
-    setDocumentFiles({ ...initialDocumentFiles });
-    setErrors({});
-    setDocumentErrors({});
-    setRegistration(null);
-    setStatus("unregistered");
-    setRejectionReason("");
-    setSubmitError("");
-    setIsReviewingSubmittedForm(false);
-    setReviewDocumentUrls(initialDocumentPreviewUrls);
 
-    documentFieldConfigs.forEach(({ field }) => {
-      if (documentRefs.current[field]) {
-        documentRefs.current[field]!.value = "";
-      }
-    });
+  useEffect(() => {
+    const syncRegistrationState = async () => {
+      setFormData({ ...initialFormData });
+      setDocumentFiles({ ...initialDocumentFiles });
+      setErrors({});
+      setDocumentErrors({});
+      setRegistration(null);
+      setStatus("unregistered");
+      setRejectionReason("");
+      setSubmitError("");
+      setIsReviewingSubmittedForm(false);
+      setReviewDocumentUrls(initialDocumentPreviewUrls);
 
-    if (!studentEmail) {
-      return;
-    }
+      documentFieldConfigs.forEach(({ field }) => {
+        if (documentRefs.current[field]) {
+          documentRefs.current[field]!.value = "";
+        }
+      });
 
-    setIsCheckingRegistration(true);
-
-    try {
-      const data = await getLatestRegistrationByEmail(studentEmail);
-
-      if (!data) {
-        setRegistration(null);
-        setStatus("unregistered");
-        setRejectionReason("");
-        setReviewDocumentUrls(initialDocumentPreviewUrls);
-        setIsReviewingSubmittedForm(false);
+      if (!studentEmail) {
         return;
       }
 
-      setRegistration(data);
-      setStatus(data.status);
-      setRejectionReason(data.rejectionReason ?? "");
-      setFormData({ ...initialFormData, ...data.formData });
-      setDocumentFiles({ ...initialDocumentFiles });
-      const buildStorageUrl = (path?: string) => {
-        if (!path) return "";
+      setIsCheckingRegistration(true);
 
-        if (/^https?:\/\//i.test(path) || path.startsWith("data:")) {
-          return path;
+      try {
+        const data = await getLatestRegistrationByEmail(studentEmail);
+
+        if (!data) {
+          setRegistration(null);
+          setStatus("unregistered");
+          setRejectionReason("");
+          setReviewDocumentUrls(initialDocumentPreviewUrls);
+          setIsReviewingSubmittedForm(false);
+          return;
         }
 
-        const apiBase = ((import.meta.env.VITE_API_BASE_URL as string) || "http://127.0.0.1:8000").replace(/\/+$/, "");
-        const storageBase = apiBase.endsWith("/api") ? apiBase.slice(0, -4) : apiBase;
-        const normalizedPath = path.replace(/^\/+/, "");
+        console.log('[RegistrationPage] Loaded registration:', {
+          id: data.id,
+          status: data.status,
+          avatarUrl: data.avatarUrl,
+          cccdFrontUrl: data.cccdFrontUrl,
+          cccdBackUrl: data.cccdBackUrl,
+        });
 
-        return `${storageBase}/storage/${normalizedPath}`;
-      };
+        setRegistration(data);
+        setStatus(data.status);
+        setRejectionReason(data.rejectionReason ?? "");
+        setFormData({ ...initialFormData, ...data.formData });
+        setDocumentFiles({ ...initialDocumentFiles });
 
-setReviewDocumentUrls({
-  portraitPhoto: buildStorageUrl(data.documents?.portraitPhoto),
-  cccdFrontPhoto: buildStorageUrl(data.documents?.cccdFrontPhoto),
-  cccdBackPhoto: buildStorageUrl(data.documents?.cccdBackPhoto),
-});
-      setIsReviewingSubmittedForm(false);
-    } finally {
-      setIsCheckingRegistration(false);
-    }
-  };
+        // Build URLs for document previews
+        setReviewDocumentUrls({
+          portraitPhoto: buildImageUrl(data.avatarUrl || data.documents?.portraitPhoto),
+          cccdFrontPhoto: buildImageUrl(data.cccdFrontUrl || data.documents?.cccdFrontPhoto),
+          cccdBackPhoto: buildImageUrl(data.cccdBackUrl || data.documents?.cccdBackPhoto),
+        });
+        
+        setIsReviewingSubmittedForm(false);
+      } catch (error) {
+        console.error('[RegistrationPage] Error loading registration:', error);
+      } finally {
+        setIsCheckingRegistration(false);
+      }
+    };
 
-  void syncRegistrationState();
-}, [studentEmail]);
+    void syncRegistrationState();
+  }, [studentEmail]);
 
   async function reloadRegistration() {
     setIsCheckingRegistration(true);
@@ -431,78 +449,53 @@ setReviewDocumentUrls({
         return null;
       }
 
+      console.log('[RegistrationPage] Reloaded registration:', {
+        id: data.id,
+        status: data.status,
+        avatarUrl: data.avatarUrl,
+      });
+
       setRegistration(data);
       setStatus(data.status);
       setRejectionReason(data.rejectionReason ?? "");
-      // Điền sẵn formData để cả luồng xem lại và nộp lại đều dùng được.
       setFormData({ ...initialFormData, ...data.formData });
-      // Giữ documentFiles trống (không có File object). Lưu
-      // các URL preview để UI có thể hiển thị ảnh xem trước cho luồng xem lại hoặc nộp lại.
       setDocumentFiles({ ...initialDocumentFiles });
-      const buildStorageUrl = (path?: string) => {
-  if (!path) return "";
-
-  if (/^https?:\/\//i.test(path) || path.startsWith("data:")) {
-    return path;
-  }
-
-  const apiBase = (
-    (import.meta.env.VITE_API_BASE_URL as string) ||
-    "http://127.0.0.1:8000"
-  ).replace(/\/+$/, "");
-
-  const storageBase = apiBase.endsWith("/api")
-    ? apiBase.slice(0, -4)
-    : apiBase;
-
-  const normalizedPath = path.replace(/^\/+/, "");
-
-  return `${storageBase}/storage/${normalizedPath}`;
-};
-
-setReviewDocumentUrls({
-  portraitPhoto: buildStorageUrl(data.documents?.portraitPhoto),
-  cccdFrontPhoto: buildStorageUrl(data.documents?.cccdFrontPhoto),
-  cccdBackPhoto: buildStorageUrl(data.documents?.cccdBackPhoto),
-});
       
-      // Không tự động vào trạng thái xem lại chỉ đọc ở đây - nơi gọi
-      // nên tự quyết định mở xem lại (chỉ đọc) hay nộp lại (có thể chỉnh sửa).
+      setReviewDocumentUrls({
+        portraitPhoto: buildImageUrl(data.avatarUrl || data.documents?.portraitPhoto),
+        cccdFrontPhoto: buildImageUrl(data.cccdFrontUrl || data.documents?.cccdFrontPhoto),
+        cccdBackPhoto: buildImageUrl(data.cccdBackUrl || data.documents?.cccdBackPhoto),
+      });
+      
       setIsReviewingSubmittedForm(false);
       return data;
+    } catch (error) {
+      console.error('[RegistrationPage] Error reloading registration:', error);
+      return null;
     } finally {
       setIsCheckingRegistration(false);
     }
   }
 
   const registrationForView = registration;
-
   const statusForView = registrationForView?.status ?? status;
-
   const assignedRoomName = null;
   const selectedBedName = null;
   const hasSelectedBed = false;
 
-
-
-  
   const progressStatus: ProgressStatus = useMemo(() => {
     if (statusForView === "completed") {
       return "completed";
     }
-
     if (registrationForView?.bedId) {
       return "selected_bed";
     }
-
     if (statusForView === "approved" && registrationForView?.assigned_room_id && assignedRoomName) {
       return "assigned_room";
     }
-
     if (statusForView === "approved") {
       return "approved";
     }
-
     return "pending";
   }, [assignedRoomName, registrationForView?.assigned_room_id, registrationForView?.bedId, statusForView]);
 
@@ -511,34 +504,27 @@ setReviewDocumentUrls({
   const readFileAsDataUrl = (file: File) =>
     new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
-
       reader.onload = () => {
         if (typeof reader.result === "string") {
           resolve(reader.result);
           return;
         }
-
         reject(new Error("Không thể đọc tệp ảnh."));
       };
-
       reader.onerror = () => {
         reject(new Error("Không thể đọc tệp ảnh."));
       };
-
       reader.readAsDataURL(file);
     });
 
   const toDataUrl = async (file: File) => {
-    // Giữ nguyên các tệp nhỏ để tránh giảm chất lượng không cần thiết.
     if (file.size <= 350 * 1024) {
       return readFileAsDataUrl(file);
     }
 
     const originalDataUrl = await readFileAsDataUrl(file);
-
     const image = await new Promise<HTMLImageElement>((resolve, reject) => {
       const img = new Image();
-
       img.onload = () => resolve(img);
       img.onerror = () => reject(new Error("Không thể xử lý tệp ảnh."));
       img.src = originalDataUrl;
@@ -586,7 +572,6 @@ setReviewDocumentUrls({
       if (!prev[fieldName]) {
         return prev;
       }
-
       const nextErrors = { ...prev };
       delete nextErrors[fieldName];
       return nextErrors;
@@ -611,7 +596,6 @@ setReviewDocumentUrls({
       if (!prev[fieldName]) {
         return prev;
       }
-
       const nextErrors = { ...prev };
       delete nextErrors[fieldName];
       return nextErrors;
@@ -621,18 +605,15 @@ setReviewDocumentUrls({
   const handleDocumentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const fieldName = e.target.name as DocumentField;
     const nextFile = e.target.files?.[0];
-
     if (!nextFile) {
       return;
     }
-
     setDocumentFile(fieldName, nextFile);
   };
 
   const handleDocumentDragOver = (fieldName: DocumentField, e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
-
     if (draggingDocumentField !== fieldName) {
       setDraggingDocumentField(fieldName);
     }
@@ -640,11 +621,9 @@ setReviewDocumentUrls({
 
   const handleDocumentDragLeave = (fieldName: DocumentField, e: React.DragEvent<HTMLDivElement>) => {
     const relatedTarget = e.relatedTarget;
-
     if (relatedTarget instanceof Node && e.currentTarget.contains(relatedTarget)) {
       return;
     }
-
     if (draggingDocumentField === fieldName) {
       setDraggingDocumentField(null);
     }
@@ -653,12 +632,10 @@ setReviewDocumentUrls({
   const handleDocumentDrop = (fieldName: DocumentField, e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setDraggingDocumentField(null);
-
     const nextFile = e.dataTransfer.files?.[0];
     if (!nextFile) {
       return;
     }
-
     setDocumentFile(fieldName, nextFile);
   };
 
@@ -683,7 +660,7 @@ setReviewDocumentUrls({
           return copy;
         });
       }
-    } catch (err) {
+    } catch {
       setErrors((prev) => ({ ...prev, mssv: "Không thể kiểm tra MSSV. Vui lòng thử lại." }));
     } finally {
       setIsCheckingMssv(false);
@@ -706,11 +683,9 @@ setReviewDocumentUrls({
 
   const handlePhoneBlur = () => {
     const value = formData.phone.trim();
-
     if (!value) {
       return;
     }
-
     if (!phoneRegex.test(value)) {
       setErrors((prev) => ({
         ...prev,
@@ -721,11 +696,9 @@ setReviewDocumentUrls({
 
   const handleCccdBlur = () => {
     const value = formData.cccd.trim();
-
     if (!value) {
       return;
     }
-
     if (!cccdRegex.test(value)) {
       setErrors((prev) => ({
         ...prev,
@@ -736,11 +709,9 @@ setReviewDocumentUrls({
 
   const validateDateField = (fieldName: keyof FormData) => {
     const value = formData[fieldName].trim();
-
     if (!value) {
       return;
     }
-
     if (!dateRegex.test(value)) {
       setErrors((prev) => ({
         ...prev,
@@ -763,7 +734,6 @@ setReviewDocumentUrls({
         nextErrors[field] = `Vui lòng điền ${formFieldLabels[field]}`;
         continue;
       }
-
       if (dateFieldNames.includes(field) && !dateRegex.test(formData[field].trim())) {
         nextErrors[field] = `Ngày tháng phải theo định dạng dd/mm/yyyy.`;
       }
@@ -812,7 +782,6 @@ setReviewDocumentUrls({
     if (Object.keys(nextErrors).length > 0 || Object.keys(nextDocumentErrors).length > 0 || commitmentError) {
       setErrors(nextErrors);
       setDocumentErrors(nextDocumentErrors);
-
       if (commitmentError) {
         setSubmitError(commitmentError);
       }
@@ -835,7 +804,6 @@ setReviewDocumentUrls({
           block: "center",
         });
       }
-
       return;
     }
 
@@ -886,7 +854,6 @@ setReviewDocumentUrls({
       form.append("parent_phone", formData.relationPhone);
       form.append("parent_relationship", formData.relationship);
 
-      // Thông tin cha / gia đình
       form.append("father_name", formData.father_name);
       form.append("father_phone", formData.father_phone);
       form.append("father_job", formData.father_job);
@@ -895,7 +862,6 @@ setReviewDocumentUrls({
       form.append("mother_job", formData.mother_job);
       form.append("parent_address", formData.familyContactAddress || formData.address || "");
 
-      // Ngày lưu trú
       form.append("stay_from_date", formData.dormStartDate || "");
       form.append("stay_to_date", formData.dormEndDate || "");
 
@@ -907,7 +873,6 @@ setReviewDocumentUrls({
       form.append("cccd_back", documentFiles.cccdBackPhoto as File);
 
       const res = await submitRegistration(form);
-
       const data = res;
 
       if (!data) {
@@ -956,11 +921,8 @@ setReviewDocumentUrls({
     clearDocumentInputs();
   }
 
-  
-
   const handleClearForm = () => {
     resetFormState();
-
     requestAnimationFrame(() => {
       const scrollContainer = formRef.current?.closest(".auth-scrollbar");
       if (scrollContainer instanceof HTMLElement) {
@@ -1094,7 +1056,6 @@ setReviewDocumentUrls({
           Hoàn thành biểu mẫu để gửi yêu cầu đăng ký nội trú. Hệ thống sẽ xét duyệt đơn của bạn
           trong vòng 3-5 ngày làm việc.
         </p>
-
       </motion.div>
 
       <ProgressStep currentStep={currentProgressStep} />
@@ -1222,287 +1183,282 @@ setReviewDocumentUrls({
           transition={{ duration: 0.35, delay: 0.08, ease: "easeOut" }}
           className="auth-reveal is-visible mt-2 rounded-[24px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_75%,#deebff_100%)] px-5 pb-6 pt-5 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm sm:mt-3 sm:px-6 sm:pt-6"
         >
-        <form
-          ref={formRef}
-          onSubmit={handleSubmit}
-          className={`space-y-6 ${isReviewingSubmittedForm ? "pointer-events-none select-none" : ""}`}
-        >
-          {isReviewingSubmittedForm ? (
-            <div className="mb-2 rounded-2xl border border-[#b7ccef] bg-white/70 p-4 text-sm text-[#1F3152] shadow-[0_10px_20px_rgba(36,76,184,0.08)]">
-              Đang hiển thị lại hồ sơ bạn đã nộp trước đó.
-            </div>
-          ) : null}
+          <form
+            ref={formRef}
+            onSubmit={handleSubmit}
+            className={`space-y-6 ${isReviewingSubmittedForm ? "pointer-events-none select-none" : ""}`}
+          >
+            {isReviewingSubmittedForm ? (
+              <div className="mb-2 rounded-2xl border border-[#b7ccef] bg-white/70 p-4 text-sm text-[#1F3152] shadow-[0_10px_20px_rgba(36,76,184,0.08)]">
+                Đang hiển thị lại hồ sơ bạn đã nộp trước đó.
+              </div>
+            ) : null}
 
-          <div className="grid gap-6 xl:grid-cols-2">
-            <div className="space-y-6 xl:col-span-2">
+            <div className="grid gap-6 xl:grid-cols-2">
+              <div className="space-y-6 xl:col-span-2">
+                <div className="rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] transition-all duration-300 ease-out hover:border-[#aac3ea] hover:shadow-[0_22px_44px_rgba(36,76,184,0.14)] sm:p-7">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-[#2d58c4] bg-[radial-gradient(circle_at_30%_30%,#2347a8_0%,#1b3e97_58%,#17347e_100%)] text-[#b7ccff] shadow-[inset_0_1px_0_rgba(132,166,244,0.30),0_12px_24px_rgba(36,76,184,0.18)]">
+                      <UserCircle2 className="h-5 w-5 stroke-[2.2]" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-[#2F83C9]">Bước 1</span>
+                      </div>
+                      <h2 className="text-lg font-semibold text-[#1F3152]">Thông tin cá nhân</h2>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+                    {studentInfoFields.map(renderFormField)}
+                  </div>
+
+                  <div className="mt-8 border-t border-[#d9e6f7] pt-6">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <h3 className="text-sm font-semibold uppercase tracking-wide text-[#5578AC]">Giấy tờ và liên hệ</h3>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      {identityFields.map(renderFormField)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="xl:col-span-2 rounded-[22px] border border-[#c9d8ef] bg-[linear-gradient(180deg,#eef5ff_0%,#e7f0ff_42%,#edf4fd_100%)] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] transition-all duration-300 hover:border-[#9fbde9] hover:shadow-[0_16px_30px_rgba(36,76,184,0.10)] sm:p-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 className="text-base font-semibold uppercase tracking-wide text-[#5578AC]">Hồ sơ ảnh đính kèm</h3>
+                    <p className="mt-1 text-sm text-[#5C7094]">Ảnh thẻ và ảnh CCCD vẫn được giữ nguyên để backend nhận hồ sơ như hiện tại.</p>
+                  </div>
+                  <span className="w-fit rounded-full bg-[linear-gradient(135deg,#244CB8_0%,#4F7FF1_100%)] px-3 py-1 text-xs font-semibold text-white shadow-[0_8px_16px_rgba(36,76,184,0.22)]">
+                    JPG, PNG, WEBP
+                  </span>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2 lg:[grid-template-columns:repeat(3,minmax(0,15rem))] lg:justify-between lg:gap-8">
+                  {documentFieldConfigs.map(({ field }) => (
+                    <motion.div key={field} transition={{ duration: 0.2 }}>
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => openDocumentPicker(field)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            openDocumentPicker(field);
+                          }
+                        }}
+                        onDragOver={(e) => handleDocumentDragOver(field, e)}
+                        onDragEnter={(e) => handleDocumentDragOver(field, e)}
+                        onDragLeave={(e) => handleDocumentDragLeave(field, e)}
+                        onDrop={(e) => handleDocumentDrop(field, e)}
+                        className={`group h-full rounded-3xl border-2 border-dashed p-3 transition-all duration-300 ease-out ${documentErrors[field]
+                          ? "border-red-500/70 bg-red-950/30 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.55)]"
+                          : draggingDocumentField === field
+                            ? "border-[#244CB8] bg-white shadow-[0_24px_46px_rgba(36,76,184,0.16),inset_0_0_0_1px_rgba(36,76,184,0.16)]"
+                            : documentFiles[field]
+                              ? "border-[#B8CDEA] bg-white shadow-[inset_0_0_0_1px_rgba(143,170,226,0.24)] hover:border-[#244CB8] hover:shadow-[0_18px_36px_rgba(36,76,184,0.14),inset_0_0_0_1px_rgba(36,76,184,0.14)]"
+                              : "border-[#bfd2ec] bg-[linear-gradient(180deg,#f5f9ff_0%,#edf4ff_100%)] shadow-[inset_0_0_0_1px_rgba(185,205,234,0.24)] hover:border-[#8fb3e5] hover:bg-white hover:shadow-[0_18px_34px_rgba(36,76,184,0.12),inset_0_0_0_1px_rgba(185,205,234,0.24)]"
+                        }`}
+                      >
+                        <input
+                          type="file"
+                          name={field}
+                          accept="image/*"
+                          onChange={handleDocumentChange}
+                          ref={(node) => {
+                            documentRefs.current[field] = node;
+                          }}
+                          className="sr-only"
+                        />
+
+                        {documentFiles[field] && (
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <p className="text-sm font-semibold text-[#204178]">
+                                {documentLabels[field]} <span className="text-red-500">*</span>
+                              </p>
+                            </div>
+                            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(180deg,#eef4ff_0%,#e2ecff_100%)] text-[#244CB8] transition-all duration-300 group-hover:bg-[#dce7ff] group-hover:shadow-[0_10px_22px_rgba(36,76,184,0.18)]">
+                              <CheckCircle className="h-5 w-5" />
+                            </div>
+                          </div>
+                        )}
+
+                        {documentFiles[field] ? (
+                          <div className="mt-4 space-y-4">
+                            <div className="aspect-[4/3] overflow-hidden rounded-2xl bg-[linear-gradient(180deg,#eef4ff_0%,#e5efff_100%)]">
+                              <img
+                                src={documentPreviewUrls[field]}
+                                alt={documentLabels[field]}
+                                className="h-full w-full object-cover"
+                                onError={(event) => {
+                                  console.error(`[Image Error] Failed to load ${field}:`, documentPreviewUrls[field]);
+                                  const image = event.currentTarget;
+                                  const fallbackMap: Record<DocumentField, string> = {
+                                    portraitPhoto: createPreviewSvg("Ảnh thẻ", "Ảnh hồ sơ", "#2f63da"),
+                                    cccdFrontPhoto: createPreviewSvg("CCCD mặt trước", "Ảnh hồ sơ", "#2f63da"),
+                                    cccdBackPhoto: createPreviewSvg("CCCD mặt sau", "Ảnh hồ sơ", "#31b7d4"),
+                                  };
+                                  if (image.src !== fallbackMap[field]) {
+                                    image.src = fallbackMap[field];
+                                  }
+                                }}
+                                onLoad={() => console.log(`[Image Load] Successfully loaded ${field}:`, documentPreviewUrls[field])}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#cfdbef] bg-[linear-gradient(180deg,#f7fbff_0%,#eef5ff_100%)] px-4 py-3 shadow-[0_10px_20px_rgba(36,76,184,0.08)]">
+                              <div className="group relative min-w-0">
+                                <p
+                                  title={documentFiles[field]?.name}
+                                  className="truncate text-sm font-semibold text-[#2B4779]"
+                                >
+                                  {documentFiles[field]?.name}
+                                </p>
+                                <div className="pointer-events-none absolute -top-11 left-0 z-10 max-w-[260px] translate-y-1 rounded-xl bg-[#163a79] px-3 py-2 text-xs font-medium text-white opacity-0 shadow-[0_14px_28px_rgba(17,40,97,0.28)] transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100">
+                                  <span className="block break-words">{documentFiles[field]?.name}</span>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openDocumentPicker(field);
+                                }}
+                                className="flex-shrink-0 rounded-xl bg-[linear-gradient(135deg,#244CB8_0%,#4F7FF1_100%)] px-3 py-2 text-xs font-semibold text-white transition-all duration-300 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_14px_24px_rgba(36,76,184,0.28)]"
+                              >
+                                Chọn lại
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-1 flex min-h-[180px] flex-col items-center justify-center px-3 py-4 text-center">
+                            <div className="flex items-center justify-center text-[#244CB8] drop-shadow-[0_8px_18px_rgba(36,76,184,0.14)] transition-all duration-300 group-hover:scale-105 group-hover:text-[#173D97]">
+                              <ImagePlus className="h-7 w-7" />
+                            </div>
+                            <p className="mt-5 text-sm font-semibold text-[#204178]">
+                              {documentLabels[field]} <span className="text-red-500">*</span>
+                            </p>
+                            <p className="mt-2 text-sm leading-7 text-[#6F89B5]">
+                              {draggingDocumentField === field ? "Thả ảnh vào đây" : documentUploadHints[field]}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                      {documentErrors[field] && <ErrorMessage message={documentErrors[field] as string} />}
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+
               <div className="rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] transition-all duration-300 ease-out hover:border-[#aac3ea] hover:shadow-[0_22px_44px_rgba(36,76,184,0.14)] sm:p-7">
                 <div className="flex items-start gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-[#2d58c4] bg-[radial-gradient(circle_at_30%_30%,#2347a8_0%,#1b3e97_58%,#17347e_100%)] text-[#b7ccff] shadow-[inset_0_1px_0_rgba(132,166,244,0.30),0_12px_24px_rgba(36,76,184,0.18)]">
-                    <UserCircle2 className="h-5 w-5 stroke-[2.2]" />
+                  <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-[#315ec7] bg-[radial-gradient(circle_at_30%_30%,#2558c7_0%,#214cb3_55%,#193d8f_100%)] text-[#9fd4ff] shadow-[inset_0_1px_0_rgba(120,169,255,0.26),0_12px_24px_rgba(36,76,184,0.18)]">
+                    <Users className="h-5 w-5 stroke-[2.2]" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-[#2F83C9]">Bước 1</span>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-[#2F83C9]">Bước 2</span>
                     </div>
-                    <h2 className="text-lg font-semibold text-[#1F3152]">Thông tin cá nhân</h2>
-                    
+                    <h2 className="text-lg font-semibold text-[#1F3152]">Thông tin người thân</h2>
                   </div>
                 </div>
 
                 <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-                  {studentInfoFields.map(renderFormField)}
-                </div>
-
-                <div className="mt-8 border-t border-[#d9e6f7] pt-6">
-                  <div className="mb-4 flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold uppercase tracking-wide text-[#5578AC]">Giấy tờ và liên hệ</h3>
-                    
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    {identityFields.map(renderFormField)}
-                  </div>
+                  {familyFields.map(renderFormField)}
                 </div>
               </div>
-            </div>
 
-            <div className="xl:col-span-2 rounded-[22px] border border-[#c9d8ef] bg-[linear-gradient(180deg,#eef5ff_0%,#e7f0ff_42%,#edf4fd_100%)] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] transition-all duration-300 hover:border-[#9fbde9] hover:shadow-[0_16px_30px_rgba(36,76,184,0.10)] sm:p-6">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h3 className="text-base font-semibold uppercase tracking-wide text-[#5578AC]">Hồ sơ ảnh đính kèm</h3>
-                  <p className="mt-1 text-sm text-[#5C7094]">Ảnh thẻ và ảnh CCCD vẫn được giữ nguyên để backend nhận hồ sơ như hiện tại.</p>
-                </div>
-                <span className="w-fit rounded-full bg-[linear-gradient(135deg,#244CB8_0%,#4F7FF1_100%)] px-3 py-1 text-xs font-semibold text-white shadow-[0_8px_16px_rgba(36,76,184,0.22)]">
-                  JPG, PNG, WEBP
-                </span>
-              </div>
-
-              <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2 lg:[grid-template-columns:repeat(3,minmax(0,15rem))] lg:justify-between lg:gap-8">
-                {documentFieldConfigs.map(({ field }) => (
-                  <motion.div key={field} transition={{ duration: 0.2 }}>
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => openDocumentPicker(field)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          openDocumentPicker(field);
-                        }
-                      }}
-                      onDragOver={(e) => handleDocumentDragOver(field, e)}
-                      onDragEnter={(e) => handleDocumentDragOver(field, e)}
-                      onDragLeave={(e) => handleDocumentDragLeave(field, e)}
-                      onDrop={(e) => handleDocumentDrop(field, e)}
-                      className={`group h-full rounded-3xl border-2 border-dashed p-3 transition-all duration-300 ease-out ${documentErrors[field]
-                        ? "border-red-500/70 bg-red-950/30 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.55)]"
-                        : draggingDocumentField === field
-                          ? "border-[#244CB8] bg-white shadow-[0_24px_46px_rgba(36,76,184,0.16),inset_0_0_0_1px_rgba(36,76,184,0.16)]"
-                          : documentFiles[field]
-                            ? "border-[#B8CDEA] bg-white shadow-[inset_0_0_0_1px_rgba(143,170,226,0.24)] hover:border-[#244CB8] hover:shadow-[0_18px_36px_rgba(36,76,184,0.14),inset_0_0_0_1px_rgba(36,76,184,0.14)]"
-                            : "border-[#bfd2ec] bg-[linear-gradient(180deg,#f5f9ff_0%,#edf4ff_100%)] shadow-[inset_0_0_0_1px_rgba(185,205,234,0.24)] hover:border-[#8fb3e5] hover:bg-white hover:shadow-[0_18px_34px_rgba(36,76,184,0.12),inset_0_0_0_1px_rgba(185,205,234,0.24)]"
-                        }`}
-                    >
-                      <input
-                        type="file"
-                        name={field}
-                        accept="image/*"
-                        onChange={handleDocumentChange}
-                        ref={(node) => {
-                          documentRefs.current[field] = node;
-                        }}
-                        className="sr-only"
-                      />
-
-                      {documentFiles[field] && (
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <p className="text-sm font-semibold text-[#204178]">
-                              {documentLabels[field]} <span className="text-red-500">*</span>
-                            </p>
-                          </div>
-                          <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(180deg,#eef4ff_0%,#e2ecff_100%)] text-[#244CB8] transition-all duration-300 group-hover:bg-[#dce7ff] group-hover:shadow-[0_10px_22px_rgba(36,76,184,0.18)]">
-                            <CheckCircle className="h-5 w-5" />
-                          </div>
-                        </div>
-                      )}
-
-                      {documentFiles[field] ? (
-                        <div className="mt-4 space-y-4">
-                          <div className="aspect-[4/3] overflow-hidden rounded-2xl bg-[linear-gradient(180deg,#eef4ff_0%,#e5efff_100%)]">
-                            <img
-                              src={documentPreviewUrls[field]}
-                              alt={documentLabels[field]}
-                              className="h-full w-full object-cover"
-                              onError={(event) => {
-                                const image = event.currentTarget;
-                                const fallbackMap: Record<DocumentField, string> = {
-                                  portraitPhoto: createPreviewSvg("Ảnh thẻ", "Ảnh hồ sơ", "#2f63da"),
-                                  cccdFrontPhoto: createPreviewSvg("CCCD mặt trước", "Ảnh hồ sơ", "#2f63da"),
-                                  cccdBackPhoto: createPreviewSvg("CCCD mặt sau", "Ảnh hồ sơ", "#31b7d4"),
-                                };
-
-                                if (image.src !== fallbackMap[field]) {
-                                  image.src = fallbackMap[field];
-                                }
-                              }}
-                            />
-                          </div>
-                          <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#cfdbef] bg-[linear-gradient(180deg,#f7fbff_0%,#eef5ff_100%)] px-4 py-3 shadow-[0_10px_20px_rgba(36,76,184,0.08)]">
-                            <div className="group relative min-w-0">
-                              <p
-                                title={documentFiles[field]?.name}
-                                className="truncate text-sm font-semibold text-[#2B4779]"
-                              >
-                                {documentFiles[field]?.name}
-                              </p>
-                              <div className="pointer-events-none absolute -top-11 left-0 z-10 max-w-[260px] translate-y-1 rounded-xl bg-[#163a79] px-3 py-2 text-xs font-medium text-white opacity-0 shadow-[0_14px_28px_rgba(17,40,97,0.28)] transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100">
-                                <span className="block break-words">{documentFiles[field]?.name}</span>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openDocumentPicker(field);
-                              }}
-                              className="flex-shrink-0 rounded-xl bg-[linear-gradient(135deg,#244CB8_0%,#4F7FF1_100%)] px-3 py-2 text-xs font-semibold text-white transition-all duration-300 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_14px_24px_rgba(36,76,184,0.28)]"
-                            >
-                              Chọn lại
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="mt-1 flex min-h-[180px] flex-col items-center justify-center px-3 py-4 text-center">
-                          <div className="flex items-center justify-center text-[#244CB8] drop-shadow-[0_8px_18px_rgba(36,76,184,0.14)] transition-all duration-300 group-hover:scale-105 group-hover:text-[#173D97]">
-                            <ImagePlus className="h-7 w-7" />
-                          </div>
-                          <p className="mt-5 text-sm font-semibold text-[#204178]">
-                            {documentLabels[field]} <span className="text-red-500">*</span>
-                          </p>
-                          <p className="mt-2 text-sm leading-7 text-[#6F89B5]">
-                            {draggingDocumentField === field ? "Thả ảnh vào đây" : documentUploadHints[field]}
-                          </p>
-                        </div>
-                      )}
+              <div className="rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] transition-all duration-300 ease-out hover:border-[#aac3ea] hover:shadow-[0_22px_44px_rgba(36,76,184,0.14)] sm:p-7">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-[#3a67cf] bg-[radial-gradient(circle_at_30%_30%,#2b63da_0%,#244cb8_58%,#1c3f99_100%)] text-[#9ee5ff] shadow-[inset_0_1px_0_rgba(136,181,255,0.28),0_12px_24px_rgba(36,76,184,0.20)]">
+                    <Clock className="h-5 w-5 stroke-[2.2]" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-[#2F83C9]">Bước 3</span>
                     </div>
-                    {documentErrors[field] && <ErrorMessage message={documentErrors[field] as string} />}
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] transition-all duration-300 ease-out hover:border-[#aac3ea] hover:shadow-[0_22px_44px_rgba(36,76,184,0.14)] sm:p-7">
-              <div className="flex items-start gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-[#315ec7] bg-[radial-gradient(circle_at_30%_30%,#2558c7_0%,#214cb3_55%,#193d8f_100%)] text-[#9fd4ff] shadow-[inset_0_1px_0_rgba(120,169,255,0.26),0_12px_24px_rgba(36,76,184,0.18)]">
-                  <Users className="h-5 w-5 stroke-[2.2]" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-[#2F83C9]">Bước 2</span>
+                    <h2 className="text-lg font-semibold text-[#1F3152]">Thông tin lưu trú</h2>
                   </div>
-                  <h2 className="text-lg font-semibold text-[#1F3152]">Thông tin người thân</h2>
+                </div>
+
+                <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {accommodationFields.map(renderFormField)}
                 </div>
               </div>
 
-              <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-                {familyFields.map(renderFormField)}
-              </div>
-            </div>
-
-            <div className="rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] transition-all duration-300 ease-out hover:border-[#aac3ea] hover:shadow-[0_22px_44px_rgba(36,76,184,0.14)] sm:p-7">
-              <div className="flex items-start gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-[#3a67cf] bg-[radial-gradient(circle_at_30%_30%,#2b63da_0%,#244cb8_58%,#1c3f99_100%)] text-[#9ee5ff] shadow-[inset_0_1px_0_rgba(136,181,255,0.28),0_12px_24px_rgba(36,76,184,0.20)]">
-                  <Clock className="h-5 w-5 stroke-[2.2]" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-[#2F83C9]">Bước 3</span>
+              <div className="rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] transition-all duration-300 ease-out hover:border-[#aac3ea] hover:shadow-[0_22px_44px_rgba(36,76,184,0.14)] sm:p-7 xl:col-span-2">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-[#3a67cf] bg-[radial-gradient(circle_at_30%_30%,#2b63da_0%,#244cb8_58%,#1c3f99_100%)] text-[#9ee5ff] shadow-[inset_0_1px_0_rgba(136,181,255,0.28),0_12px_24px_rgba(36,76,184,0.20)]">
+                    <CheckCircle className="h-5 w-5 stroke-[2.2]" />
                   </div>
-                  <h2 className="text-lg font-semibold text-[#1F3152]">Thông tin lưu trú</h2>
-                </div>
-              </div>
-
-              <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-                {accommodationFields.map(renderFormField)}
-              </div>
-
-              
-            </div>
-
-            <div className="rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] transition-all duration-300 ease-out hover:border-[#aac3ea] hover:shadow-[0_22px_44px_rgba(36,76,184,0.14)] sm:p-7 xl:col-span-2">
-              <div className="flex items-start gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-[#3a67cf] bg-[radial-gradient(circle_at_30%_30%,#2b63da_0%,#244cb8_58%,#1c3f99_100%)] text-[#9ee5ff] shadow-[inset_0_1px_0_rgba(136,181,255,0.28),0_12px_24px_rgba(36,76,184,0.20)]">
-                  <CheckCircle className="h-5 w-5 stroke-[2.2]" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-[#1F3152]">Cam kết của sinh viên</h2>
-                  <p className="mt-1 text-sm text-[#5C7094]">
-                    Phải đảm bảo tuân thủ các quy định và nội quy của ký túc xá
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-6 space-y-5 text-sm leading-7 text-[#324B76]">
-                {commitmentSections.map((section) => (
-                  <div key={section.title} className="rounded-[22px] border border-[#d8e5f6] bg-[linear-gradient(180deg,#f8fbff_0%,#eef5ff_100%)] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]">
-                    <h3 className="text-base font-semibold text-[#1F3152]">{section.title}</h3>
-                    <ol className="mt-4 space-y-2 pl-5 list-decimal">
-                      {section.items.map((item) => (
-                        <li key={item}>
-                          {item}
-                        </li>
-                      ))}
-                    </ol>
+                  <div>
+                    <h2 className="text-lg font-semibold text-[#1F3152]">Cam kết của sinh viên</h2>
+                    <p className="mt-1 text-sm text-[#5C7094]">
+                      Phải đảm bảo tuân thủ các quy định và nội quy của ký túc xá
+                    </p>
                   </div>
-                ))}
+                </div>
+
+                <div className="mt-6 space-y-5 text-sm leading-7 text-[#324B76]">
+                  {commitmentSections.map((section) => (
+                    <div key={section.title} className="rounded-[22px] border border-[#d8e5f6] bg-[linear-gradient(180deg,#f8fbff_0%,#eef5ff_100%)] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]">
+                      <h3 className="text-base font-semibold text-[#1F3152]">{section.title}</h3>
+                      <ol className="mt-4 space-y-2 pl-5 list-decimal">
+                        {section.items.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ol>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
 
-            {!isReviewingSubmittedForm ? (
-              <>
-                <div className="xl:col-span-2 rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] transition-all duration-300 ease-out hover:border-[#aac3ea] hover:shadow-[0_22px_44px_rgba(36,76,184,0.14)] sm:p-7">
-                  <div className="flex items-start gap-4">
-                    <input
-                      type="checkbox"
-                      id="commitmentConfirm"
-                      checked={commitmentConfirmed}
-                      onChange={(e) => {
-                        setCommitmentConfirmed(e.target.checked);
-                        setSubmitError("");
-                      }}
-                      className="mt-1 h-5 w-5 flex-shrink-0 cursor-pointer rounded-lg border-2 border-[#b7ccee] bg-white text-[#244CB8] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] transition-all duration-200 checked:border-[#244CB8] checked:bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_100%)] checked:shadow-[0_10px_18px_rgba(36,76,184,0.20)] hover:border-[#244CB8] hover:shadow-[0_8px_16px_rgba(36,76,184,0.14)] focus:outline-none focus:ring-4 focus:ring-[#244CB8]/14 accent-[#244CB8]"/>
-                    <label htmlFor="commitmentConfirm" className="flex-1 cursor-pointer">
-                      <p className="text-sm leading-6 text-[#324B76]">
-                        Tôi cam kết thực hiện đúng nội quy, quy định của Nhà trường và chịu trách nhiệm về các thông tin đã kê khai. Nếu vi phạm, tôi xin chịu hoàn toàn trách nhiệm trước Nhà trường và pháp luật.
-                      </p>
-                    </label>
+              {!isReviewingSubmittedForm ? (
+                <>
+                  <div className="xl:col-span-2 rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] transition-all duration-300 ease-out hover:border-[#aac3ea] hover:shadow-[0_22px_44px_rgba(36,76,184,0.14)] sm:p-7">
+                    <div className="flex items-start gap-4">
+                      <input
+                        type="checkbox"
+                        id="commitmentConfirm"
+                        checked={commitmentConfirmed}
+                        onChange={(e) => {
+                          setCommitmentConfirmed(e.target.checked);
+                          setSubmitError("");
+                        }}
+                        className="mt-1 h-5 w-5 flex-shrink-0 cursor-pointer rounded-lg border-2 border-[#b7ccee] bg-white text-[#244CB8] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] transition-all duration-200 checked:border-[#244CB8] checked:bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_100%)] checked:shadow-[0_10px_18px_rgba(36,76,184,0.20)] hover:border-[#244CB8] hover:shadow-[0_8px_16px_rgba(36,76,184,0.14)] focus:outline-none focus:ring-4 focus:ring-[#244CB8]/14 accent-[#244CB8]"/>
+                      <label htmlFor="commitmentConfirm" className="flex-1 cursor-pointer">
+                        <p className="text-sm leading-6 text-[#324B76]">
+                          Tôi cam kết thực hiện đúng nội quy, quy định của Nhà trường và chịu trách nhiệm về các thông tin đã kê khai. Nếu vi phạm, tôi xin chịu hoàn toàn trách nhiệm trước Nhà trường và pháp luật.
+                        </p>
+                      </label>
+                    </div>
+                    {!commitmentConfirmed && submitError && submitError.includes("cam kết") && (
+                      <ErrorMessage message={submitError} />
+                    )}
                   </div>
-                  {!commitmentConfirmed && submitError && submitError.includes("cam kết") && (
-                    <ErrorMessage message={submitError} />
-                  )}
-                </div>
 
-                <div className="xl:col-span-2 flex justify-end gap-3 border-t border-[#DFE8F4] pt-4">
-                  <button
-                    type="button"
-                    onClick={handleClearForm}
-                    className="auth-btn-gloss rounded-2xl border border-[#c5d4f0] bg-[linear-gradient(135deg,#ffffff_0%,#f1f6ff_48%,#e8f0ff_100%)] px-6 py-2.5 text-sm font-semibold text-[#244CB8] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_22px_rgba(36,76,184,0.10)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#a9c0ea] hover:bg-[linear-gradient(135deg,#ffffff_0%,#edf4ff_40%,#dfeaff_100%)] hover:text-[#173D97] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_16px_28px_rgba(36,76,184,0.16)] active:scale-[0.98]"
-                  >
-                    <span className="auth-btn-gloss__content">Xóa</span>
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="auth-btn-gloss rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-6 py-2.5 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition-all duration-300 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_22px_40px_rgba(36,76,184,0.34)] active:scale-[0.98]"
-                  >
-                    <span className="auth-btn-gloss__content">{isSubmitting ? "Đang gửi..." : "Gửi đăng ký"}</span>
-                  </button>
-                </div>
-              </>
-            ) : null}
-          </div>
-        </form>
+                  <div className="xl:col-span-2 flex justify-end gap-3 border-t border-[#DFE8F4] pt-4">
+                    <button
+                      type="button"
+                      onClick={handleClearForm}
+                      className="auth-btn-gloss rounded-2xl border border-[#c5d4f0] bg-[linear-gradient(135deg,#ffffff_0%,#f1f6ff_48%,#e8f0ff_100%)] px-6 py-2.5 text-sm font-semibold text-[#244CB8] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_22px_rgba(36,76,184,0.10)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#a9c0ea] hover:bg-[linear-gradient(135deg,#ffffff_0%,#edf4ff_40%,#dfeaff_100%)] hover:text-[#173D97] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_16px_28px_rgba(36,76,184,0.16)] active:scale-[0.98]"
+                    >
+                      <span className="auth-btn-gloss__content">Xóa</span>
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="auth-btn-gloss rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-6 py-2.5 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition-all duration-300 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_22px_40px_rgba(36,76,184,0.34)] active:scale-[0.98]"
+                    >
+                      <span className="auth-btn-gloss__content">{isSubmitting ? "Đang gửi..." : "Gửi đăng ký"}</span>
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </form>
         </motion.div>
       ) : null}
     </motion.section>

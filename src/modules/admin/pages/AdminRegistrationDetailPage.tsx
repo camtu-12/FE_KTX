@@ -161,6 +161,7 @@ export default function AdminRegistrationDetailPage() {
   const [failedDocuments, setFailedDocuments] = useState<Record<RegistrationDocumentField, boolean>>(() =>
     createEmptyDocumentErrorState(),
   );
+  const [imageLoadErrors, setImageLoadErrors] = useState<Record<string, boolean>>({});
 
   const [request, setRequest] = useState<RegistrationRequest | null>(routeState?.request ?? null);
 
@@ -170,16 +171,22 @@ export default function AdminRegistrationDetailPage() {
 
     if (Number.isNaN(id) || id <= 0) {
       console.log('[AdminRegistrationDetailPage] invalid registrationId from URL, clearing');
-      setRequest(null);
+      queueMicrotask(() => {
+        setRequest(null);
+      });
       return;
     }
 
-    // Nếu navigated từ modal và modal truyền snapshot (routeState.request) và returnToModal=true,
-    // thì ưu tiên dùng snapshot đó để hiển thị dữ liệu lịch sử chính xác (không bị ghi đè bởi latest).
-    if (routeState?.request && routeState.returnToModal && routeState.request.id === id) {
+    // If navigated from modal with snapshot data, use it
+    const snapshotRequest = routeState?.request;
+    if (snapshotRequest && routeState.returnToModal && snapshotRequest.id === id) {
       console.log('[AdminRegistrationDetailPage] using routeState.request snapshot for id:', id);
-      setRequest(routeState.request);
-      setFailedDocuments(createEmptyDocumentErrorState());
+      // Defer setting state to avoid synchronous setState within effect which can cause cascading renders
+      queueMicrotask(() => {
+        setRequest(snapshotRequest);
+        setFailedDocuments(createEmptyDocumentErrorState());
+        setImageLoadErrors({});
+      });
       return;
     }
 
@@ -191,8 +198,14 @@ export default function AdminRegistrationDetailPage() {
         const res = await getRegistrationById(id);
         if (cancelled) return;
         console.log('[AdminRegistrationDetailPage] API response id:', res?.id, 'status:', res?.status);
+        console.log('[AdminRegistrationDetailPage] Image URLs:', {
+          avatarUrl: res?.avatarUrl,
+          cccdFrontUrl: res?.cccdFrontUrl,
+          cccdBackUrl: res?.cccdBackUrl,
+        });
         setRequest(res);
         setFailedDocuments(createEmptyDocumentErrorState());
+        setImageLoadErrors({});
       } catch (err) {
         if (cancelled) return;
         console.log('[AdminRegistrationDetailPage] API error:', err);
@@ -268,48 +281,59 @@ export default function AdminRegistrationDetailPage() {
 
   const formData = request?.formData;
 
+  /**
+   * Build storage URL for images - supports both local and Railway volume
+   */
   const buildStorageUrl = (path?: string) => {
-  if (!path) return "";
+    if (!path) return "";
 
-  if (/^https?:\/\//i.test(path) || path.startsWith("data:")) {
-    return path;
-  }
+    // If it's already a full URL (including Railway's API endpoint), return as-is
+    if (/^https?:\/\//i.test(path) || path.startsWith("data:")) {
+      console.log('[buildStorageUrl] Already a URL:', path);
+      return path;
+    }
 
-  const apiBase = (
-    (import.meta.env.VITE_API_BASE_URL as string) ||
-    "http://127.0.0.1:8000"
-  ).replace(/\/+$/, "");
+    const apiBase = (import.meta.env.VITE_API_BASE_URL as string) || "http://127.0.0.1:8000";
+    const cleanApiBase = apiBase.replace(/\/+$/, "");
+    
+    // For Railway volume files, the API should return full URLs already
+    // If we get a relative path here, it's likely from local storage
+    const storageBase = cleanApiBase.endsWith("/api") ? cleanApiBase.slice(0, -4) : cleanApiBase;
+    const normalizedPath = path.replace(/^\/+/, "");
+    
+    const finalUrl = `${storageBase}/storage/${normalizedPath}`;
+    console.log('[buildStorageUrl] Original:', path, '-> Final:', finalUrl);
+    return finalUrl;
+  };
 
-  const storageBase = apiBase.endsWith("/api")
-    ? apiBase.slice(0, -4)
-    : apiBase;
+  const resolveDocumentSrc = (field: RegistrationDocumentField) => {
+    if (!request) {
+      return "";
+    }
 
-  const normalizedPath = path.replace(/^\/+/, "");
+    let rawUrl = "";
+    if (field === "portraitPhoto") {
+      rawUrl = request.avatarUrl || request.documents[field] || "";
+    } else if (field === "cccdFrontPhoto") {
+      rawUrl = request.cccdFrontUrl || request.documents[field] || "";
+    } else {
+      rawUrl = request.cccdBackUrl || request.documents[field] || "";
+    }
 
-  return `${storageBase}/storage/${normalizedPath}`;
-};
+    if (!rawUrl) {
+      console.log(`[resolveDocumentSrc] No URL for ${field}`);
+      return "";
+    }
 
-const resolveDocumentSrc = (field: RegistrationDocumentField) => {
-  if (!request) {
-    return "";
-  }
+    const finalUrl = buildStorageUrl(rawUrl);
+    return finalUrl;
+  };
 
-  if (field === "portraitPhoto") {
-    return buildStorageUrl(
-      request.avatarUrl || request.documents[field]
-    );
-  }
-
-  if (field === "cccdFrontPhoto") {
-    return buildStorageUrl(
-      request.cccdFrontUrl || request.documents[field]
-    );
-  }
-
-  return buildStorageUrl(
-    request.cccdBackUrl || request.documents[field]
-  );
-};
+  const handleImageError = (field: RegistrationDocumentField, url: string) => {
+    console.error(`[Image Error] Failed to load ${field}:`, url);
+    setImageLoadErrors((prev) => ({ ...prev, [field]: true }));
+    setFailedDocuments((prev) => ({ ...prev, [field]: true }));
+  };
 
   const relationshipLabel = useMemo(() => {
     if (!formData) {
@@ -515,8 +539,8 @@ const resolveDocumentSrc = (field: RegistrationDocumentField) => {
           <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2 lg:[grid-template-columns:repeat(3,minmax(0,15rem))] lg:justify-between lg:gap-8">
             {documentFieldConfigs.map(({ field }) => {
               const src = resolveDocumentSrc(field);
-              const isFailed = failedDocuments[field];
-              const canPreview = Boolean(src) && !isFailed;
+              const hasError = failedDocuments[field] || imageLoadErrors[field];
+              const canPreview = Boolean(src) && !hasError;
 
               return (
                 <div
@@ -547,9 +571,8 @@ const resolveDocumentSrc = (field: RegistrationDocumentField) => {
                             setImagePreview({ src, title: documentLabels[field] });
                           }
                         }}
-                        onError={() => {
-                          setFailedDocuments((prev) => ({ ...prev, [field]: true }));
-                        }}
+                        onError={() => handleImageError(field, src)}
+                        loading="lazy"
                       />
                     ) : (
                       <div className="flex h-48 w-full flex-col items-center justify-center gap-2 bg-white px-4 text-center">
@@ -557,8 +580,18 @@ const resolveDocumentSrc = (field: RegistrationDocumentField) => {
                           <ImageOff className="h-6 w-6" />
                         </div>
                         <p className="text-xs font-semibold text-[#5a739e]">
-                          {isFailed ? "Không tải được ảnh" : "Chưa có ảnh"}
+                          {hasError ? "Không tải được ảnh" : "Chưa có ảnh"}
                         </p>
+                        {src && hasError && (
+                          <a
+                            href={src}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-2 text-xs text-[#244CB8] hover:underline"
+                          >
+                            Thử mở trực tiếp
+                          </a>
+                        )}
                       </div>
                     )}
                   </div>
