@@ -71,15 +71,27 @@ const createPreviewSvg = (title: string, subtitle: string, accent: string) =>
 
 const toPublicAssetUrl = (value?: string | null) => {
   if (!value) return "";
-  if (/^(data:|https?:\/\/)/i.test(value)) return value;
-
-  const normalized = String(value).replace(/^\/+/, "");
-
-  if (normalized.startsWith("storage/")) {
-    return `${API_BASE}/${normalized}`;
+  
+  // If it's already a full URL (including Railway's API endpoint), return as-is
+  if (/^(data:|https?:\/\/)/i.test(value)) {
+    // Check if it's a Railway URL missing /api/ (old format)
+    if (value.includes('railway.app') && value.includes('/storage/') && !value.includes('/api/')) {
+      // Fix it by adding /api/
+      const fixed = value.replace('/storage/', '/api/storage/');
+      console.log('[toPublicAssetUrl] Fixed missing /api/:', fixed);
+      return fixed;
+    }
+    return value;
   }
 
-  return `${API_BASE}/storage/${normalized}`;
+  const normalized = String(value).replace(/^\/+/, "");
+  
+  // For Railway, use /api/storage/
+  if (normalized.startsWith("storage/")) {
+    return `${API_BASE}/api/storage/${normalized}`;
+  }
+  
+  return `${API_BASE}/api/storage/${normalized}`;
 };
 
 const normalizeStatus = (value: unknown): RegistrationStatus => {
