@@ -1,4 +1,5 @@
-const API = "http://127.0.0.1:8000/api";
+const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
+const API = API_BASE.endsWith("/api") ? API_BASE : `${API_BASE}/api`;
 
 type ValidationErrors = Record<string, string[]>;
 
@@ -82,7 +83,7 @@ export const login = async (data: { email: string; password: string }) => {
 };
 
 export const checkEmailExists = async (email: string) => {
-  const res = await fetch(`http://127.0.0.1:8000/api/check-email`, {
+  const res = await fetch(`${API}/check-email`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -95,7 +96,7 @@ export const checkEmailExists = async (email: string) => {
 };
 
 export const checkStudentCodeExists = async (student_code: string) => {
-  const res = await fetch("http://127.0.0.1:8000/api/check-student-code", {
+  const res = await fetch(`${API}/check-student-code`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -108,7 +109,7 @@ export const checkStudentCodeExists = async (student_code: string) => {
 };
 
 export const register = async (data: any) => {
-  const res = await fetch("http://127.0.0.1:8000/api/register", {
+  const res = await fetch(`${API}/register`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -124,7 +125,7 @@ export const register = async (data: any) => {
 };
 
 export const forgotPassword = async (email: string) => {
-  const res = await fetch("http://127.0.0.1:8000/api/forgot-password", {
+  const res = await fetch(`${API}/forgot-password`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

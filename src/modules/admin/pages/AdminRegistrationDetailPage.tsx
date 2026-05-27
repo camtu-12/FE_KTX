@@ -161,6 +161,7 @@ export default function AdminRegistrationDetailPage() {
   const [failedDocuments, setFailedDocuments] = useState<Record<RegistrationDocumentField, boolean>>(() =>
     createEmptyDocumentErrorState(),
   );
+  const [imageLoadErrors, setImageLoadErrors] = useState<Record<string, boolean>>({});
 
   const [request, setRequest] = useState<RegistrationRequest | null>(routeState?.request ?? null);
 
@@ -194,16 +195,20 @@ export default function AdminRegistrationDetailPage() {
 
     if (Number.isNaN(id) || id <= 0) {
       console.log('[AdminRegistrationDetailPage] invalid registrationId from URL, clearing');
-      asyncSetRequest(null);
+      queueMicrotask(() => {
+        setRequest(null);
+      });
       return;
     }
 
-    // Nếu navigated từ modal và modal truyền snapshot (routeState.request) và returnToModal=true,
-    // thì ưu tiên dùng snapshot đó để hiển thị dữ liệu lịch sử chính xác (không bị ghi đè bởi latest).
-    if (routeState?.request && routeState.returnToModal && routeState.request.id === id) {
+    const snapshotRequest = routeState?.request;
+    if (snapshotRequest && routeState.returnToModal && snapshotRequest.id === id) {
       console.log('[AdminRegistrationDetailPage] using routeState.request snapshot for id:', id);
-      asyncSetRequest(routeState.request ?? null);
-      asyncSetFailedDocuments(createEmptyDocumentErrorState());
+      queueMicrotask(() => {
+        setRequest(snapshotRequest);
+        setFailedDocuments(createEmptyDocumentErrorState());
+        setImageLoadErrors({});
+      });
       return;
     }
 
@@ -214,9 +219,27 @@ export default function AdminRegistrationDetailPage() {
         console.log('[AdminRegistrationDetailPage] calling getRegistrationById with id:', id);
         const res = await getRegistrationById(id);
         if (cancelled) return;
-        console.log('[AdminRegistrationDetailPage] API response id:', res?.id, 'status:', res?.status);
-        asyncSetRequest(res ?? null);
-        asyncSetFailedDocuments(createEmptyDocumentErrorState());
+        
+        // Detailed logging of the response
+        console.log('[AdminRegistrationDetailPage] Full API Response:', {
+          id: res?.id,
+          status: res?.status,
+          avatarUrl: res?.avatarUrl,
+          cccdFrontUrl: res?.cccdFrontUrl,
+          cccdBackUrl: res?.cccdBackUrl,
+          documents: res?.documents,
+          student: res?.student
+        });
+        
+        console.log('[AdminRegistrationDetailPage] Image URLs:', {
+          avatarUrl: res?.avatarUrl,
+          cccdFrontUrl: res?.cccdFrontUrl,
+          cccdBackUrl: res?.cccdBackUrl,
+        });
+        
+        setRequest(res);
+        setFailedDocuments(createEmptyDocumentErrorState());
+        setImageLoadErrors({});
       } catch (err) {
         if (cancelled) return;
         console.log('[AdminRegistrationDetailPage] API error:', err);
@@ -292,20 +315,65 @@ export default function AdminRegistrationDetailPage() {
 
   const formData = request?.formData;
 
+  /**
+   * Build storage URL for images - supports both local and Railway volume
+   */
+  const buildStorageUrl = (path?: string) => {
+    if (!path) return "";
+
+    // If it's already a full URL (including Railway's API endpoint), return as-is
+    if (/^https?:\/\//i.test(path) || path.startsWith("data:")) {
+      console.log('[buildStorageUrl] Already a URL:', path);
+      return path;
+    }
+
+    const apiBase = (import.meta.env.VITE_API_BASE_URL as string) || "http://127.0.0.1:8000";
+    const cleanApiBase = apiBase.replace(/\/+$/, "");
+    
+    const storageBase = cleanApiBase.endsWith("/api") ? cleanApiBase.slice(0, -4) : cleanApiBase;
+    const normalizedPath = path.replace(/^\/+/, "");
+    
+    const finalUrl = `${storageBase}/storage/${normalizedPath}`;
+    console.log('[buildStorageUrl] Original:', path, '-> Final:', finalUrl);
+    return finalUrl;
+  };
+
   const resolveDocumentSrc = (field: RegistrationDocumentField) => {
     if (!request) {
+      console.log('[resolveDocumentSrc] No request object');
       return "";
     }
 
+    let rawUrl = "";
     if (field === "portraitPhoto") {
-      return request.avatarUrl || request.documents[field] || "";
+      rawUrl = request.avatarUrl || request.documents?.[field] || "";
+      console.log('[resolveDocumentSrc] portraitPhoto - request.avatarUrl:', request.avatarUrl);
+      console.log('[resolveDocumentSrc] portraitPhoto - request.documents.portraitPhoto:', request.documents?.portraitPhoto);
+      console.log('[resolveDocumentSrc] portraitPhoto - rawUrl:', rawUrl);
+    } else if (field === "cccdFrontPhoto") {
+      rawUrl = request.cccdFrontUrl || request.documents?.[field] || "";
+      console.log('[resolveDocumentSrc] cccdFrontPhoto - request.cccdFrontUrl:', request.cccdFrontUrl);
+      console.log('[resolveDocumentSrc] cccdFrontPhoto - rawUrl:', rawUrl);
+    } else {
+      rawUrl = request.cccdBackUrl || request.documents?.[field] || "";
+      console.log('[resolveDocumentSrc] cccdBackPhoto - request.cccdBackUrl:', request.cccdBackUrl);
+      console.log('[resolveDocumentSrc] cccdBackPhoto - rawUrl:', rawUrl);
     }
 
-    if (field === "cccdFrontPhoto") {
-      return request.cccdFrontUrl || request.documents[field] || "";
+    if (!rawUrl) {
+      console.log(`[resolveDocumentSrc] No URL for ${field}`);
+      return "";
     }
 
-    return request.cccdBackUrl || request.documents[field] || "";
+    const finalUrl = buildStorageUrl(rawUrl);
+    console.log(`[resolveDocumentSrc] ${field} finalUrl:`, finalUrl);
+    return finalUrl;
+  };
+
+  const handleImageError = (field: RegistrationDocumentField, url: string) => {
+    console.error(`[Image Error] Failed to load ${field}:`, url);
+    setImageLoadErrors((prev) => ({ ...prev, [field]: true }));
+    setFailedDocuments((prev) => ({ ...prev, [field]: true }));
   };
 
   const relationshipLabel = useMemo(() => {
@@ -512,8 +580,8 @@ export default function AdminRegistrationDetailPage() {
           <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2 lg:[grid-template-columns:repeat(3,minmax(0,15rem))] lg:justify-between lg:gap-8">
             {documentFieldConfigs.map(({ field }) => {
               const src = resolveDocumentSrc(field);
-              const isFailed = failedDocuments[field];
-              const canPreview = Boolean(src) && !isFailed;
+              const hasError = failedDocuments[field] || imageLoadErrors[field];
+              const canPreview = Boolean(src) && !hasError;
 
               return (
                 <div
@@ -544,9 +612,8 @@ export default function AdminRegistrationDetailPage() {
                             setImagePreview({ src, title: documentLabels[field] });
                           }
                         }}
-                        onError={() => {
-                          setFailedDocuments((prev) => ({ ...prev, [field]: true }));
-                        }}
+                        onError={() => handleImageError(field, src)}
+                        loading="lazy"
                       />
                     ) : (
                       <div className="flex h-48 w-full flex-col items-center justify-center gap-2 bg-white px-4 text-center">
@@ -554,8 +621,18 @@ export default function AdminRegistrationDetailPage() {
                           <ImageOff className="h-6 w-6" />
                         </div>
                         <p className="text-xs font-semibold text-[#5a739e]">
-                          {isFailed ? "Không tải được ảnh" : "Chưa có ảnh"}
+                          {hasError ? "Không tải được ảnh" : "Chưa có ảnh"}
                         </p>
+                        {src && hasError && (
+                          <a
+                            href={src}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-2 text-xs text-[#244CB8] hover:underline"
+                          >
+                            Thử mở trực tiếp
+                          </a>
+                        )}
                       </div>
                     )}
                   </div>

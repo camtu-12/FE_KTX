@@ -1,4 +1,3 @@
-import axios from "axios";
 import * as regApi from "./registrationApi";
 import type {
   RegistrationFormData,
@@ -6,8 +5,11 @@ import type {
   RegistrationStatus,
 } from "../modules/admin/data/registrationRequests";
 
-const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
-const BASE_URL = `${API_BASE}/api`;
+// Sử dụng Railway URL từ environment variables (có fallback nếu biến không được set)
+const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) || "http://127.0.0.1:8000").replace(/\/+$/, "");
+
+
+console.log("API_BASE:", API_BASE); // Debug - kiểm tra URL đúng không
 
 export type DormRoom = {
   id: number;
@@ -69,15 +71,28 @@ const createPreviewSvg = (title: string, subtitle: string, accent: string) =>
 
 const toPublicAssetUrl = (value?: string | null) => {
   if (!value) return "";
-  if (/^(data:|https?:\/\/)/i.test(value)) return value;
-
-  const normalized = String(value).replace(/^\/+/, "");
-
-  if (normalized.startsWith("storage/")) {
-    return `${API_BASE}/${normalized}`;
+  
+  // If it's already a full URL, return it as-is (backend already did the work)
+  if (value.includes('http://') || value.includes('https://')) {
+    return value;
+  }
+  
+  // Handle data URLs
+  if (value.startsWith('data:')) {
+    return value;
   }
 
-  return `${API_BASE}/storage/${normalized}`;
+  // Only build URLs for relative paths
+  const normalized = String(value).replace(/^\/+/, "");
+  const cleanPath = normalized.replace(/^(api\/|storage\/)/, '');
+  
+  // Local development
+  if (!API_BASE.includes('railway.app')) {
+    return `${API_BASE}/storage/${cleanPath}`;
+  }
+  
+  // Railway - use /api/storage/
+  return `${API_BASE}/api/storage/${cleanPath}`;
 };
 
 const normalizeStatus = (value: unknown): RegistrationStatus => {
@@ -359,7 +374,7 @@ export const updateRegistrationStatus = async ({
 }): Promise<RegistrationRequest> => {
   try {
     if (status === "approved") {
-      await axios.put(`${BASE_URL}/registration/${id}/approve`);
+      await regApi.API.put(`/registration/${id}/approve`);
       const updated = await getRegistrationById(id);
       if (!updated) {
         throw new Error("Không thể tải lại đơn đăng ký sau khi duyệt.");
@@ -368,7 +383,7 @@ export const updateRegistrationStatus = async ({
       return updated;
     }
 
-    await axios.put(`${BASE_URL}/registration/${id}/reject`, {
+    await regApi.API.put(`/registration/${id}/reject`, {
       rejectionReason: rejectionReason?.trim() ?? "",
     });
     const updated = await getRegistrationById(id);
@@ -389,7 +404,7 @@ export const updateRegistrationStatus = async ({
 // Các tác vụ admin: wrapper tốt nhất - backend có thể cung cấp endpoint khác.
 export const assignRoomToRegistration = async ({ requestId, roomId }: { requestId: number; roomId: number }): Promise<RegistrationRequest | null> => {
   try {
-    const res = await axios.put(`${BASE_URL}/registration/${requestId}/assign-room`, { room_id: roomId });
+    const res = await regApi.API.put(`/registration/${requestId}/assign-room`,{ room_id: roomId });
     void res;
     return getRegistrationById(requestId);
   } catch (err: unknown) {
@@ -403,7 +418,7 @@ export const assignRoomToRegistration = async ({ requestId, roomId }: { requestI
 
 export const selectBedForRegistration = async ({ email, bedId }: { email: string; bedId: number }) => {
   try {
-    const res = await axios.put(`${BASE_URL}/registration/select-bed`, { email, bed_id: bedId });
+    const res = await regApi.API.put(`/registration/select-bed`, { email, bed_id: bedId });
     return extract<unknown>(res);
   } catch (err: unknown) {
     const error = isRecord(err) ? err : null;
