@@ -1,3 +1,5 @@
+import type { LoginRequest, RegisterRequest } from "../types/auth.type";
+
 const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
 const API = API_BASE.endsWith("/api") ? API_BASE : `${API_BASE}/api`;
 
@@ -66,7 +68,7 @@ const ensureOk = async (res: Response, fallbackMessage: string) => {
   throw new ApiHttpError(message, res.status, fieldErrors);
 };
 
-export const login = async (data: { email?: string; student_code?: string; password: string }) => {
+export const login = async (data: LoginRequest) => {
   const res = await fetch(`${API}/login`, {
     method: "POST",
     headers: {
@@ -108,7 +110,7 @@ export const checkStudentCodeExists = async (student_code: string) => {
   return res.json();
 };
 
-export const register = async (data: any) => {
+export const register = async (data: RegisterRequest) => {
   const res = await fetch(`${API}/register`, {
     method: "POST",
     headers: {
