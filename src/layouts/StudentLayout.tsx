@@ -1,17 +1,42 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import Sidebar from "../components/Sidebar";
 import { clearAuthStorage, getStoredAuth } from "../modules/auth/utils/authStorage";
+import { checkStudentCodeExists } from "../modules/auth/services/auth.api";
 
 export default function StudentLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const navigate = useNavigate();
   const user = getStoredAuth()?.user ?? null;
-  const userName = user?.fullName || user?.email || "Student User";
+  const userNameFromAccount = user?.fullName ?? "";
   const studentCode = user?.studentCode || (user as typeof user & { student_code?: string })?.student_code || "";
-  const userEmail = user?.email || "student@stu.edu.vn";
+  const userEmail = user?.email ?? "";
+  const [displayName, setDisplayName] = useState<string>(userNameFromAccount);
+
+  useEffect(() => {
+    if (displayName) return;
+    if (!studentCode) return;
+
+    let mounted = true;
+
+    (async () => {
+      try {
+        const res = await checkStudentCodeExists(studentCode);
+        if (!mounted) return;
+        if (res?.exists && res.student?.full_name) {
+          setDisplayName(res.student.full_name);
+        }
+      } catch (err) {
+        // ignore
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [displayName, studentCode]);
 
   const handleLogout = () => {
     clearAuthStorage();
@@ -22,7 +47,7 @@ export default function StudentLayout() {
     <div className="h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,#f7faff_0%,#edf2f8_42%,#e8eef7_100%)]">
       <Header
         role="student"
-        userName={userName}
+        userName={displayName}
         userEmail={userEmail}
         studentCode={studentCode}
         onLogout={handleLogout}

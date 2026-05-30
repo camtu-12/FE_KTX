@@ -299,6 +299,7 @@ const buildImageUrl = (path?: string): string => {
 export default function RegistrationPage() {
   const navigate = useNavigate();
   const studentEmail = useAuthStore((state) => state.user?.email ?? "");
+  const studentCodeFromAuth = useAuthStore((state) => (state.user?.student_code ?? (state.user as any)?.studentCode) ?? "");
   const [registration, setRegistration] = useState<RegistrationWithAssignment | null>(null);
   const [status, setStatus] = useState<RegistrationStatus>("unregistered");
   const [formData, setFormData] = useState<FormData>(initialFormData);
@@ -345,6 +346,58 @@ export default function RegistrationPage() {
     return (await getLatestRegistrationByEmail(studentEmail)) as RegistrationWithAssignment | null;
   };
 
+  // When user is logged in with a student_code, auto-load student info and prefill form
+  // reusable loader to populate formData from student_code
+  const loadStudentData = async (code?: string) => {
+    const trimmed = code?.trim();
+    if (!trimmed) return;
+
+    try {
+      setIsCheckingMssv(true);
+      const res = await checkStudentCodeExists(trimmed);
+      const exists = res?.exists ?? false;
+      if (!exists) return;
+      const student = res.student;
+      if (!student) return;
+
+      const mapDate = (val?: string) => {
+        if (!val) return "";
+        const parts = val.split("-");
+        if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        return val;
+      };
+
+      setFormData((prev) => ({
+        ...prev,
+        mssv: student.student_code ?? trimmed,
+        fullName: student.full_name ?? prev.fullName,
+        birthDate: mapDate(student.date_of_birth),
+        gender: student.gender ?? prev.gender,
+        class: student.class_name ?? prev.class,
+        department: student.faculty ?? prev.department,
+        nationality: student.nationality ?? prev.nationality,
+        ethnicity: student.ethnicity ?? prev.ethnicity,
+        religion: student.religion ?? prev.religion,
+        phone: student.phone ?? prev.phone,
+        cccd: student.cccd ?? prev.cccd,
+        cccdIssueDate: mapDate(student.cccd_issued_date),
+        cccdIssuePlace: student.cccd_issued_place ?? prev.cccdIssuePlace,
+        address: student.permanent_address ?? prev.address,
+      }));
+
+      setStudentDataReadonly(true);
+      setAutoLoaded(true);
+    } catch (err) {
+      console.warn("Auto check student_code failed:", err);
+    } finally {
+      setIsCheckingMssv(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadStudentData(studentCodeFromAuth);
+  }, [studentCodeFromAuth]);
+
   const openResubmit = async () => {
     resetFormState();
     setRegistration(null);
@@ -352,17 +405,22 @@ export default function RegistrationPage() {
     setRejectionReason("");
     setReviewDocumentUrls(initialDocumentPreviewUrls);
     setIsReviewingSubmittedForm(false);
-    requestAnimationFrame(() => {
+    // reload student info (prefill and readonly) when resubmitting
+    try {
+      await loadStudentData(studentCodeFromAuth);
+    } finally {
       requestAnimationFrame(() => {
-        const scrollContainer =
-          formRef.current?.closest(".auth-scrollbar") ?? document.querySelector(".auth-scrollbar");
-        if (scrollContainer instanceof HTMLElement) {
-          scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
-          return;
-        }
-        window.scrollTo({ top: 0, behavior: "smooth" });
+        requestAnimationFrame(() => {
+          const scrollContainer =
+            formRef.current?.closest(".auth-scrollbar") ?? document.querySelector(".auth-scrollbar");
+          if (scrollContainer instanceof HTMLElement) {
+            scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
+            return;
+          }
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        });
       });
-    });
+    }
   };
 
   useEffect(() => {
@@ -640,6 +698,8 @@ export default function RegistrationPage() {
   };
 
   const [isCheckingMssv, setIsCheckingMssv] = useState(false);
+  const [studentDataReadonly, setStudentDataReadonly] = useState(false);
+  const [autoLoaded, setAutoLoaded] = useState(false);
 
   const handleMssvBlur = async () => {
     const code = formData.mssv?.trim();
@@ -650,8 +710,9 @@ export default function RegistrationPage() {
       const res = await checkStudentCodeExists(code);
       const exists = res?.exists ?? false;
 
-      if (!exists) {
+        if (!exists) {
         setErrors((prev) => ({ ...prev, mssv: "MSSV sai. Vui lòng nhập MSSV đã đăng ký." }));
+        if (!autoLoaded) setStudentDataReadonly(false);
       } else {
         setErrors((prev) => {
           if (!prev.mssv) return prev;
@@ -659,6 +720,40 @@ export default function RegistrationPage() {
           delete copy.mssv;
           return copy;
         });
+
+        // Nếu server trả student, map vào form và set readonly
+        const student = res.student;
+        if (student) {
+          
+          const mapDate = (val?: string) => {
+            if (!val) return "";
+            // expect YYYY-MM-DD -> dd/mm/yyyy
+            const parts = val.split("-");
+            if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+            return val;
+          };
+
+          setFormData((prev) => ({
+            ...prev,
+            mssv: student.student_code ?? code,
+            fullName: student.full_name ?? prev.fullName,
+            birthDate: mapDate(student.date_of_birth),
+            gender: student.gender ?? prev.gender,
+            class: student.class_name ?? prev.class,
+            department: student.faculty ?? prev.department,
+            nationality: student.nationality ?? prev.nationality,
+            ethnicity: student.ethnicity ?? prev.ethnicity,
+            religion: student.religion ?? prev.religion,
+            phone: student.phone ?? prev.phone,
+            cccd: student.cccd ?? prev.cccd,
+            cccdIssueDate: mapDate(student.cccd_issued_date),
+            cccdIssuePlace: student.cccd_issued_place ?? prev.cccdIssuePlace,
+            address: student.permanent_address ?? prev.address,
+          }));
+
+          setStudentDataReadonly(true);
+          setAutoLoaded(true);
+        }
       }
     } catch {
       setErrors((prev) => ({ ...prev, mssv: "Không thể kiểm tra MSSV. Vui lòng thử lại." }));
@@ -666,6 +761,8 @@ export default function RegistrationPage() {
       setIsCheckingMssv(false);
     }
   };
+
+  
 
   const openDocumentPicker = (fieldName: DocumentField) => {
     documentRefs.current[fieldName]?.click();
@@ -946,6 +1043,50 @@ export default function RegistrationPage() {
     const className = config.type === "select" ? getStep2FieldClassName() : getFieldClassName();
     const fieldId = `registration-${String(config.name)}`;
 
+    const prefilledFieldNames = new Set<keyof FormData>([
+      "mssv",
+      "fullName",
+      "birthDate",
+      "gender",
+      "class",
+      "department",
+      "nationality",
+      "ethnicity",
+      "religion",
+      "phone",
+      "cccd",
+      "cccdIssueDate",
+      "cccdIssuePlace",
+      "address",
+    ]);
+    const isPrefilled = (
+      (studentDataReadonly || autoLoaded) ||
+      (studentCodeFromAuth && formData.mssv && studentCodeFromAuth === formData.mssv)
+    ) && prefilledFieldNames.has(config.name);
+
+    // If MSSV was auto-loaded from auth, hide the visible MSSV field but keep a hidden input for submission
+    if (config.name === "mssv" && (studentDataReadonly || (studentCodeFromAuth && studentCodeFromAuth === formData.mssv))) {
+      return (
+        <div key={String(config.name)} className={config.fullWidth ? "md:col-span-2" : ""}>
+          <label htmlFor={fieldId} className="block text-sm font-medium text-[#5A7094]">
+            {config.label} {isRequired ? <span className="text-red-500">*</span> : null}
+          </label>
+          <input
+            id={fieldId}
+            type="text"
+            name="mssv_display"
+            value={formData.mssv}
+            className={className}
+            disabled
+            tabIndex={-1}
+            aria-readonly="true"
+            readOnly
+          />
+          <input type="hidden" name="mssv" value={formData.mssv} />
+        </div>
+      );
+    }
+
     return (
       <div key={String(config.name)} className={config.fullWidth ? "md:col-span-2" : ""}>
         <label htmlFor={fieldId} className="block text-sm font-medium text-[#5A7094]">
@@ -961,6 +1102,7 @@ export default function RegistrationPage() {
               fieldRefs.current[config.name] = node;
             }}
             className={className}
+            disabled={isPrefilled}
           >
             <option value="">{config.placeholder ?? `Chọn ${config.label.toLowerCase()}`}</option>
             {config.options?.map((option) => (
@@ -970,21 +1112,30 @@ export default function RegistrationPage() {
             ))}
           </select>
         ) : (
-          <input
-            id={fieldId}
-            type={isDateField ? "text" : config.type ?? "text"}
-            name={String(config.name)}
-            value={fieldValue}
-            onChange={handleInputChange}
-            onBlur={isDateField ? () => validateDateField(config.name) : config.onBlur}
-            inputMode={isDateField ? "numeric" : config.type === "tel" ? "numeric" : undefined}
-            maxLength={isDateField ? 10 : undefined}
-            ref={(node) => {
-              fieldRefs.current[config.name] = node;
-            }}
-            placeholder={isDateField ? "dd/mm/yyyy" : config.placeholder}
-            className={className}
-          />
+          <>
+            <input
+              id={fieldId}
+              type={isDateField ? "text" : config.type ?? "text"}
+              name={String(config.name)}
+              value={fieldValue}
+              onChange={handleInputChange}
+              onBlur={isDateField ? () => validateDateField(config.name) : config.onBlur}
+              inputMode={isDateField ? "numeric" : config.type === "tel" ? "numeric" : undefined}
+              maxLength={isDateField ? 10 : undefined}
+              ref={(node) => {
+                fieldRefs.current[config.name] = node;
+              }}
+              placeholder={isDateField ? "dd/mm/yyyy" : config.placeholder}
+              className={className}
+              disabled={isPrefilled}
+              tabIndex={isPrefilled ? -1 : undefined}
+            />
+            {config.name === "mssv" && studentDataReadonly && (
+              <div className="mt-2">
+                <span className="text-sm text-[#2f63da]">Dữ liệu đã lấy từ hồ sơ sinh viên (readonly)</span>
+              </div>
+            )}
+          </>
         )}
         {config.helperText ? <p className="mt-1 text-xs text-[#6F89B5]">{config.helperText}</p> : null}
         {errors[config.name] ? <ErrorMessage message={errors[config.name] as string} /> : null}
@@ -1061,6 +1212,8 @@ export default function RegistrationPage() {
       </motion.div>
 
       <ProgressStep currentStep={currentProgressStep} />
+
+      
 
       {statusForView === "pending" && (
         <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-[#b7ccef] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-5 text-center shadow-[0_12px_24px_rgba(36,76,184,0.10)] backdrop-blur-sm">

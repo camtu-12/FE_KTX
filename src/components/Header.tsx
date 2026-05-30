@@ -49,10 +49,16 @@ export default function Header({
   isSidebarOpen = true,
   onToggleSidebar,
 }: HeaderProps) {
-  const initials = getInitials(userName);
+  const initials = getInitials(userName || userEmail || "");
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
-  const secondaryLabel = role === "student" ? studentCode ?? "SV001" : "Quản trị viên";
+  const secondaryLabel = (() => {
+    if (role === "student") {
+      // show full name if provided, otherwise student code
+      return userName || studentCode || "SV001";
+    }
+    return "Quản trị viên";
+  })();
 
   useEffect(() => {
     if (!isUserMenuOpen) {
@@ -137,7 +143,7 @@ export default function Header({
 
             <div className="min-w-0 text-left">
               <p className="truncate text-[0.88rem] font-semibold leading-tight text-[#24407f]">
-                {userName}
+                {userEmail ?? userName}
               </p>
               <p className="mt-0.5 text-[0.78rem] font-semibold tracking-[0.02em] text-[#5b74a6]">
                 {secondaryLabel}

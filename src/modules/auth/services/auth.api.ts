@@ -66,7 +66,7 @@ const ensureOk = async (res: Response, fallbackMessage: string) => {
   throw new ApiHttpError(message, res.status, fieldErrors);
 };
 
-export const login = async (data: { email: string; password: string }) => {
+export const login = async (data: { email?: string; student_code?: string; password: string }) => {
   const res = await fetch(`${API}/login`, {
     method: "POST",
     headers: {

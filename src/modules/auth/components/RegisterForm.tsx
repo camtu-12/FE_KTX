@@ -1,21 +1,11 @@
 import { useState } from "react";
-import {
-  BookOpen,
-  Eye,
-  EyeOff,
-  IdCard,
-  LoaderCircle,
-  Lock,
-  Mail,
-} from "lucide-react";
+import { BookOpen, Eye, EyeOff, LoaderCircle, Lock } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
-import { ApiHttpError, checkEmailExists, checkStudentCodeExists } from "../services/auth.api";
+import { ApiHttpError, checkStudentCodeExists } from "../services/auth.api";
 
 type RegisterFields = {
-  full_name: string;
   student_code: string;
-  email: string;
   password: string;
   confirmPassword: string;
 };
@@ -23,9 +13,7 @@ type RegisterFields = {
 type FieldErrors = Partial<Record<keyof RegisterFields, string>>;
 
 const initialFields: RegisterFields = {
-  full_name: "",
   student_code: "",
-  email: "",
   password: "",
   confirmPassword: "",
 };
@@ -86,54 +74,21 @@ export default function RegisterForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  const setField = <K extends keyof RegisterFields>(
-    key: K,
-    value: RegisterFields[K]
-  ) => {
+  const setField = <K extends keyof RegisterFields>(key: K, value: RegisterFields[K]) => {
     setFields((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => ({ ...prev, [key]: undefined }));
     if (generalError) setGeneralError("");
   };
 
-  const nameRegex = /^[A-Za-zÀ-ỹ\s]+$/;
-
   const studentCodeRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]+$/;
-
-  const emailRegex = /^[a-zA-Z0-9._%+-]+@student\.stu\.edu\.vn$/i;
-
-  const passwordRegex =
-    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
-
-  const handleEmailBlur = async () => {
-    const email = fields.email.trim();
-    if (!email) return;
-
-    if (!emailRegex.test(email)) {
-      setErrors((prev) => ({
-        ...prev,
-        email: "Email phải đúng định dạng abc@student.stu.edu.vn.",
-      }));
-      return;
-    }
-
-    try {
-      const res = await checkEmailExists(email);
-      if (res.exists) {
-        setErrors((prev) => ({ ...prev, email: "Email đã tồn tại." }));
-      }
-    } catch { }
-  };
+  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
 
   const handleStudentCodeBlur = async () => {
     const code = fields.student_code.trim();
     if (!code) return;
 
-    // Validate prefix: phải bắt đầu bằng 'DH'
     if (!/^DH/i.test(code)) {
-      setErrors((prev) => ({
-        ...prev,
-        student_code: "MSSV phải bắt đầu bằng 'DH'.",
-      }));
+      setErrors((prev) => ({ ...prev, student_code: "MSSV phải bắt đầu bằng 'DH'." }));
       return;
     }
 
@@ -147,13 +102,12 @@ export default function RegisterForm() {
 
     try {
       const res = await checkStudentCodeExists(code);
-      if (res.exists) {
-        setErrors((prev) => ({
-          ...prev,
-          student_code: "MSSV đã tồn tại.",
-        }));
+      if (!res.exists) {
+        setErrors((prev) => ({ ...prev, student_code: "MSSV không tồn tại trong hệ thống." }));
       }
-    } catch { }
+    } catch {
+      // ignore
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -162,47 +116,25 @@ export default function RegisterForm() {
     const nextErrors: FieldErrors = {};
 
     const trimmed = {
-      full_name: fields.full_name.trim(),
       student_code: fields.student_code.trim(),
-      email: fields.email.trim(),
       password: fields.password.trim(),
       confirmPassword: fields.confirmPassword.trim(),
     };
 
-    // Họ và tên
-    if (!trimmed.full_name) {
-      nextErrors.full_name = "Vui lòng nhập họ và tên.";
-    } else if (!nameRegex.test(trimmed.full_name)) {
-      nextErrors.full_name =
-        "Họ tên chỉ được chứa chữ cái, không có số hoặc ký tự đặc biệt.";
-    }
-
-    // MSSV
     if (!trimmed.student_code) {
       nextErrors.student_code = "Vui lòng nhập MSSV.";
     } else if (!/^DH/i.test(trimmed.student_code)) {
       nextErrors.student_code = "MSSV phải bắt đầu bằng 'DH'.";
     } else if (!studentCodeRegex.test(trimmed.student_code)) {
-      nextErrors.student_code =
-        "MSSV phải gồm chữ và số, không chứa ký tự đặc biệt.";
+      nextErrors.student_code = "MSSV phải gồm chữ và số, không chứa ký tự đặc biệt.";
     }
 
-    // Email (chỉ student.stu.edu.vn)
-    if (!trimmed.email) {
-      nextErrors.email = "Vui lòng nhập email.";
-    } else if (!emailRegex.test(trimmed.email)) {
-      nextErrors.email = "Email phải đúng định dạng abc@student.stu.edu.vn.";
-    }
-
-    // Mật khẩu
     if (!trimmed.password) {
       nextErrors.password = "Vui lòng nhập mật khẩu.";
     } else if (!passwordRegex.test(trimmed.password)) {
-      nextErrors.password =
-        "Mật khẩu phải nhiều hơn 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.";
+      nextErrors.password = "Mật khẩu phải nhiều hơn 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.";
     }
 
-    // Xác nhận mật khẩu
     if (!trimmed.confirmPassword) {
       nextErrors.confirmPassword = "Vui lòng nhập lại mật khẩu.";
     } else if (trimmed.confirmPassword !== trimmed.password) {
@@ -213,25 +145,18 @@ export default function RegisterForm() {
     setGeneralError("");
     setSuccessMessage("");
 
-    if (Object.keys(nextErrors).length > 0) {
-      return;
-    }
+    if (Object.keys(nextErrors).length > 0) return;
 
     setIsSubmitting(true);
 
     try {
-      // Sửa quan trọng: đúng key của backend
       await register({
-        full_name: trimmed.full_name,
         student_code: trimmed.student_code,
-        email: trimmed.email,
         password: trimmed.password,
         password_confirmation: trimmed.confirmPassword,
       });
 
-      setSuccessMessage(
-        "Tạo tài khoản thành công. Bạn có thể đăng nhập bằng email vừa khai báo."
-      );
+      setSuccessMessage("Tạo tài khoản thành công. Bạn có thể đăng nhập bằng email sinh viên.");
 
       setTimeout(() => navigate("/login"), 1200);
     } catch (error) {
@@ -240,17 +165,13 @@ export default function RegisterForm() {
 
         setErrors((prev) => ({
           ...prev,
-          email: backendFieldErrors.email ?? prev.email,
           password: backendFieldErrors.password ?? prev.password,
-          confirmPassword:
-            backendFieldErrors.password_confirmation ?? prev.confirmPassword,
+          confirmPassword: backendFieldErrors.password_confirmation ?? prev.confirmPassword,
         }));
 
         setGeneralError(error.message || "Đăng ký thất bại.");
       } else {
-        setGeneralError(
-          error instanceof Error ? error.message : "Đăng ký thất bại."
-        );
+        setGeneralError(error instanceof Error ? error.message : "Đăng ký thất bại.");
       }
     } finally {
       setIsSubmitting(false);
@@ -260,45 +181,16 @@ export default function RegisterForm() {
   return (
     <div className="mx-auto w-full max-w-[380px]">
       <form onSubmit={handleSubmit} autoComplete="off">
-        <input
-          type="text"
-          name="fake-username"
-          autoComplete="username"
-          className="hidden"
-        />
-        <input
-          type="password"
-          name="fake-password"
-          autoComplete="current-password"
-          className="hidden"
-        />
+        <input type="text" name="fake-username" autoComplete="username" className="hidden" />
+        <input type="password" name="fake-password" autoComplete="current-password" className="hidden" />
 
         <section className="rounded-[24px] border border-[#e3eaf4] bg-[#fbfcff] p-3.5 sm:p-4">
           <div>
-            <h2 className="auth-display text-[1.72rem] font-bold text-[var(--color-title)] sm:text-[1.55rem]">
-              Đăng ký tài khoản
-            </h2>
-            <p className="mt-1 text-[0.88rem] leading-[1.55] text-[var(--color-content)]">
-              Tạo tài khoản đăng nhập vào hệ thống.
-            </p>
+            <h2 className="auth-display text-[1.72rem] font-bold text-[var(--color-title)] sm:text-[1.55rem]">Đăng ký tài khoản</h2>
+            <p className="mt-1 text-[0.88rem] leading-[1.55] text-[var(--color-content)]">Tạo tài khoản đăng nhập vào hệ thống.</p>
           </div>
 
           <div className="mt-3 grid gap-2.5">
-            <FormField label="Họ và tên" error={errors.full_name}>
-              <InputShell icon={IdCard}>
-                <input
-                  name="full_name"
-                  autoComplete="name"
-                  type="text"
-                  placeholder="Nhập họ và tên"
-                  className={inputClassName}
-                  value={fields.full_name}
-                  onChange={(e) => setField("full_name", e.target.value)}
-                  disabled={isSubmitting}
-                />
-              </InputShell>
-            </FormField>
-
             <FormField label="MSSV" error={errors.student_code}>
               <InputShell icon={BookOpen}>
                 <input
@@ -310,25 +202,6 @@ export default function RegisterForm() {
                   value={fields.student_code}
                   onChange={(e) => setField("student_code", e.target.value)}
                   onBlur={handleStudentCodeBlur}
-                  disabled={isSubmitting}
-                />
-              </InputShell>
-            </FormField>
-
-            <FormField label="Email" error={errors.email}>
-              <InputShell icon={Mail}>
-                <input
-                  name="email"
-                  autoComplete="email"
-                  readOnly
-                  onFocus={(e) => ((e.target as HTMLInputElement).readOnly = false)}
-                  type="email"
-                  placeholder="Nhập email
-                  "
-                  className={inputClassName}
-                  value={fields.email}
-                  onChange={(e) => setField("email", e.target.value)}
-                  onBlur={handleEmailBlur}
                   disabled={isSubmitting}
                 />
               </InputShell>
@@ -394,15 +267,11 @@ export default function RegisterForm() {
           </div>
 
           {generalError ? (
-            <p className="mt-2.5 rounded-2xl border border-[#f4caca] bg-[#fff3f3] px-4 py-2.5 text-sm font-medium text-[#c53c3c]">
-              {generalError}
-            </p>
+            <p className="mt-2.5 rounded-2xl border border-[#f4caca] bg-[#fff3f3] px-4 py-2.5 text-sm font-medium text-[#c53c3c]">{generalError}</p>
           ) : null}
 
           {successMessage ? (
-            <p className="mt-2.5 rounded-2xl border border-[#cfead5] bg-[#f2fbf4] px-4 py-2.5 text-sm font-medium text-[#2f7a45]">
-              {successMessage}
-            </p>
+            <p className="mt-2.5 rounded-2xl border border-[#cfead5] bg-[#f2fbf4] px-4 py-2.5 text-sm font-medium text-[#2f7a45]">{successMessage}</p>
           ) : null}
 
           <button
@@ -420,15 +289,7 @@ export default function RegisterForm() {
             )}
           </button>
 
-          <p className="pt-1.5 text-center text-[0.88rem] text-[var(--color-content)]">
-            Đã có tài khoản?{" "}
-            <Link
-              to="/login"
-              className="font-extrabold text-[var(--color-primary)] transition hover:text-[var(--color-primary-hover)]"
-            >
-              Đăng nhập
-            </Link>
-          </p>
+          <p className="pt-1.5 text-center text-[0.88rem] text-[var(--color-content)]">Đã có tài khoản? <Link to="/login" className="font-extrabold text-[var(--color-primary)] transition hover:text-[var(--color-primary-hover)]">Đăng nhập</Link></p>
         </section>
       </form>
     </div>

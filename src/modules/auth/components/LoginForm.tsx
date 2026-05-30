@@ -19,7 +19,7 @@
   export default function LoginForm() {
     const { login } = useAuth();
     const navigate = useNavigate();
-    const [email, setEmail] = useState("");
+    const [studentCode, setStudentCode] = useState("");
     const [password, setPassword] = useState("");
     const [generalError, setGeneralError] = useState("");
     const [emailError, setEmailError] = useState("");
@@ -31,7 +31,7 @@
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
 
-      const trimmedEmail = email.trim();
+      const trimmedStudentCode = studentCode.trim();
       const trimmedPassword = password.trim();
       let hasError = false;
 
@@ -39,12 +39,23 @@
       setEmailError("");
       setPasswordError("");
 
-      if (!trimmedEmail) {
-        setEmailError("Vui lòng nhập email đăng nhập.");
+      // Allow either email or MSSV. If input contains @ assume email (admin or normal), skip MSSV format checks.
+      if (!trimmedStudentCode) {
+        setEmailError("Vui lòng nhập MSSV hoặc email.");
         hasError = true;
-      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-        setEmailError("Email không hợp lệ.");
-        hasError = true;
+      } else if (/@/.test(trimmedStudentCode)) {
+        // basic email format check
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(trimmedStudentCode)) {
+          setEmailError("Email không hợp lệ.");
+          hasError = true;
+        }
+      } else {
+        // treat as MSSV
+        if (!/^DH/i.test(trimmedStudentCode) || !/^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]+$/.test(trimmedStudentCode)) {
+          setEmailError("MSSV không hợp lệ.");
+          hasError = true;
+        }
       }
 
       if (!trimmedPassword) {
@@ -59,10 +70,14 @@
       setIsSubmitting(true);
 
       try {
-        const res = await login({
-          email: trimmedEmail,
-          password: trimmedPassword,
-        });
+        const payload: { email?: string; student_code?: string; password: string } = { password: trimmedPassword };
+        if (/@/.test(trimmedStudentCode)) {
+          payload.email = trimmedStudentCode;
+        } else {
+          payload.student_code = trimmedStudentCode;
+        }
+
+        const res = await login(payload);
 
         const nextPath =
           res.user?.role === "admin"
@@ -72,7 +87,7 @@
         navigate(nextPath);
       } catch (error) {
         if (error instanceof ApiHttpError) {
-          setEmailError(error.fieldErrors.email ?? "");
+              setEmailError(error.fieldErrors.student_code ?? error.fieldErrors.email ?? "");
           setPasswordError(error.fieldErrors.password ?? "");
           setGeneralError(error.message || "Tài khoản hoặc mật khẩu không đúng.");
         } else {
@@ -80,6 +95,25 @@
         }
       } finally {
         setIsSubmitting(false);
+      }
+    };
+
+    const handleStudentCodeBlur = async () => {
+      const code = studentCode.trim();
+      if (!code) return;
+
+      // only check MSSV when input looks like an MSSV (not email)
+      if (/@/.test(code)) return;
+
+      try {
+        const res = await (await import("../services/auth.api")).checkStudentCodeExists(code);
+        if (res.exists) {
+          setEmailError("");
+        } else {
+          setEmailError("MSSV chưa được tạo tài khoản. Vui lòng đăng ký tài khoản.");
+        }
+      } catch (err) {
+        setEmailError("Không thể kiểm tra MSSV lúc này.");
       }
     };
 
@@ -118,31 +152,28 @@
 
             <div>
               <label className="mb-2 block text-xs font-bold uppercase tracking-[0.16em] text-[var(--color-content)] sm:text-sm">
-                Email
+                MSSV
               </label>
               <div className={fieldClassName}>
                 <Mail size={18} className="text-[var(--color-primary)]" />
                 <input
-                  name="email"
-                  autoComplete="email"
-                  readOnly
-                  onFocus={(e) => ((e.target as HTMLInputElement).readOnly = false)}
-                  type="email"
-                  placeholder="Nhập email của bạn"
+                  name="student_code"
+                  autoComplete="username"
+                  type="text"
+                  placeholder="Nhập MSSV"
                   className={inputClassName}
-                  value={email}
+                  value={studentCode}
                   onChange={(e) => {
-                    setEmail(e.target.value);
+                    setStudentCode(e.target.value);
                     if (emailError) setEmailError("");
                     if (generalError) setGeneralError("");
                   }}
+                  onBlur={handleStudentCodeBlur}
                   disabled={isSubmitting}
                 />
               </div>
               {emailError ? (
-                <p className="mt-2 text-sm font-medium text-[#d14343]">
-                  {emailError}
-                </p>
+                <p className="mt-2 text-sm font-medium text-[#d14343]">{emailError}</p>
               ) : null}
             </div>
 

@@ -346,9 +346,9 @@ export default function AdminRegistrationDetailPage() {
 
     let rawUrl = "";
     if (field === "portraitPhoto") {
-      rawUrl = request.avatarUrl || request.documents?.[field] || "";
-      console.log('[resolveDocumentSrc] portraitPhoto - request.avatarUrl:', request.avatarUrl);
+      rawUrl = request.documents?.portraitPhoto || request.avatarUrl || "";
       console.log('[resolveDocumentSrc] portraitPhoto - request.documents.portraitPhoto:', request.documents?.portraitPhoto);
+      console.log('[resolveDocumentSrc] portraitPhoto - request.avatarUrl:', request.avatarUrl);
       console.log('[resolveDocumentSrc] portraitPhoto - rawUrl:', rawUrl);
     } else if (field === "cccdFrontPhoto") {
       rawUrl = request.cccdFrontUrl || request.documents?.[field] || "";

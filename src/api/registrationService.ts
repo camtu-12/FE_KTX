@@ -250,7 +250,7 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
   // Ưu tiên ảnh được nộp kèm trong hồ sơ (`documents.portraitPhoto`) trước,
   // sau đó mới tới avatar hiện tại của student nếu có.
   const portraitPhotoUrl = toPublicAssetUrl(
-    firstDefinedString(documents.portraitPhoto, registration.avatar, student.avatar, documents.avatar),
+    firstDefinedString(documents.portraitPhoto, registration.avatar_url, registration.avatar, student.avatar, documents.avatar),
   );
   const cccdFrontPhotoUrl = toPublicAssetUrl(
     firstDefinedString(registration.cccd_front_url, documents.cccdFrontPhoto, documents.cccdFrontUrl),
