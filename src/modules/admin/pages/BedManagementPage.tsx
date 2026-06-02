@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { ArrowUp, Funnel } from "lucide-react";
 import { getRegistrations } from "../../../api/registrationApi";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { DormRoom } from "../../../api/registrationService";
+import type { DormRoom } from "../../../types/dormRoom";
 import { useOutletContext } from "react-router-dom";
 import { createPortal } from "react-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
@@ -78,8 +78,19 @@ export default function BedManagementPage() {
 
     void load();
 
+    const refreshRequests = () => {
+      if (!isMounted) {
+        return;
+      }
+
+      void load();
+    };
+
+    window.addEventListener("ktx-registrations-updated", refreshRequests);
+
     return () => {
       isMounted = false;
+      window.removeEventListener("ktx-registrations-updated", refreshRequests);
     };
   }, []);
 
@@ -215,7 +226,7 @@ export default function BedManagementPage() {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
-      className="flex min-h-full flex-col gap-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
+      className="flex min-h-[calc(100vh-8rem)] flex-col gap-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
     >
       <div className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
         <h1 className="text-[28px] font-bold tracking-tight text-[#1a2d52]">Phân giường</h1>
@@ -224,7 +235,7 @@ export default function BedManagementPage() {
         </p>
       </div>
 
-      <div className="relative mt-1 overflow-hidden rounded-[14px] border border-[#d6e2f1] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
+      <div className="relative mt-1 min-h-[360px] flex-1 overflow-x-auto rounded-[14px] border border-[#d6e2f1] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
         <table className="w-full table-fixed border-separate border-spacing-0">
           <colgroup>
             <col className="w-[14%]" />
@@ -264,8 +275,8 @@ export default function BedManagementPage() {
                       ? "text-[#244cb8]"
                       : "text-[#6f84ad] hover:text-[#244cb8]"
                       }`}
-                    aria-label="Bộ lọc và sắp xếp"
-                    title="Bộ lọc và sắp xếp"
+                    aria-label="Bật lọc và sắp xếp"
+                    title="Bật lọc và sắp xếp"
                   >
                     <Funnel className="h-3.5 w-3.5" />
                   </button>
@@ -277,8 +288,8 @@ export default function BedManagementPage() {
             {visibleStudents.length > 0 ? (
               visibleStudents.map((request) => {
                 const roomName = request.assigned_room_id
-                  ? roomNameById.get(request.assigned_room_id) ?? "—"
-                  : "—";
+                  ? roomNameById.get(request.assigned_room_id) ?? "-"
+                  : "-";
                 const bedNumber = request.bedId ? request.bedId % 100 : null;
                 const bedLabel = bedNumber ? `#${bedNumber}` : "Chưa chọn";
                 const meta = getSelectionMeta(request);
@@ -417,8 +428,8 @@ export default function BedManagementPage() {
               type="button"
               onClick={handleScrollToTop}
               className="group inline-flex h-12 w-12 items-center justify-center rounded-full bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_42%,#31b7d4_100%)] text-white shadow-[0_16px_32px_rgba(36,76,184,0.28)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.98]"
-              aria-label="Về đầu trang"
-              title="Về đầu trang"
+                aria-label="Về đầu trang"
+                title="Về đầu trang"
             >
               <ArrowUp className="h-5 w-5 transition-transform duration-200 group-hover:-translate-y-0.5" />
             </button>
@@ -429,3 +440,4 @@ export default function BedManagementPage() {
     </motion.section>
   );
 }
+

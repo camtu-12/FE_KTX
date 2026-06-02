@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -9,11 +9,11 @@ import {
   Home,
   ImagePlus,
   LoaderCircle,
-  ShieldCheck,
   UserCircle2,
   Users,
 } from "lucide-react";
 import {
+  getDormRoomsInstant,
   getLatestRegistrationByEmail,
   submitRegistration,
 } from "../../../api/registrationService";
@@ -28,7 +28,7 @@ type DocumentField = "portraitPhoto" | "cccdFrontPhoto" | "cccdBackPhoto";
 type RegistrationWithAssignment = RegistrationRequest & {
   assigned_room_id?: number | null;
   building_code?: string;
-  room_number?: number;
+  room_number?: number | string;
 };
 
 interface FormData {
@@ -299,7 +299,10 @@ const buildImageUrl = (path?: string): string => {
 export default function RegistrationPage() {
   const navigate = useNavigate();
   const studentEmail = useAuthStore((state) => state.user?.email ?? "");
-  const studentCodeFromAuth = useAuthStore((state) => (state.user?.student_code ?? (state.user as any)?.studentCode) ?? "");
+  const studentCodeFromAuth = useAuthStore((state) => {
+    const user = state.user;
+    return user ? user.student_code ?? user.studentCode ?? "" : "";
+  });
   const [registration, setRegistration] = useState<RegistrationWithAssignment | null>(null);
   const [status, setStatus] = useState<RegistrationStatus>("unregistered");
   const [formData, setFormData] = useState<FormData>(initialFormData);
@@ -309,11 +312,15 @@ export default function RegistrationPage() {
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingRegistration, setIsCheckingRegistration] = useState(false);
+  const [hasLoadedRegistration, setHasLoadedRegistration] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [documentErrors, setDocumentErrors] = useState<Partial<Record<DocumentField, string>>>({});
   const [isReviewingSubmittedForm, setIsReviewingSubmittedForm] = useState(false);
   const [reviewDocumentUrls, setReviewDocumentUrls] = useState<Record<DocumentField, string>>(initialDocumentPreviewUrls);
   const [commitmentConfirmed, setCommitmentConfirmed] = useState(false);
+  const [isCheckingMssv, setIsCheckingMssv] = useState(false);
+  const [studentDataReadonly, setStudentDataReadonly] = useState(false);
+  const [autoLoaded, setAutoLoaded] = useState(false);
   const formRef = useRef<HTMLFormElement | null>(null);
   const fieldRefs = useRef<
     Partial<Record<keyof FormData, HTMLInputElement | HTMLSelectElement | null>>
@@ -348,7 +355,7 @@ export default function RegistrationPage() {
 
   // When user is logged in with a student_code, auto-load student info and prefill form
   // reusable loader to populate formData from student_code
-  const loadStudentData = async (code?: string) => {
+  const loadStudentData = useCallback(async (code?: string) => {
     const trimmed = code?.trim();
     if (!trimmed) return;
 
@@ -392,11 +399,18 @@ export default function RegistrationPage() {
     } finally {
       setIsCheckingMssv(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    void loadStudentData(studentCodeFromAuth);
-  }, [studentCodeFromAuth]);
+    if (!studentCodeFromAuth) return;
+    const timer = window.setTimeout(() => {
+      void loadStudentData(studentCodeFromAuth);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [loadStudentData, studentCodeFromAuth]);
 
   const openResubmit = async () => {
     resetFormState();
@@ -443,6 +457,7 @@ export default function RegistrationPage() {
       });
 
       if (!studentEmail) {
+        setHasLoadedRegistration(true);
         return;
       }
 
@@ -486,6 +501,7 @@ export default function RegistrationPage() {
         console.error('[RegistrationPage] Error loading registration:', error);
       } finally {
         setIsCheckingRegistration(false);
+        setHasLoadedRegistration(true);
       }
     };
 
@@ -535,11 +551,30 @@ export default function RegistrationPage() {
     }
   }
 
-  const registrationForView = registration;
+  const registrationForView = useMemo(() => {
+    if (!registration?.assigned_room_id) {
+      return registration;
+    }
+
+    const assignedRoom = getDormRoomsInstant().find((room) => room.id === registration.assigned_room_id);
+    if (!assignedRoom) {
+      return registration;
+    }
+
+    return {
+      ...registration,
+      building_code: assignedRoom.building_code,
+      room_number: assignedRoom.room_number,
+    };
+  }, [registration]);
   const statusForView = registrationForView?.status ?? status;
-  const assignedRoomName = null;
-  const selectedBedName = null;
-  const hasSelectedBed = false;
+  const assignedRoomName = registrationForView?.assigned_room_id
+    ? registrationForView?.room_number
+      ? `${registrationForView.building_code ?? ""}${registrationForView.room_number}`
+      : `Phòng ${registrationForView.assigned_room_id}`
+    : null;
+  const selectedBedName = registrationForView?.bedId ? `Giường ${registrationForView.bedId}` : null;
+  const hasSelectedBed = Boolean(registrationForView?.bedId);
 
   const progressStatus: ProgressStatus = useMemo(() => {
     if (statusForView === "completed") {
@@ -696,10 +731,6 @@ export default function RegistrationPage() {
     }
     setDocumentFile(fieldName, nextFile);
   };
-
-  const [isCheckingMssv, setIsCheckingMssv] = useState(false);
-  const [studentDataReadonly, setStudentDataReadonly] = useState(false);
-  const [autoLoaded, setAutoLoaded] = useState(false);
 
   const handleMssvBlur = async () => {
     const code = formData.mssv?.trim();
@@ -1060,8 +1091,9 @@ export default function RegistrationPage() {
       "address",
     ]);
     const isPrefilled = (
-      (studentDataReadonly || autoLoaded) ||
-      (studentCodeFromAuth && formData.mssv && studentCodeFromAuth === formData.mssv)
+      studentDataReadonly ||
+      autoLoaded ||
+      Boolean(studentCodeFromAuth && formData.mssv && studentCodeFromAuth === formData.mssv)
     ) && prefilledFieldNames.has(config.name);
 
     // If MSSV was auto-loaded from auth, hide the visible MSSV field but keep a hidden input for submission
@@ -1188,6 +1220,22 @@ export default function RegistrationPage() {
     { name: "dormEndDate", label: "Đến ngày", required: true },
   ];
 
+  if (!hasLoadedRegistration && studentEmail) {
+    return (
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="relative isolate flex min-h-[calc(100vh-5rem-28px)] flex-col items-center justify-center rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
+      >
+        <div className="flex h-40 w-full max-w-3xl flex-col items-center justify-center rounded-3xl bg-white/80 p-6 text-center shadow-[0_20px_60px_rgba(36,76,184,0.12)] backdrop-blur-sm">
+          <LoaderCircle className="mb-3 h-8 w-8 animate-spin text-[#244CB8]" />
+          <p className="text-sm font-medium text-[#1F3152]">Đang tải trạng thái đăng ký...</p>
+        </div>
+      </motion.section>
+    );
+  }
+
   return (
     <motion.section
       initial={{ opacity: 0, y: 18 }}
@@ -1258,19 +1306,11 @@ export default function RegistrationPage() {
             <p className="mt-1 text-sm text-emerald-800/90">
               Giường: <span className="font-bold">{selectedBedName}</span>
             </p>
-            <p className="mt-1.5 text-sm text-emerald-800/90">Vui lòng xem và ký hợp đồng để hoàn tất thủ tục đăng ký.</p>
-            <div className="mx-auto mt-4 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
-              <button
-                type="button"
-                onClick={() => navigate("/student/contract")}
-                className="auth-btn-gloss inline-flex h-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-4 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.98]"
-              >
-                <span className="auth-btn-gloss__content inline-flex items-center justify-center gap-2">
-                  <ShieldCheck className="h-4 w-4" />
-                  Ký hợp đồng
-                </span>
-              </button>
-            </div>
+            <p className="mt-1.5 text-sm text-emerald-800/90">
+              {progressStatus === "completed"
+                ? "Đơn đăng ký nội trú đã hoàn tất. Bạn chính thức được xếp tại giường này."
+                : "Vui lòng chờ ban quản lý duyệt giường. Nếu được duyệt, đăng ký sẽ hoàn tất."}
+            </p>
           </div>
         ) : registrationForView?.assigned_room_id && assignedRoomName ? (
           <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-emerald-200 bg-emerald-50/95 p-5 text-center shadow-[0_12px_24px_rgba(16,185,129,0.16)]">

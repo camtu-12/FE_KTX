@@ -1,18 +1,22 @@
-import { AnimatePresence, motion } from "framer-motion";
+﻿import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowUp, CheckCircle2, DoorOpen, Home, Star, UserRound, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  assignRoomToRegistration,
-  getDormRoomsInstant,
-  getRegistrationRequestByIdInstant,
-  getRegistrationRequests,
-  type DormRoom,
-} from "../../../api/registrationService";
+import { assignRoomToRegistration, getDormRoomsInstant, getRegistrations } from "../../../api/registrationService";
+import { initialBuildings, type Building } from "../../../mocks/buildings";
+import { assignMockOccupancy } from "../../../mocks/roommanagement";
 import type { RegistrationRequest } from "../data/registrationRequests";
+import type { DormRoom } from "../../../types/dormRoom";
 
 type ToastState = { kind: "success" | "error"; message: string } | null;
+
+type DormRoomWithFloor = DormRoom & {
+  floor_id?: number;
+  floor?: { id: number; building_code?: string; floor_number?: number; gender?: string };
+  floor_number?: number;
+  gender?: string | null;
+};
 
 const getRoomName = (room: DormRoom) => `${room.building_code}${room.room_number}`;
 
@@ -30,23 +34,74 @@ const getGenderLabel = (gender: string) => {
   return gender.trim() || "Khác";
 };
 
+const getRoomFloor = (room: DormRoomWithFloor) => {
+  if (room.floor && typeof room.floor.floor_number === "number") {
+    return room.floor.floor_number;
+  }
+
+  if (typeof room.floor_number === "number") {
+    return room.floor_number;
+  }
+
+  return 0;
+};
+
+const getRoomGender = (room: DormRoomWithFloor) => {
+  return room.floor?.gender ?? room.gender ?? null;
+};
+
+const normalizeGender = (gender: string | null | undefined) => {
+  const normalizedGender = (gender ?? "").trim().toLowerCase();
+
+  if (normalizedGender === "male") return "male";
+  if (normalizedGender === "female") return "female";
+
+  return null;
+};
+
+const BUILDING_STORAGE_KEY = "ktx_buildings_dashboard_v2";
+const readBuildingsFromStorage = (): Building[] => {
+  if (typeof window === "undefined") {
+    return initialBuildings;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(BUILDING_STORAGE_KEY);
+    if (!raw) {
+      return initialBuildings;
+    }
+
+    const parsed = JSON.parse(raw) as Building[];
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : initialBuildings;
+  } catch {
+    return initialBuildings;
+  }
+};
+
+const getBuildingFloorNumbers = (building: Building) =>
+  building.floors.map((floor) => floor.floorNumber).sort((a, b) => a - b);
+
 export default function AssignRoomDetailPage() {
   const navigate = useNavigate();
   const { requestId } = useParams();
   const numericRequestId = Number(requestId);
 
-  const [request, setRequest] = useState<RegistrationRequest | null>(() =>
-    Number.isFinite(numericRequestId) ? getRegistrationRequestByIdInstant(numericRequestId) : null,
+  // `undefined` = loading, `null` = not found, `RegistrationRequest` = loaded
+  // Start as `undefined` (loading) when we have a numeric requestId to avoid
+  // showing "Không tìm thấy sinh viên" briefly before the async loader runs.
+  const [request, setRequest] = useState<RegistrationRequest | null | undefined>(() =>
+    Number.isFinite(numericRequestId) ? undefined : null,
   );
-  const [rooms, setRooms] = useState<DormRoom[]>(() => getDormRoomsInstant());
+  const [rooms, setRooms] = useState<DormRoomWithFloor[]>(() => getDormRoomsInstant() as DormRoomWithFloor[]);
+  const [buildings, setBuildings] = useState<Building[]>(() => readBuildingsFromStorage());
   const [toast, setToast] = useState<ToastState>(null);
   const [isAssigning, setIsAssigning] = useState(false);
   const [buildingFilter, setBuildingFilter] = useState<string>("all");
   const [floorFilter, setFloorFilter] = useState<string>("all");
   const [isScrollToTopVisible, setIsScrollToTopVisible] = useState(false);
-  // Hiển thị nút cuộn lên đầu khi vùng cuộn thực sự có thể cuộn
+  // Hiện thấy nút cuộn lên đầu khi vùng cuộn thực sự có thể cuộn
   // và người dùng đã cuộn một đoạn ngắn (giúp dễ thấy hơn trên các
-  // trang dài vừa phải mà ngưỡng cũ quá lớn).
+  // trang dài mà ngưỡng cũ quá lớn).
   useEffect(() => {
     const scrollContainer = document.querySelector('.auth-scrollbar') as HTMLElement | null;
     if (!scrollContainer) return;
@@ -76,7 +131,7 @@ export default function AssignRoomDetailPage() {
         return;
       }
 
-      const requests = await getRegistrationRequests();
+      const requests = await getRegistrations();
       if (!isMounted) {
         return;
       }
@@ -87,19 +142,28 @@ export default function AssignRoomDetailPage() {
 
     void load();
 
+    const refreshRooms = () => {
+      if (!isMounted) {
+        return;
+      }
+
+      setRooms(getDormRoomsInstant() as DormRoomWithFloor[]);
+      setBuildings(readBuildingsFromStorage());
+    };
+
+    window.addEventListener("storage", refreshRooms);
+    window.addEventListener("focus", refreshRooms);
+    window.addEventListener("ktx-buildings-updated", refreshRooms);
+    window.addEventListener("ktx-rooms-updated", refreshRooms);
+
     return () => {
       isMounted = false;
+      window.removeEventListener("storage", refreshRooms);
+      window.removeEventListener("focus", refreshRooms);
+      window.removeEventListener("ktx-buildings-updated", refreshRooms);
+      window.removeEventListener("ktx-rooms-updated", refreshRooms);
     };
   }, [numericRequestId]);
-
-  useEffect(() => {
-    // Cuộn container chính (auth-scrollbar) lên đầu khi chuyển hướng
-    const scrollContainer = document.querySelector('.auth-scrollbar') as HTMLElement | null;
-    if (scrollContainer) {
-      scrollContainer.scrollTo({ top: 0, behavior: 'auto' });
-    }
-  }, [numericRequestId]);
-
   useEffect(() => {
     if (!toast) {
       return undefined;
@@ -116,19 +180,24 @@ export default function AssignRoomDetailPage() {
   }, [rooms]);
 
   const buildingOptions = useMemo(() => {
-    const values = Array.from(new Set(rooms.map((room) => room.building_code))).sort();
+    const values = buildings.map((building) => building.building_code).sort();
     return ["all", ...values];
-  }, [rooms]);
+  }, [buildings]);
 
   const floorOptions = useMemo(() => {
-    const floors = Array.from(
-      new Set(rooms.filter((room) => buildingFilter === "all" || room.building_code === buildingFilter).map((room) => Math.floor(room.room_number / 100))),
-    )
-      .sort((a, b) => a - b)
-      .map((value) => `${value}`);
+    if (buildingFilter === "all") {
+      const floors = Array.from(new Set(buildings.flatMap((building) => getBuildingFloorNumbers(building))))
+        .sort((a, b) => a - b)
+        .map((value) => `${value}`);
+
+      return ["all", ...floors];
+    }
+
+    const selectedBuilding = buildings.find((building) => building.building_code === buildingFilter);
+    const floors = selectedBuilding ? getBuildingFloorNumbers(selectedBuilding).map((value) => `${value}`) : [];
 
     return ["all", ...floors];
-  }, [buildingFilter, rooms]);
+  }, [buildingFilter, buildings]);
 
   useEffect(() => {
     if (buildingFilter !== "all" && buildingOptions.length > 0 && !buildingOptions.includes(buildingFilter)) {
@@ -149,17 +218,19 @@ export default function AssignRoomDetailPage() {
   const visibleRooms = useMemo(() => {
     return rooms
       .filter((room) => {
-        // Lọc theo giới tính sinh viên
-        const studentGender = request?.formData.gender.trim().toLowerCase();
-        
-        if (studentGender === "male" && room.gender !== "male") return false;
-        if (studentGender === "female" && room.gender !== "female") return false;
-        
+        // Lọc theo giới tính sinh viên (an toàn khi request đang loading)
+        const rawGender = request?.formData?.gender;
+        const studentGender = rawGender ? String(rawGender).trim().toLowerCase() : undefined;
+        const roomGender = normalizeGender(getRoomGender(room));
+
+        if (studentGender === "male" && roomGender !== "male") return false;
+        if (studentGender === "female" && roomGender !== "female") return false;
+
         return true;
       })
       .filter((room) => (buildingFilter === "all" ? true : room.building_code === buildingFilter))
       .filter((room) =>
-        floorFilter === "all" ? true : `${Math.floor(room.room_number / 100)}` === floorFilter,
+        floorFilter === "all" ? true : `${getRoomFloor(room)}` === floorFilter,
       )
       .sort((a, b) => {
         const diff = b.availableBeds - a.availableBeds;
@@ -187,7 +258,7 @@ export default function AssignRoomDetailPage() {
     }
 
     if (request.status !== "approved") {
-      setToast({ kind: "error", message: "Chỉ phân phòng cho sinh viên đã duyệt." });
+      setToast({ kind: "error", message: "Không thể phân phòng cho sinh viên chưa được duyệt." });
       return;
     }
 
@@ -203,8 +274,19 @@ export default function AssignRoomDetailPage() {
 
     setIsAssigning(true);
     try {
-      const updated = await assignRoomToRegistration({ requestId: request.id, roomId: room.id });
-      setRequest(updated);
+      const occupancy = assignMockOccupancy(room);
+      const updatedRequest = await assignRoomToRegistration({
+        requestId: request.id,
+        roomId: room.id,
+        bedId: occupancy?.bedId ?? null,
+        currentRequest: request,
+      });
+
+      if (!updatedRequest) {
+        throw new Error("Không thể cập nhật phân phòng.");
+      }
+
+      setRequest(updatedRequest);
       setRooms(getDormRoomsInstant());
       handleBack({ kind: "success", message: "Phân phòng thành công" });
     } catch (error) {
@@ -319,7 +401,9 @@ export default function AssignRoomDetailPage() {
           Thông tin sinh viên
         </div>
 
-        {request ? (
+        {request === undefined ? (
+          <div className="mt-4 text-sm text-[#62789f]">Đang tải thông tin sinh viên...</div>
+        ) : request ? (
           <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-[16px] leading-7 text-[#4b6494] sm:text-[17px]">
             <span>
               Họ tên: <span className="font-semibold text-[#1f3152]">{request.formData.fullName}</span>
@@ -349,7 +433,7 @@ export default function AssignRoomDetailPage() {
         )}
       </div>
 
-      <div className="rounded-[22px] border border-[#d3e0f2] bg-white p-5 shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
+      <div className="flex min-h-[360px] flex-1 flex-col rounded-[22px] border border-[#d3e0f2] bg-white p-5 shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-[#6f84ad]">
             <DoorOpen className="h-4 w-4 text-[#2f63d8]" />
@@ -382,7 +466,7 @@ export default function AssignRoomDetailPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto rounded-xl border border-[#dde7f5]">
+        <div className="flex-1 overflow-x-auto rounded-xl border border-[#dde7f5]">
           <table className="min-w-[700px] w-full border-separate border-spacing-0">
             <thead>
               <tr className="bg-[linear-gradient(180deg,#f7faff_0%,#eef4ff_100%)]">
@@ -415,12 +499,12 @@ export default function AssignRoomDetailPage() {
                     <td className="border-t border-[#e7eef9] px-4 py-3 text-center text-sm font-semibold">
                       <span
                         className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${
-                          room.gender === "female"
+                          normalizeGender(getRoomGender(room)) === "female"
                             ? "border-[#f2bfd0] bg-[#fff0f6] text-[#c45b87]"
                             : "border-[#bfd2ee] bg-[#edf4ff] text-[#2f63d8]"
                         }`}
                       >
-                        {room.gender === "female" ? "Nữ" : "Nam"}
+                        {normalizeGender(getRoomGender(room)) === "female" ? "Nữ" : "Nam"}
                       </span>
                     </td>
                     <td className="border-t border-[#e7eef9] px-4 py-3 text-center text-sm font-semibold text-[#1f7a4e]">
@@ -455,3 +539,4 @@ export default function AssignRoomDetailPage() {
     </motion.section>
   );
 }
+

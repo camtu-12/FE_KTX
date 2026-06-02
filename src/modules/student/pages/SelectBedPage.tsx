@@ -6,40 +6,44 @@ import { useNavigate } from "react-router-dom";
 import {
   getDormBedPairsForRoomInstant,
   getDormRoomsInstant,
+  getLatestRegistrationByEmail,
   getLatestRegistrationByEmailInstant,
   selectBedForRegistration,
-  type DormBed,
-  type DormBedPair,
-  type DormRoom,
 } from "../../../api/registrationService";
 import { getStoredAuth } from "../../auth/utils/authStorage";
 import bunkBedIcon from "../../../assets/icons8-bunk-bed-64.png";
 import maintenanceIcon from "../../../assets/icons8-maintenance-94.png";
 import personIcon from "../../../assets/icons8-person-100.png";
 import roomIcon from "../../../assets/icons8-dormitory-66.png";
+import type { DormBed, DormBedPair, DormRoom } from "../../../types/dormRoom";
+import getBedDisplayStatus from "../../../utils/bedDisplay";
+import { hasOccupancy } from "../../../mocks/roommanagement";
+import type { RegistrationRequest } from "../../admin/data/registrationRequests";
 
 const getRoomName = (room: DormRoom) => `${room.building_code}${room.room_number}`;
 
 const getPositionLabel = (position: DormBed["position"]) => (position === "upper" ? "Trên" : "Dưới");
 
-const getStatusMeta = (status: DormBed["status"]) => {
-  if (status === "occupied") {
-    return {
-      label: "Đã có người",
-      badgeClassName: "border border-slate-300 bg-slate-100 text-slate-700",
-      cardClassName: "border-slate-200 bg-gray-100 text-gray-500 opacity-70 cursor-not-allowed",
-      icon: <img src={personIcon} alt="Đã có người" className="h-4 w-4 object-contain" />,
-      helper: "Không thể chọn",
-    };
-  }
+const getStatusMeta = (bed: DormBed) => {
+  const display = getBedDisplayStatus(bed, undefined, hasOccupancy);
 
-  if (status === "maintenance") {
+  if (display === "MAINTENANCE") {
     return {
       label: "Bảo trì",
       badgeClassName: "border border-amber-300 bg-amber-100 text-amber-700",
       cardClassName: "border-amber-200 bg-yellow-100 border-yellow-450 text-yellow-600",
       icon: <img src={maintenanceIcon} alt="Bảo trì" className="h-4 w-4 object-contain" />,
       helper: "Tạm khóa",
+    };
+  }
+
+  if (display === "HAS_OCCUPANCY") {
+    return {
+      label: "Đã có người",
+      badgeClassName: "border border-slate-300 bg-slate-100 text-slate-700",
+      cardClassName: "border-slate-200 bg-gray-100 text-gray-500 opacity-70 cursor-not-allowed",
+      icon: <img src={personIcon} alt="Đã có người" className="h-4 w-4 object-contain" />,
+      helper: "Không thể chọn",
     };
   }
 
@@ -63,8 +67,8 @@ function BedRow({
   isSelected: boolean;
   onSelect: (bedId: number) => void;
 }) {
-  const meta = getStatusMeta(bed.status);
-  const isClickable = bed.status === "empty";
+  const meta = getStatusMeta(bed);
+  const isClickable = getBedDisplayStatus(bed, undefined, hasOccupancy) === "NO_OCCUPANCY";
 
   return (
     <button
@@ -83,11 +87,11 @@ function BedRow({
     >
       <div
         className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border text-base shadow-sm ${
-          bed.status === "empty"
+          getBedDisplayStatus(bed, undefined, hasOccupancy) === "NO_OCCUPANCY"
             ? isSelected
               ? "border-[#2f63da] bg-white text-[#244cb8]"
               : "border-[#cfe2ff] bg-white text-[#244cb8]"
-            : bed.status === "occupied"
+            : getBedDisplayStatus(bed, undefined, hasOccupancy) === "HAS_OCCUPANCY"
               ? "border-slate-200 bg-slate-200 text-slate-600"
               : "border-amber-200 bg-amber-100 text-amber-700"
         }`}
@@ -208,6 +212,11 @@ export default function SelectBedPage() {
   const navigate = useNavigate();
   const storedAuth = getStoredAuth();
   const studentEmail = storedAuth?.user.email ?? "";
+  const [rooms, setRooms] = useState<DormRoom[]>(() => getDormRoomsInstant());
+  const [registrationVersion, setRegistrationVersion] = useState(0);
+  const [request, setRequest] = useState<RegistrationRequest | null | undefined>(() =>
+    studentEmail ? getLatestRegistrationByEmailInstant(studentEmail) : null,
+  );
 
   useEffect(() => {
     try {
@@ -224,22 +233,76 @@ export default function SelectBedPage() {
     }
   }, []);
 
-  const request = useMemo(
-    () => (studentEmail ? getLatestRegistrationByEmailInstant(studentEmail) : null),
-    [studentEmail],
-  );
+  useEffect(() => {
+    const refreshRooms = () => setRooms(getDormRoomsInstant());
+    const refreshRegistrations = () => setRegistrationVersion((prev) => prev + 1);
 
-  const rooms = useMemo(() => getDormRoomsInstant(), []);
+    refreshRooms();
+    refreshRegistrations();
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.addEventListener("storage", refreshRooms);
+    window.addEventListener("focus", refreshRooms);
+    window.addEventListener("ktx-rooms-updated", refreshRooms);
+    window.addEventListener("ktx-registrations-updated", refreshRegistrations);
+
+    return () => {
+      window.removeEventListener("storage", refreshRooms);
+      window.removeEventListener("focus", refreshRooms);
+      window.removeEventListener("ktx-rooms-updated", refreshRooms);
+      window.removeEventListener("ktx-registrations-updated", refreshRegistrations);
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadRequest = async () => {
+      if (!studentEmail) {
+        setRequest(null);
+        return;
+      }
+
+      const instantRequest = getLatestRegistrationByEmailInstant(studentEmail);
+      if (isMounted && instantRequest) {
+        setRequest(instantRequest);
+      }
+
+      try {
+        const latestRequest = await getLatestRegistrationByEmail(studentEmail);
+        if (isMounted) {
+          setRequest(latestRequest);
+        }
+      } catch {
+        if (isMounted && !instantRequest) {
+          setRequest(null);
+        }
+      }
+    };
+
+    void loadRequest();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [studentEmail, registrationVersion]);
 
   const room = useMemo(() => {
-    const assignedRoomId = request?.assigned_room_id ?? 3;
+    const assignedRoomId = request?.assigned_room_id;
+    if (!assignedRoomId) {
+      return null;
+    }
+
     return rooms.find((item) => item.id === assignedRoomId) ?? null;
   }, [request?.assigned_room_id, rooms]);
 
   const bedPairs = useMemo(() => {
-    const roomId = request?.assigned_room_id ?? 3;
-    return getDormBedPairsForRoomInstant(roomId);
-  }, [request?.assigned_room_id]);
+    const roomId = request?.assigned_room_id;
+    return roomId ? getDormBedPairsForRoomInstant(roomId) : [];
+  }, [request?.assigned_room_id, rooms]);
 
   const [selectedBedId, setSelectedBedId] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -257,7 +320,7 @@ export default function SelectBedPage() {
     }
   }, [navigate, request, studentEmail]);
 
-  const roomName = room ? getRoomName(room) : "A103";
+  const roomName = room ? getRoomName(room) : request?.assigned_room_id ? `Phòng ${request.assigned_room_id}` : "";
   const selectedBed = useMemo(() => {
     const allBeds = bedPairs.flatMap((pair) => [pair.upper, pair.lower]);
     return allBeds.find((bed) => bed.id === selectedBedId) ?? null;
@@ -302,7 +365,7 @@ export default function SelectBedPage() {
     setErrorMessage("");
 
     try {
-      await selectBedForRegistration({ email: studentEmail, bedId: selectedBed.id });
+      await selectBedForRegistration({ email: studentEmail, bedId: selectedBed.id, currentRequest: request ?? undefined });
       navigate("/student/registration", { replace: true });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Không thể chọn giường.");

@@ -17,7 +17,6 @@ export type Building = {
   id: number;
   building_code: string;
   address?: string;
-  total_floors: number;
   status: BuildingStatus;
   floors: BuildingFloor[];
 };
@@ -27,14 +26,13 @@ export const initialBuildings: Building[] = [
     id: 1,
     building_code: "A",
     address: "180 Cao Lỗ, Phường 4, Quận 8, TP.HCM",
-    total_floors: 2,
     status: "ACTIVE",
     floors: [
       {
         floorNumber: 1,
         gender: "MALE",
         roomCount: 9,
-        bedCount: 126,
+        bedCount: 14,
         occupiedStudents: 112,
         status: "ACTIVE",
       },
@@ -42,7 +40,7 @@ export const initialBuildings: Building[] = [
         floorNumber: 2,
         gender: "FEMALE",
         roomCount: 10,
-        bedCount: 140,
+        bedCount: 14,
         occupiedStudents: 116,
         status: "ACTIVE",
       },
@@ -52,14 +50,13 @@ export const initialBuildings: Building[] = [
     id: 2,
     building_code: "B",
     address: "180 Cao Lỗ, Phường 4, Quận 8, TP.HCM",
-    total_floors: 5,
     status: "ACTIVE",
     floors: [
       {
         floorNumber: 1,
         gender: "MALE",
         roomCount: 8,
-        bedCount: 112,
+        bedCount: 14,
         occupiedStudents: 84,
         status: "ACTIVE",
       },
@@ -67,7 +64,7 @@ export const initialBuildings: Building[] = [
         floorNumber: 2,
         gender: "MALE",
         roomCount: 8,
-        bedCount: 112,
+        bedCount: 14,
         occupiedStudents: 90,
         status: "ACTIVE",
       },
@@ -75,7 +72,7 @@ export const initialBuildings: Building[] = [
         floorNumber: 3,
         gender: "MALE",
         roomCount: 9,
-        bedCount: 126,
+        bedCount: 14,
         occupiedStudents: 96,
         status: "ACTIVE",
       },
@@ -83,7 +80,7 @@ export const initialBuildings: Building[] = [
         floorNumber: 4,
         gender: "MALE",
         roomCount: 9,
-        bedCount: 126,
+        bedCount: 14,
         occupiedStudents: 88,
         status: "ACTIVE",
       },
@@ -91,7 +88,7 @@ export const initialBuildings: Building[] = [
         floorNumber: 5,
         gender: "MALE",
         roomCount: 8,
-        bedCount: 112,
+        bedCount: 14,
         occupiedStudents: 80,
         status: "MAINTENANCE",
       },
@@ -101,14 +98,13 @@ export const initialBuildings: Building[] = [
     id: 3,
     building_code: "C",
     address: "KTX STU - 131 Đường",
-    total_floors: 4,
     status: "MAINTENANCE",
     floors: [
       {
         floorNumber: 1,
         gender: "FEMALE",
         roomCount: 6,
-        bedCount: 84,
+        bedCount: 14,
         occupiedStudents: 58,
         status: "ACTIVE",
       },
@@ -116,7 +112,7 @@ export const initialBuildings: Building[] = [
         floorNumber: 2,
         gender: "FEMALE",
         roomCount: 6,
-        bedCount: 84,
+        bedCount: 14,
         occupiedStudents: 0,
         status: "MAINTENANCE",
       },
@@ -124,7 +120,7 @@ export const initialBuildings: Building[] = [
         floorNumber: 3,
         gender: "FEMALE",
         roomCount: 6,
-        bedCount: 84,
+        bedCount: 14,
         occupiedStudents: 46,
         status: "ACTIVE",
       },
@@ -132,7 +128,7 @@ export const initialBuildings: Building[] = [
         floorNumber: 4,
         gender: "FEMALE",
         roomCount: 6,
-        bedCount: 84,
+        bedCount: 14,
         occupiedStudents: 44,
         status: "ACTIVE",
       },

@@ -5,9 +5,9 @@ export default function AboutPage() {
         <h1 className="text-3xl font-bold text-[var(--color-title)]">Giới thiệu</h1>
         <p className="mt-5 max-w-4xl text-base leading-8 text-[var(--color-content)]">
           Hệ thống quản lý ký túc xá STU được xây dựng nhằm số hóa toàn bộ quy
-          trình nội trú: đăng ký, xét duyệt, quản lý phòng, theo dõi hợp đồng và
-          hỗ trợ sinh viên. Nền tảng mang lại trải nghiệm minh bạch, nhanh chóng
-          và thuận tiện cho cả sinh viên lẫn ban quản lý.
+          trình nội trú: đăng ký, xét duyệt, quản lý phòng và hỗ trợ sinh viên.
+          Nền tảng mang lại trải nghiệm minh bạch, nhanh chóng và thuận tiện cho
+          cả sinh viên lẫn ban quản lý.
         </p>
       </section>
     </div>

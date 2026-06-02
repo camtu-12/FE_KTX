@@ -81,11 +81,6 @@ const studentMenu: MenuItem[] = [
     icon: BedSingle,
   },
   {
-    label: "Hợp đồng",
-    to: "/student/contract",
-    icon: FileCheck2,
-  },
-  {
     label: "Thanh toán",
     to: "/student/payment",
     icon: CreditCard,

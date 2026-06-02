@@ -44,6 +44,7 @@ export type RegistrationRequest = {
   cccdBackUrl?: string;
   commitmentConfirmed?: boolean;
   assigned_room_id?: number | null;
+  assigned_bed_id?: number | null;
   bedId?: number | null;
   student?: {
     account?: {
@@ -179,4 +180,92 @@ export const registrationRequests: RegistrationRequest[] = [];
 */
 
 export const getRegistrationRequestById = () => null;
+
+export const REGISTRATION_STORAGE_KEY = "mock_registration_requests_v5";
+
+const isBrowser = () => typeof window !== "undefined";
+
+const normalizeRegistrationSnapshot = (value: unknown): RegistrationRequest[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is RegistrationRequest => {
+    return Boolean(item) && typeof item === "object" && typeof (item as RegistrationRequest).id === "number";
+  });
+};
+
+export const getRegistrationRequestsSeed = () => registrationRequests;
+
+export const getStoredRegistrationRequests = (): RegistrationRequest[] => {
+  if (!isBrowser()) {
+    return registrationRequests;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(REGISTRATION_STORAGE_KEY);
+    if (!raw) {
+      return registrationRequests;
+    }
+
+    const parsed = JSON.parse(raw) as unknown;
+    const normalized = normalizeRegistrationSnapshot(parsed);
+    return normalized.length > 0 ? normalized : registrationRequests;
+  } catch {
+    return registrationRequests;
+  }
+};
+
+export const writeStoredRegistrationRequests = (requests: RegistrationRequest[]) => {
+  if (!isBrowser()) {
+    return requests;
+  }
+
+  window.localStorage.setItem(REGISTRATION_STORAGE_KEY, JSON.stringify(requests));
+  return requests;
+};
+
+export const upsertStoredRegistrationRequest = (nextRequest: RegistrationRequest): RegistrationRequest[] => {
+  const requests = [...getStoredRegistrationRequests()];
+  const index = requests.findIndex((request) => request.id === nextRequest.id);
+
+  if (index >= 0) {
+    requests[index] = nextRequest;
+  } else {
+    requests.push(nextRequest);
+  }
+
+  return writeStoredRegistrationRequests(requests);
+};
+
+export const replaceStoredRegistrationRequests = (nextRequests: RegistrationRequest[]) =>
+  writeStoredRegistrationRequests(nextRequests);
+
+export const dispatchRegistrationRequestsUpdated = () => {
+  if (!isBrowser()) {
+    return;
+  }
+
+  window.dispatchEvent(new Event("ktx-registrations-updated"));
+};
+
+export const readRegistrationRequestById = (id: number): RegistrationRequest | null => {
+  if (!Number.isFinite(id)) {
+    return null;
+  }
+
+  return getStoredRegistrationRequests().find((request) => request.id === id) ?? null;
+};
+
+export const readLatestRegistrationByEmail = (email: string): RegistrationRequest | null => {
+  const normalizedEmail = email.trim().toLowerCase();
+
+  if (!normalizedEmail) {
+    return null;
+  }
+
+  return getStoredRegistrationRequests()
+    .filter((request) => request.email.trim().toLowerCase() === normalizedEmail)
+    .sort((a, b) => b.id - a.id)[0] ?? null;
+};
 

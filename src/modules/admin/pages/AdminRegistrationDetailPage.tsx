@@ -250,8 +250,15 @@ export default function AdminRegistrationDetailPage() {
 
     void load();
 
+    const refreshRequest = () => {
+      void load();
+    };
+
+    window.addEventListener("ktx-registrations-updated", refreshRequest);
+
     return () => {
       cancelled = true;
+      window.removeEventListener("ktx-registrations-updated", refreshRequest);
     };
   }, [registrationId, routeState?.request, routeState?.returnToModal]);
 

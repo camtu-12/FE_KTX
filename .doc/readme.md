@@ -8,6 +8,7 @@ I. TỔNG QUAN HỆ THỐNG
 + Tầng 2 (Nữ): 10 phòng (201 → 210)
 + Mỗi phòng: 14 giường đôi (2 trên, 2 dưới), đánh số 1 → 14.
 II. NGHIỆP VỤ CHI TIẾT (SỬA & BỔ SUNG)
+
 1. Quản lý phòng & giường
 ­	Mỗi phòng có:
 	Số phòng, tầng, giới tính áp dụng (nam/nữ theo tầng)
@@ -18,10 +19,11 @@ II. NGHIỆP VỤ CHI TIẾT (SỬA & BỔ SUNG)
 	Không vượt quá số giường trống
 	Một sinh viên chỉ được ở một giường trong một thời điểm
 2. Quản lý đăng ký nội trú & phân phòng
-­	Sinh viên gửi đơn đăng ký nội trú online (điền đầy đủ thông tin cá nhân, MSSV, lớp, khoa, giới tính, thông tin người thân, cam kết chấp hành nội quy ký túc xá).
-­	Admin Xem danh sách đơn đăng ký chờ duyệt
-­	Admin Duyệt hoặc từ chối đơn (kèm lý do nếu từ chối).
-­	Hệ thống Sau khi duyệt, hiển thị danh sách các phòng còn trống, đúng giới tính, kèm theo: Số phòng, số giường, tầng nào trống hiện tại
+­	Sinh viên gửi đơn đăng ký nội trú online (điền đầy đủ thông tin người thân, thông tin liên quan đến cccd, cam kết chấp hành nội quy ký túc xá).
+­	Đơn được tự động duyệt.
+­	Admin duyệt hoặc từ chối đơn (nếu đơn không đáp ứng đủ điều kiện).
+­	Admin xem danh sách đơn đăng ký.
+­	Hệ thống sau khi duyệt, hiển thị danh sách các phòng còn trống, đúng giới tính, kèm theo: Số phòng, số giường, tầng nào trống hiện tại
 ­	Hệ thống gợi ý phòng có số sinh viên ít nhất (ưu tiên phòng còn nhiều giường trống). Đảm bảo đúng giới tính (nam → tầng 1, nữ → tầng 2)
 ­	Admin chọn 1 phòng cho sinh viên.
 ­	Sau khi được phân phòng, sinh viên có quyền truy cập chức năng “chọn giường”.
@@ -37,6 +39,8 @@ o	Hoàn tất đăng ký lưu trú
 ­	Nếu giường đã được người khác chọn trước:
 o	Hệ thống thông báo lỗi
 o	Sinh viên phải chọn lại giường khác
+-	Sau đó Admin sẽ xác nhận giường mà sinh viên đã chọn.
+-	Hệ thống tạo bản ghi lưu trú cho sinh viên, ghi nhận phòng và giường hiện tại.
 ­	Không cho phép sinh viên yêu cầu thay đổi phòng hoặc giường sau khi đã chọn thành công.
 3. Quản lý tiền điện
 ­	Hàng tháng (ngày 1), admin nhập chỉ số điện cũ (cuối tháng trước) và mới (đầu tháng này) theo từng phòng.
@@ -71,15 +75,14 @@ o	Sinh viên phải chọn lại giường khác
 III. CHỨC NĂNG THEO ROLE
 1.	Role Sinh Viên
 1.1.	Quản lý tài khoản
--	Đăng ký tài khoản, nhập MSSV, email, mật khẩu, kích hoạt qua email.
+-	Đăng ký tài khoản: nhập MSSV hợp lệ , mật khẩu, xác nhận lại mật khẩu.
 -	Đăng nhập / đăng xuất.
--	Cập nhật thông tin cá nhân: họ tên, số điện thoại, email, thông tin người thân (tên, số điện thoại, quan hệ).
--	Đổi mật khẩu.
+-	Đổi mật khẩu / quên mật khẩu.
 -	Xem thông tin cá nhân.
 1.2.	Đăng ký nội trú
--	Đăng ký ở ký túc xá: điền form (họ tên, MSSV, lớp, khoa, giới tính, sđt, số cccd, nơi thường trú, thông tin người thân).
+-	Đăng ký ở ký túc xá: điền form (thông tin người thân, các thông tin liên quan đến cccd).
 -	Xem trạng thái đơn đăng ký: chờ duyệt / đã duyệt / từ chối (kèm lý do nếu bị từ chối).
--	Mỗi sinh viên chỉ được gửi một đơn đăng ký tại một thời điểm khi đơn đang ở trạng thái "chờ duyệt". Nếu đơn bị từ chối, sinh viên mới được phép gửi đơn đăng ký mới. Nếu đơn đã được duyệt và sinh viên đã có đơn cư trú hiệu lực, không được phép gửi thêm đơn nào khác.
+-	Mỗi sinh viên chỉ được gửi một đơn đăng ký tại một thời điểm. Nếu sinh viên đủ điều kiện đơn sẽ được duyệt tự động, nếu đơn không đủ điều kiện thì đơn đăng ký của sinh viên đó sẽ ở trạng thái “chờ duyệt” để Admin xem xét duyệt sau. Nếu đơn bị từ chối, sinh viên mới được phép gửi đơn đăng ký mới. Nếu đơn đã được duyệt và sinh viên đã có đơn cư trú hiệu lực, không được phép gửi thêm đơn nào khác.
 
 1.3.	Chỗ ở & lưu trú
 -	Chọn giường
@@ -99,25 +102,27 @@ III. CHỨC NĂNG THEO ROLE
 -	Xem thông báo từ ban quản lý (toàn hệ thống hoặc gửi riêng).
 2.	Role Admin
 2.1.	Quản lý sinh viên
--	Thêm mới sinh viên vào hệ thống (MSSV, họ tên, lớp, khoa, giới tính, cccd, số điện thoại, email).
--	Sửa thông tin sinh viên.
--	Xóa sinh viên (hoặc vô hiệu hóa khi không còn ở ký túc xá).
+-	Xóa tài khoản sinh viên (hoặc vô hiệu hóa khi không còn ở ký túc xá).
 -	Tìm kiếm sinh viên theo MSSV, họ tên, lớp, khoa hoặc trạng thái cư trú.
 -	Xem danh sách sinh viên đang ở ký túc xá (những sinh viên có đơn cư trú đang hiệu lực).
 -	Lọc danh sách sinh viên theo phòng, theo tầng, theo giới tính.
 -	Xem chi tiết danh sách sinh viên trong một phòng cụ thể (gồm MSSV, họ tên, số giường đang ở).
-2.2.	Quản lý phòng & giường
--	Tạo phòng mới: nhập số phòng, tầng, loại phòng (nam/nữ theo tầng).
+2.2.	Quản lý tầng
+-	Thêm tầng mới: nhập số tầng, tổng số phòng, chọn giới tính cho tầng.
+-	Chỉnh sửa thông tin, trạng thái của tầng.
+-	Xem thông tin chi tiết từng của tầng (tổng số phòng, giới tính).
+2.3.	Quản lý phòng & giường
+-	Tạo phòng mới: chọn tầng, nhập số phòng, nhập sức chứa.
 -	Sửa thông tin phòng.
 -	Xóa phòng (chỉ xóa được khi không còn sinh viên ở).
 -	Thiết lập sức chứa tối đa của phòng (mặc định 14 giường, có thể điều chỉnh).
 -	Xem danh sách giường trong phòng (STT 1 → 14) và trạng thái (trống / đã chiếm).
 -	Cập nhật trạng thái phòng: còn trống / đã đầy / đang bảo trì.
-2.3.	Duyệt đăng ký nội trú 
--	Xem danh sách đơn đăng ký chờ duyệt.
+2.4.	Duyệt đăng ký nội trú 
+-	Xem danh sách đơn đăng ký đã được duyệt tự động hoặc đơn đơn ký chờ duyệt.
 -	Duyệt hoặc từ chối đơn (kèm lý do nếu từ chối).
 -	Kiểm tra điều kiện: sinh viên không được có đăng ký lưu trú còn hiệu lực.
-2.4.	Phân phòng 
+2.5.	Phân phòng 
 -	Sau khi duyệt đơn, hệ thống hiển thị danh sách các phòng còn trống, đúng giới tính, không bảo trì, kèm theo:
 -	Số phòng, tầng.
 -	Số giường trống hiện tại.
@@ -125,27 +130,28 @@ III. CHỨC NĂNG THEO ROLE
 -	Admin chọn 1 phòng từ danh sách (có thể chọn theo gợi ý hoặc chọn phòng khác).
 -	Hệ thống chỉ gán phòng, không gán giường.
 -	Sinh viên sẽ tự chọn giường trong phòng đã được phân.
+-	Admin xác nhận giường mà sinh đã chọn.
 -	Admin có thể theo dõi trạng thái giường trong phòng.
 -	Xem kết quả phân phòng.
-2.5.	Quản lý lưu trú
+2.6.	Quản lý lưu trú
 -	Xem danh sách sinh viên đang lưu trú
--	Theo dõi phòng và giường
+-	Quản lý thông tin lưu trú hiện tại của sinh viên (phòng, giường, thời gian ở).
 -	Xác nhận sinh viên đã hoàn tất thủ tục
 -	Xử lý báo thôi ở
 -	Lưu ý: Không có chức năng gia hạn đơn lưu trú. Nếu sinh viên muốn ở năm học tiếp theo, phải đăng ký nội trú lại từ đầu.
-2.6.	Quản lý tiền điện
+2.7.	Quản lý tiền điện
 -	Nhập chỉ số điện cũ (cuối tháng trước) và chỉ số điện mới (đầu tháng này) theo từng phòng, định kỳ hàng tháng (ngày 1).
 -	Hệ thống tự động tính:
 	Số điện dùng = chỉ số mới – chỉ số cũ.
 	Tổng tiền điện phòng = số điện dùng × 2.500đ.
 	Tiền điện mỗi sinh viên = tổng tiền điện phòng / số sinh viên trong phòng (làm tròn theo quy định).
 -	Xem danh sách tiền điện đã tính.
-2.7.	Quản lý phí & thanh toán
+2.8.	Quản lý phí & thanh toán
 -	Tự động tạo hóa đơn tiền phòng theo quý (đúng chu kỳ: 25/12→10/01, 25/03→10/04, 25/06→10/07, 25/09→10/10).
 -	Xem danh sách thanh toán: đã thanh toán / chưa thanh toán / quá hạn.
 -	Cập nhật trạng thái thanh toán thủ công (cho trường hợp chuyển khoản ngoài hệ thống).
 -	Xem lịch sử thanh toán của từng sinh viên.
-2.8.	Quản lý vi phạm
+2.9.	Quản lý vi phạm
 -	Quản lý danh sách loại vi phạm:
 	Thêm loại vi phạm mới (ví dụ: hút thuốc, gây mất trật tự, đập phá tài sản, sử dụng điện trái phép...).
 	Sửa tên hoặc mức độ vi phạm.
@@ -155,18 +161,18 @@ III. CHỨC NĂNG THEO ROLE
 -	Xem danh sách vi phạm theo sinh viên, theo phòng, theo thời gian.
 -	Cho thôi ở ngay khi vi phạm nghiêm trọng hoặc khi sinh viên quá hạn thanh toán (tiền phòng hoặc tiền điện).
 -	Lưu ý: Chỉ được xóa loại vi phạm khi chưa có bất kỳ sinh viên nào bị ghi nhận vi phạm với loại đó. Nếu đã có sinh viên vi phạm, chỉ được phép sửa tên hoặc vô hiệu hóa (không xóa).
-2.9.	Xử lý yêu cầu thôi ở từ sinh viên (báo thôi ở)
+2.10.	Xử lý yêu cầu thôi ở từ sinh viên (báo thôi ở)
 -	Xem danh sách yêu cầu thôi ở từ sinh viên.
 -	Duyệt yêu cầu: chấm dứt lưu trú, sinh viên được chuyển sang trạng thái "đã thôi ở", không hoàn tiền phòng.
 -	Từ chối yêu cầu (kèm lý do, nếu cần).
-2.10.	Báo cáo & thống kê
+2.11.	Báo cáo & thống kê
 -	Xuất báo cáo số lượng sinh viên theo phòng, theo tầng, theo giới tính.
 -	Xuất báo cáo tỷ lệ lấp đầy giường/phòng.
 -	Xuất báo cáo doanh thu thực tế (tiền phòng, tiền điện).
 -	Xuất báo cáo công nợ (chưa thanh toán, quá hạn).
 -	Xuất báo cáo thống kê vi phạm (theo loại vi phạm, theo sinh viên, theo thời gian).
 -	Hỗ trợ xuất file PDF hoặc Excel cho tất cả báo cáo.
-2.11.	Thông báo
+2.12.	Thông báo
 -	Gửi thông báo đến toàn bộ sinh viên đang ở ký túc xá.
 -	Gửi thông báo đến từng sinh viên cụ thể.
 -	Thông báo hiển thị trên hệ thống và có thể gửi kèm email.
@@ -177,13 +183,16 @@ IV. CÁC QUY TẮC NGHIỆP VỤ (RULES) – TÓM TẮT
 -	Sinh viên chỉ được hoàn tất lưu trú sau khi đã được phân phòng và chọn giường 
 -	Không cho đăng ký nếu sinh viên đang có đăng ký lưu trú còn hiệu lực
 -	Phân phòng do admin chọn.
--	Sinh viên tự chọn giường trong phòng đã được phân.
+-	Sinh viên tự chọn giường trong phòng đã được phân, admin là người xác nhận.
 -	Hệ thống đảm bảo mỗi giường chỉ có một sinh viên tại một thời điểm.
 -	Việc chọn giường được xử lý theo nguyên tắc “ai chọn trước được trước” (first-come-first-served).
 -	Không cho phép thay đổi giường sau khi đã chọn.
 -	Hệ thống áp dụng cơ chế kiểm soát đồng thời (concurrency control) khi sinh viên chọn giường nhằm đảm bảo không xảy ra tình trạng nhiều sinh viên cùng chiếm một giường.
 -	Sinh viên phải chọn giường trong khoảng thời gian quy định sau khi được phân phòng, nếu quá thời gian hệ thống có thể tự động hủy phân phòng hoặc chuyển trạng thái.
 -	Việc chọn giường được thực hiện thông qua cơ chế cập nhật trạng thái giường có điều kiện nhằm đảm bảo tính nguyên tử (atomic) và tránh xung đột khi nhiều sinh viên thao tác đồng thời.
+-	Mỗi sinh viên chỉ có một bản ghi lưu trú đang hoạt động tại một thời điểm.
+-	Mỗi giường chỉ được gán cho một sinh viên tại một thời điểm.
+-	Khi sinh viên chuyển phòng, hệ thống cập nhật bản ghi lưu trú hiện tại và lưu lịch sử vào room_change_log.
 -	Tiền điện chia đều theo đầu người, trừ trường hợp ở không trọn tháng → tính theo ngày.
 -	Trễ thanh toán (tiền phòng hoặc tiền điện) →  không được ở tiếp.
 -	Rời khỏi ký túc xá trước hạn → không hoàn tiền phòng.
@@ -191,68 +200,78 @@ IV. CÁC QUY TẮC NGHIỆP VỤ (RULES) – TÓM TẮT
 
 
 
+
 ỨNG DỤNG QUẢN LÝ KÝ TÚC XÁ ĐH CÔNG NGHỆ SÀI GÒN
 I.	Cơ sở dữ liệu
-1.		building
+1.		Building
 Lưu trữ thông tin các tòa nhà trong khu ký túc xá, hỗ trợ mở rộng nhiều tòa sau này
--	building(building_code, name, address, total_floors, gender_config, status)
-2.	room (Phòng)
-Lưu trữ thông tin các phòng trong ký túc xá. Số tầng được suy từ room_number (VD: 101 là tầng 1). Giới tính của phòng được suy từ building.gender_config dựa vào số tầng."
--	room(id, building_code, room_number, capacity, price_per_quarter, status (AVAILABLE, FULL, MAINTENANCE))
--	UNIQUE(building_code, room_number)
-3.	bed (Giường)
+-	building(building_code, name, address, status)
+2.	floor (Tầng)
+Lưu trữ thông tin các tầng trong tòa nhà ký túc xá
+-	floor( id, building_code, floor_number, gender, status( ACTIVE, MAINTENANCE ) )
+-	UNIQUE( building_code, floor_number)
+3.	room (Phòng)
+Lưu trữ thông tin các phòng trong ký túc xá. 
+-	room(id, floor_id, room_number, capacity, price_per_quarter, status (AVAILABLE, FULL, MAINTENANCE))
+-	UNIQUE(floor_id, room_number)
+4.	bed (Giường)
 Quản lý danh sách giường trong từng phòng, trạng thái trống/đã chiếm và sinh viên đang ở.
 -	bed(id, room_id, bed_number, position, status)
 -	UNIQUE(room_id, bed_number)
--	status: EMPTY / OCCUPIED / MAINTENANCE
-4.	student (Sinh viên)
+-	status: ACTIVE / MAINTENANCE
+5.	student (Sinh viên)
 Lưu trữ thông tin cá nhân và thông tin người thân của sinh viên đăng ký ở ký túc xá
 -	student(id, student_code, full_name, date_of_birth, gender, class_name, faculty, course_year, phone, email, cccd, cccd_issue_date, cccd_issue_place, nationality, ethnicity (dân tộc), religion(tôn giáo), permanent_address, avatar, is_active, created_at, updated_at)
 -	is_active ( true / false)
-5.	registration (Đơn đăng ký)
+6.	registration (Đơn đăng ký)
 Lưu trữ đơn đăng ký ở ký túc xá của sinh viên, trạng thái duyệt và lý do nếu bị từ chối.
--	registration(id, student_id, semester,form_data, school_year(năm học đăng ký), father_name, father_birth_year, father_job, father_phone, mother_name, mother_birth_year, mother_job, mother_phone, parent_address, stay_from_date, stay_to_date, cccd_front_url, cccd_back_url, commitment_confirmed, status, rejection_reason, note, assigned_room_id, assigned_bed_id, approved_at, created_at, updated_at)
+-	registration(id, student_id, semester,form_data, school_year(năm học đăng ký), father_name, father_birth_year, father_job, father_phone, mother_name, mother_birth_year, mother_job, mother_phone, parent_address, stay_from_date, stay_to_date, cccd_front_url, cccd_back_url, commitment_confirmed, status, rejection_reason, note, approved_at, created_at, updated_at)
 -	status: PENDING / APPROVED / REJECTED
 -	commitment_confirmed: BOOLEAN (true / false)
-6.	room_change_log (Lịch sử chuyển phòng)
+7.	occupancy( Lưu trú)
+Lưu trữ thông tin lưu trú của sinh viên 
+-	occupancy(id, registration_id, student_id, room_id, bed_id, check_in_date, check_out_date, status, created_at, updated_at )
+-	status: ACTIVE, COMPLETED, TERMINATED
+8.	room_change_log (Lịch sử chuyển phòng)
 Lưu lịch sử chuyển phòng của từng sinh viên khi phòng có sự cố
--	room_change_log (id, student_id, registration_id , old_room_id, old_bed_id, new_room_id, new_bed_id, transfer_reason, transferred_at)
-7.	Bảng electricity_record (Ghi nhận chỉ số điện)
+-	room_change_log (id, occupancy_id, old_room_id, old_bed_id, new_room_id, new_bed_id, transfer_reason, transferred_at)
+9.	Bảng electricity_record (Ghi nhận chỉ số điện)
 Ghi nhận chỉ số điện cũ và mới của từng phòng theo tháng để tính tiền điện.
 -	electricity_record(id, room_id, month_year, old_index, new_index, usage_kwh, unit_price, total_amount, created_at, updated_at)
 
-8.	Bảng electricity_bill (Hóa đơn tiền điện)
+10.	Bảng electricity_bill (Hóa đơn tiền điện)
 Hóa đơn tiền điện chi tiết cho từng sinh viên, bao gồm số điện tiêu thụ, đơn giá, tỷ lệ ngày ở và hạn thanh toán.
 -	electricity_bill(id, student_id, registration_id, month_year, usage_kwh, unit_price, amount, due_date, payment_method, transaction_code, paid_at, status, created_at, updated_at)
 -	status: UNPAID / PAID / OVERDUE
 
-9.	Bảng room_fee_bill (Hóa đơn tiền phòng)
+11.	Bảng room_fee_bill (Hóa đơn tiền phòng)
 Hóa đơn tiền phòng theo quý cho từng sinh viên.
 -	room_fee_bill(id, student_id, registration_id, quarter, year, amount, due_date, payment_method, transaction_code, paid_at, status, created_at, updated_at)
 -	status: UNPAID / PAID / OVERDUE
 
-10.	Bảng violation_type (Loại vi phạm)
+12.	Bảng violation_type (Loại vi phạm)
 Danh mục các loại vi phạm và mức độ (nhẹ, trung bình, nghiêm trọng).
 -	violation_type(id, name, level, description, is_active)
 
-11.	Bảng violation (Vi phạm)
+13.	Bảng violation (Vi phạm)
 Ghi nhận vi phạm cụ thể của sinh viên.
--	violation(id, student_id, type_id, room_id, violation_date, note)
+-	violation(id, occupancy_id,, type_id, violation_date, note)
 
-12.	Bảng account (Tài khoản)
+14.	Bảng account (Tài khoản)
 Quản lý tài khoản đăng nhập của sinh viên và admin.
--	users(id, student_id,student_code, email, password, role, is_active, created_at,
+-	account(id, student_id , password, role, is_active, created_at,
 updated_at)
 
-13.	Bảng notification (Thông báo)
+15.	Bảng notification (Thông báo)
 Lưu trữ thông báo từ ban quản lý gửi đến sinh viên (toàn hệ thống hoặc cá nhân).
 -	notification(id, title, content, type, target_type, created_at)
 -	type : SYSTEM / ROOM / PAYMENT / VIOLATION
-14.	Bảng notification_recipient (Danh sách nhận thông báo)
+16.	Bảng notification_recipient (Danh sách nhận thông báo)
 Lưu thông báo đó là thông báo nào, được gửi cho ai, và đã được đọc chưa)
 -	notification_recipient (id, notification_id, student_id, is_read, read_at)
-15.	Bảng setting 
+17.	Bảng setting 
 Lưu các tham số cấu hình của hệ thống, có thể thay đổi mà không cần sửa code.
 -	settings(key, value, description)	
 
 
+    

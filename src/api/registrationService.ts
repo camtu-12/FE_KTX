@@ -1,42 +1,178 @@
 import * as regApi from "./registrationApi";
+import {
+  getDormBedPairsForRoomInstant,
+  getDormBedsForRoomInstant,
+  getDormRoomsInstant,
+} from "../mocks/dormRoomStore.ts";
+import type { DormRoom } from "../types/dormRoom.ts";
 import type {
   RegistrationFormData,
   RegistrationRequest,
   RegistrationStatus,
 } from "../modules/admin/data/registrationRequests";
+import {
+  dispatchRegistrationRequestsUpdated,
+  getRegistrationRequestsSeed,
+  getStoredRegistrationRequests,
+  readLatestRegistrationByEmail,
+  readRegistrationRequestById,
+  upsertStoredRegistrationRequest,
+} from "../modules/admin/data/registrationRequests";
 
 // Sử dụng Railway URL từ environment variables (có fallback nếu biến không được set)
 const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) || "http://127.0.0.1:8000").replace(/\/+$/, "");
+const ASSIGNMENT_STORAGE_KEY = "mock_registration_assignments_v1";
+const BED_SELECTION_STORAGE_KEY = "mock_registration_bed_selections_v1";
 
 
 console.log("API_BASE:", API_BASE); // Debug - kiểm tra URL đúng không
 
-export type DormRoom = {
-  id: number;
-  building_code: string;
-  room_number: number;
-  totalBeds: number;
-  availableBeds: number;
-  gender?: string | null;
-};
-
-export type DormBed = {
-  id: number;
-  room_id: number;
-  bed_number: number;
-  position: "upper" | "lower";
-  status: "occupied" | "empty" | "maintenance";
-};
-
-export type DormBedPair = {
-  pairNumber: number;
-  upper: DormBed;
-  lower: DormBed;
-};
-
 type JsonRecord = Record<string, unknown>;
+type AssignmentSnapshot = {
+  requestId: number;
+  roomId: number;
+};
+type BedSelectionSnapshot = {
+  requestId: number;
+  bedId: number;
+};
 
 const isRecord = (value: unknown): value is JsonRecord => typeof value === "object" && value !== null;
+
+const isBrowser = () => typeof window !== "undefined";
+
+const isAssignmentSnapshot = (value: unknown): value is AssignmentSnapshot => {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.requestId === "number" &&
+    typeof value.roomId === "number"
+  );
+};
+
+const isBedSelectionSnapshot = (value: unknown): value is BedSelectionSnapshot => {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return typeof value.requestId === "number" && typeof value.bedId === "number";
+};
+
+const readStoredAssignments = (): AssignmentSnapshot[] => {
+  if (!isBrowser()) {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(ASSIGNMENT_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter(isAssignmentSnapshot) : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeStoredAssignments = (assignments: AssignmentSnapshot[]) => {
+  if (!isBrowser()) {
+    return assignments;
+  }
+
+  window.localStorage.setItem(ASSIGNMENT_STORAGE_KEY, JSON.stringify(assignments));
+  return assignments;
+};
+
+const upsertStoredAssignment = (assignment: AssignmentSnapshot) => {
+  const assignments = readStoredAssignments();
+  const index = assignments.findIndex((item) => item.requestId === assignment.requestId);
+
+  if (index >= 0) {
+    assignments[index] = assignment;
+  } else {
+    assignments.push(assignment);
+  }
+
+  return writeStoredAssignments(assignments);
+};
+
+const readStoredBedSelections = (): BedSelectionSnapshot[] => {
+  if (!isBrowser()) {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(BED_SELECTION_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter(isBedSelectionSnapshot) : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeStoredBedSelections = (selections: BedSelectionSnapshot[]) => {
+  if (!isBrowser()) {
+    return selections;
+  }
+
+  window.localStorage.setItem(BED_SELECTION_STORAGE_KEY, JSON.stringify(selections));
+  return selections;
+};
+
+const upsertStoredBedSelection = (selection: BedSelectionSnapshot) => {
+  const selections = readStoredBedSelections();
+  const index = selections.findIndex((item) => item.requestId === selection.requestId);
+
+  if (index >= 0) {
+    selections[index] = selection;
+  } else {
+    selections.push(selection);
+  }
+
+  return writeStoredBedSelections(selections);
+};
+
+const applyStoredAssignments = (requests: RegistrationRequest[]): RegistrationRequest[] => {
+  const assignments = readStoredAssignments();
+  const bedSelections = readStoredBedSelections();
+  if (assignments.length === 0 && bedSelections.length === 0) {
+    return requests;
+  }
+
+  const assignmentByRequestId = new Map(assignments.map((assignment) => [assignment.requestId, assignment]));
+  const bedSelectionByRequestId = new Map(bedSelections.map((selection) => [selection.requestId, selection]));
+
+  return requests.map((request) => {
+    const assignment = assignmentByRequestId.get(request.id);
+    const bedSelection = bedSelectionByRequestId.get(request.id);
+    if (!assignment && !bedSelection) {
+      return request;
+    }
+
+    return {
+      ...request,
+      assigned_room_id: assignment?.roomId ?? request.assigned_room_id ?? null,
+      assigned_bed_id: bedSelection?.bedId ?? null,
+      bedId: bedSelection?.bedId ?? null,
+    };
+  });
+};
+
+const applyStoredAssignment = (request: RegistrationRequest | null): RegistrationRequest | null => {
+  if (!request) {
+    return request;
+  }
+
+  return applyStoredAssignments([request])[0] ?? request;
+};
 
 const extract = <T>(res: unknown): T => {
   if (!isRecord(res)) {
@@ -301,142 +437,219 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
   };
 };
 
-const normalizeRegistrationList = (rows: unknown[]) =>
-  rows.map((row) => normalizeRegistrationRequest(row)).filter(Boolean) as RegistrationRequest[];
+const normalizeRegistrationResponse = (value: unknown): RegistrationRequest | null => {
+  return normalizeRegistrationRequest(extract<unknown>(value));
+};
+
+const normalizeRegistrationResponseArray = (value: unknown): RegistrationRequest[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => normalizeRegistrationResponse(item))
+    .filter((item): item is RegistrationRequest => item !== null);
+};
+
+const cloneRegistrationRequest = (request: RegistrationRequest): RegistrationRequest => ({
+  ...request,
+  formData: { ...request.formData },
+  documents: { ...request.documents },
+  student: request.student
+    ? {
+        account: request.student.account
+          ? { ...request.student.account }
+          : request.student.account,
+      }
+    : request.student,
+});
+
+const snapshotRegistrationRequests = (): RegistrationRequest[] => {
+  const requests = getStoredRegistrationRequests();
+  const snapshot = requests.length > 0 ? requests.map(cloneRegistrationRequest) : getRegistrationRequestsSeed().map(cloneRegistrationRequest);
+  return applyStoredAssignments(snapshot);
+};
+
+const persistRegistrationRequest = (nextRequest: RegistrationRequest): RegistrationRequest => {
+  upsertStoredRegistrationRequest(nextRequest);
+  dispatchRegistrationRequestsUpdated();
+  return cloneRegistrationRequest(nextRequest);
+};
 
 export const getRegistrationRequests = async () => {
-  const res = await regApi.getRegistrations();
-  return normalizeRegistrationList(extract<unknown[]>(res) ?? []);
+  return snapshotRegistrationRequests();
 };
 
-export const getRegistrations = getRegistrationRequests;
+export const getRegistrations = async (): Promise<RegistrationRequest[]> => {
+  const res = await regApi.getRegistrations();
+  return applyStoredAssignments(normalizeRegistrationResponseArray(res));
+};
 
 export const getRegistrationRequestsInstant = (): RegistrationRequest[] => {
-  return [];
+  return snapshotRegistrationRequests();
 };
 
-export const getRegistrationRequestByIdInstant = (_id: number): RegistrationRequest | null => {
-  void _id;
-  return null;
+export const getRegistrationRequestByIdInstant = (id: number): RegistrationRequest | null => {
+  const request = readRegistrationRequestById(id);
+  return applyStoredAssignment(request ? cloneRegistrationRequest(request) : null);
 };
 
-export const getLatestRegistrationByEmailInstant = (_email: string): RegistrationRequest | null => {
-  void _email;
-  return null;
+export const getLatestRegistrationByEmailInstant = (email: string): RegistrationRequest | null => {
+  const request = readLatestRegistrationByEmail(email);
+  return applyStoredAssignment(request ? cloneRegistrationRequest(request) : null);
 };
 
-export const getDormRoomsInstant = (): DormRoom[] => {
-  return [];
-};
-
-export const getDormBedsForRoomInstant = (_roomId: number): DormBed[] => {
-  void _roomId;
-  return [];
-};
-
-export const getDormBedPairsForRoomInstant = (_roomId: number): DormBedPair[] => {
-  void _roomId;
-  return [];
-};
+export { getDormRoomsInstant, getDormBedsForRoomInstant, getDormBedPairsForRoomInstant };
 
 export const getRooms = async (): Promise<DormRoom[]> => {
-  const res = await regApi.getRooms();
-  return extract<DormRoom[]>(res) ?? [];
+  return getDormRoomsInstant();
 };
 
 export const getRegistrationById = async (id: number): Promise<RegistrationRequest | null> => {
-  const res = await regApi.getRegistrationById(id);
-  return normalizeRegistrationRequest(extract<unknown>(res));
+  try {
+    const res = await regApi.getRegistrationById(id);
+    return applyStoredAssignment(normalizeRegistrationResponse(res));
+  } catch {
+    return null;
+  }
 };
 
 export const getLatestRegistrationByEmail = async (email: string): Promise<RegistrationRequest | null> => {
-  const res = await regApi.getMyRegistration(email);
-  return normalizeRegistrationRequest(extract<unknown>(res));
+  if (!email.trim()) {
+    return null;
+  }
+
+  return getMyRegistration(email);
 };
 
 export const getRegistrationHistoryByEmailSemester = async (
   email: string,
   semester: string
 ): Promise<RegistrationRequest[]> => {
+  if (!email.trim()) {
+    return [];
+  }
+
   const res = await regApi.getRegistrationHistory(email, semester);
-  const rows = Array.isArray(res) ? res : [];
-  return rows.map((row) => normalizeRegistrationRequest(row)).filter(Boolean) as RegistrationRequest[];
+  return normalizeRegistrationResponseArray(res);
 };
 
 export const updateRegistrationStatus = async ({
   id,
   status,
   rejectionReason,
+  currentRequest,
 }: {
   id: number;
   status: "approved" | "rejected";
   rejectionReason?: string;
+  currentRequest?: RegistrationRequest;
 }): Promise<RegistrationRequest> => {
-  try {
-    if (status === "approved") {
-      await regApi.API.put(`/registration/${id}/approve`);
-      const updated = await getRegistrationById(id);
-      if (!updated) {
-        throw new Error("Không thể tải lại đơn đăng ký sau khi duyệt.");
-      }
+  const response =
+    status === "approved"
+      ? await regApi.approveRegistration(id)
+      : await regApi.rejectRegistration(id, rejectionReason ?? "");
 
-      return updated;
-    }
-
-    await regApi.API.put(`/registration/${id}/reject`, {
-      rejectionReason: rejectionReason?.trim() ?? "",
-    });
-    const updated = await getRegistrationById(id);
-    if (!updated) {
-      throw new Error("Không thể tải lại đơn đăng ký sau khi từ chối.");
-    }
-
+  const updated = normalizeRegistrationResponse(response);
+  if (updated) {
+    dispatchRegistrationRequestsUpdated();
     return updated;
-  } catch (err: unknown) {
-    const error = isRecord(err) ? err : null;
-    const response = readRecord(error?.response);
-    const responseData = readRecord(response?.data);
-    const message = firstDefinedString(responseData?.message, error?.message, "Không thể cập nhật trạng thái đơn đăng ký.");
-    throw new Error(message);
   }
+
+  if (!currentRequest) {
+    throw new Error("Không thể cập nhật trạng thái đăng ký.");
+  }
+
+  const fallback: RegistrationRequest = {
+    ...currentRequest,
+    status,
+    rejectionReason: status === "rejected" ? rejectionReason?.trim() ?? "" : undefined,
+  };
+
+  dispatchRegistrationRequestsUpdated();
+  return fallback;
 };
 
 // Các tác vụ admin: wrapper tốt nhất - backend có thể cung cấp endpoint khác.
-export const assignRoomToRegistration = async ({ requestId, roomId }: { requestId: number; roomId: number }): Promise<RegistrationRequest | null> => {
-  try {
-    const res = await regApi.API.put(`/registration/${requestId}/assign-room`,{ room_id: roomId });
-    void res;
-    return getRegistrationById(requestId);
-  } catch (err: unknown) {
-    const error = isRecord(err) ? err : null;
-    const response = readRecord(error?.response);
-    const responseData = readRecord(response?.data);
-    const message = firstDefinedString(responseData?.message, error?.message, "Không thể phân phòng (backend chưa hỗ trợ).");
-    throw new Error(message);
+export const assignRoomToRegistration = async ({
+  requestId,
+  roomId,
+  bedId,
+  currentRequest,
+}: {
+  requestId: number;
+  roomId: number;
+  bedId?: number | null;
+  currentRequest?: RegistrationRequest;
+}): Promise<RegistrationRequest | null> => {
+  void bedId;
+
+  const current = readRegistrationRequestById(requestId)
+    ?? currentRequest
+    ?? normalizeRegistrationResponse(await regApi.getRegistrationById(requestId));
+  if (!current) {
+    throw new Error("Không tìm thấy đơn đăng ký.");
   }
+
+  const nextRequest = persistRegistrationRequest({
+    ...current,
+    assigned_room_id: roomId,
+    assigned_bed_id: null,
+    bedId: null,
+  });
+
+  upsertStoredAssignment({
+    requestId,
+    roomId,
+  });
+  dispatchRegistrationRequestsUpdated();
+
+  return nextRequest;
 };
 
-export const selectBedForRegistration = async ({ email, bedId }: { email: string; bedId: number }) => {
-  try {
-    const res = await regApi.API.put(`/registration/select-bed`, { email, bed_id: bedId });
-    return extract<unknown>(res);
-  } catch (err: unknown) {
-    const error = isRecord(err) ? err : null;
-    const response = readRecord(error?.response);
-    const responseData = readRecord(response?.data);
-    const message = firstDefinedString(responseData?.message, error?.message, "Không thể chọn giường (backend chưa hỗ trợ).");
-    throw new Error(message);
+export const selectBedForRegistration = async ({
+  email,
+  bedId,
+  currentRequest,
+}: {
+  email: string;
+  bedId: number;
+  currentRequest?: RegistrationRequest;
+}) => {
+  const current = readLatestRegistrationByEmail(email)
+    ?? currentRequest
+    ?? applyStoredAssignment(normalizeRegistrationResponse(await regApi.getMyRegistration(email)));
+  if (!current) {
+    throw new Error("Không tìm thấy đơn đăng ký của sinh viên.");
   }
+
+  const nextRequest = persistRegistrationRequest({
+    ...current,
+    assigned_bed_id: bedId,
+    bedId,
+  });
+
+  upsertStoredBedSelection({
+    requestId: current.id,
+    bedId,
+  });
+  dispatchRegistrationRequestsUpdated();
+
+  return nextRequest;
 };
 
 export const submitRegistration = async (formData: FormData): Promise<RegistrationRequest | null> => {
   const res = await regApi.submitRegistration(formData);
-  return normalizeRegistrationRequest(extract<unknown>(res));
+  const result = normalizeRegistrationResponse(res);
+  if (result) {
+    dispatchRegistrationRequestsUpdated();
+  }
+  return result;
 };
 
 export const getMyRegistration = async (email: string): Promise<RegistrationRequest | null> => {
   const res = await regApi.getMyRegistration(email);
-  return normalizeRegistrationRequest(extract<unknown>(res));
+  return applyStoredAssignment(normalizeRegistrationRequest(extract<unknown>(res)));
 };
 
 export default {

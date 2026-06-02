@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState, type FormEvent, type InputHTMLAttributes, type SelectHTMLAttributes } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type InputHTMLAttributes, type SelectHTMLAttributes } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowUp,
@@ -13,13 +13,16 @@ import { createPortal } from "react-dom";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import { initialBuildings, type Building, type BuildingStatus } from "../../../mocks/buildings";
+import { initialRooms, hasOccupancy } from "../../../mocks/roommanagement";
 
 const STORAGE_KEY = "ktx_buildings_dashboard_v2";
+const ROOM_STORAGE_KEY = "ktx_rooms_dashboard_v2";
+
+type RoomRecord = (typeof initialRooms)[number];
 
 type BuildingForm = {
   building_code: string;
   address: string;
-  total_floors: number;
   status: BuildingStatus;
 };
 
@@ -73,22 +76,63 @@ function ModalShell({
   );
 }
 
-function getBuildingMetrics(building: Building) {
+function getRoomBuildingCode(room: RoomRecord) {
+  return room.building_code ?? room.floor?.building_code ?? "";
+}
+
+function readRoomRecords() {
+  if (typeof window === "undefined") return initialRooms as RoomRecord[];
+
+  try {
+    const raw = window.localStorage.getItem(ROOM_STORAGE_KEY);
+    if (!raw) return initialRooms as RoomRecord[];
+    const parsed = JSON.parse(raw) as RoomRecord[];
+    return Array.isArray(parsed) ? parsed : (initialRooms as RoomRecord[]);
+  } catch {
+    return initialRooms as RoomRecord[];
+  }
+}
+
+function getBuildingMetrics(building: Building, rooms: RoomRecord[]) {
+  const buildingRooms = rooms.filter((room) => getRoomBuildingCode(room) === building.building_code);
+
   return building.floors.reduce(
     (accumulator, floor) => {
-      accumulator.rooms += floor.roomCount;
-      accumulator.beds += floor.bedCount;
-      accumulator.students += floor.occupiedStudents;
+      const floorRooms = buildingRooms.filter((room) => {
+        if (typeof room.floor_number === "number") return room.floor_number === floor.floorNumber;
+        return room.floor?.floor_number === floor.floorNumber;
+      });
+
+      accumulator.rooms += floorRooms.length;
+      accumulator.beds += floorRooms.reduce((sum, room) => sum + room.beds.length, 0);
+      accumulator.students += floorRooms.reduce((sum, room) => sum + room.beds.filter((bed) => hasOccupancy(bed.id)).length, 0);
       return accumulator;
     },
     { rooms: 0, beds: 0, students: 0 },
   );
 }
 
+function writeRoomRecords(records: RoomRecord[]) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(ROOM_STORAGE_KEY, JSON.stringify(records));
+    window.dispatchEvent(new Event("ktx-rooms-updated"));
+  } catch {
+    // ignore write failures
+  }
+}
+
+function removeRoomsForBuilding(buildingCode: string) {
+  const existing = readRoomRecords();
+  const nextRooms = existing.filter((room) => getRoomBuildingCode(room) !== buildingCode);
+  writeRoomRecords(nextRooms);
+}
+
 function getBuildingStatusLabel(status: BuildingStatus) {
   if (status === "ACTIVE") return "Đang hoạt động";
   if (status === "MAINTENANCE") return "Bảo trì";
-  return "Ngừng hoạt động";
+  return "Ngưng hoạt động";
 }
 
 function getBuildingStatusClass(status: BuildingStatus) {
@@ -101,7 +145,6 @@ function createEmptyBuildingForm(): BuildingForm {
   return {
     building_code: "",
     address: "",
-    total_floors: 1,
     status: "ACTIVE",
   };
 }
@@ -164,7 +207,10 @@ export default function AdminBuildingManagement() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(buildings));
+    window.dispatchEvent(new Event("ktx-buildings-updated"));
   }, [buildings]);
+
+  const rooms = useMemo(() => readRoomRecords(), []);
 
   useEffect(() => {
     if (!isStatusFilterOpen) return;
@@ -219,12 +265,12 @@ export default function AdminBuildingManagement() {
 
     return [...buildings]
       .filter((building) => {
-        const metrics = getBuildingMetrics(building);
+        const metrics = getBuildingMetrics(building, rooms);
         const haystack = [
           building.building_code,
           `Tòa ${building.building_code}`,
           building.address ?? "",
-          String(building.total_floors),
+          String(building.floors.length),
           String(metrics.rooms),
           String(metrics.beds),
           String(metrics.students),
@@ -239,14 +285,14 @@ export default function AdminBuildingManagement() {
         return matchesKeyword && matchesStatus && matchesBuilding;
       })
       .sort((left, right) => (idSortOrder === "asc" ? left.id - right.id : right.id - left.id));
-  }, [buildings, filterBuilding, filterStatus, headerSearchValue, idSortOrder]);
+  }, [buildings, filterBuilding, filterStatus, headerSearchValue, idSortOrder, rooms]);
 
   const filteredTotals = useMemo(() => {
     return filteredBuildings.reduce(
       (accumulator, building) => {
-        const metrics = getBuildingMetrics(building);
+        const metrics = getBuildingMetrics(building, rooms);
         accumulator.buildings += 1;
-        accumulator.floors += building.total_floors;
+          accumulator.floors += building.floors.length;
         accumulator.rooms += metrics.rooms;
         accumulator.beds += metrics.beds;
         accumulator.students += metrics.students;
@@ -254,14 +300,14 @@ export default function AdminBuildingManagement() {
       },
       { buildings: 0, floors: 0, rooms: 0, beds: 0, students: 0 },
     );
-  }, [filteredBuildings]);
+  }, [filteredBuildings, rooms]);
 
   const editingBuilding = useMemo(() => {
     if (!editingBuildingId) return null;
     return buildings.find((building) => building.id === editingBuildingId) ?? null;
   }, [buildings, editingBuildingId]);
 
-  const editingBuildingMetrics = editingBuilding ? getBuildingMetrics(editingBuilding) : { rooms: 0, beds: 0, students: 0 };
+  const editingBuildingMetrics = editingBuilding ? getBuildingMetrics(editingBuilding, rooms) : { rooms: 0, beds: 0, students: 0 };
   const formOccupiedStudents = editingBuildingId ? editingBuildingMetrics.students : 0;
   const isEditingFromMaintenance = editingBuilding?.status === "MAINTENANCE";
 
@@ -271,11 +317,11 @@ export default function AdminBuildingManagement() {
 
   const blockedBuildingStatusMessage = useMemo(() => {
     if (isMaintenanceBlocked) {
-      return `Tòa đang có ${formOccupiedStudents} sinh viên ở. Cần di dời trước khi chuyển sang BẢO TRÌ.`;
+      return `Tòa đang có ${formOccupiedStudents} sinh viên. Cần di dời trước khi chuyển sang BẢO TRÌ.`;
     }
 
     if (isInactiveBlocked) {
-      return `Tòa đang có ${formOccupiedStudents} sinh viên ở nên không thể chuyển sang NGỪNG HOẠT ĐỘNG. Hãy di dời sinh viên đi trước.`;
+      return `Tòa đang có ${formOccupiedStudents} sinh viên nên không thể chuyển sang NGƯNG HOẠT ĐỘNG. Hãy di dời sinh viên đi trước.`;
     }
 
     return "";
@@ -295,7 +341,6 @@ export default function AdminBuildingManagement() {
     setBuildingForm({
       building_code: building.building_code,
       address: building.address ?? "",
-      total_floors: building.total_floors,
       status: building.status,
     });
     setBuildingFormError("");
@@ -309,12 +354,11 @@ export default function AdminBuildingManagement() {
     const nextForm: BuildingForm = {
       building_code: buildingForm.building_code.trim().toUpperCase(),
       address: buildingForm.address.trim(),
-      total_floors: Math.max(1, Math.round(Number(buildingForm.total_floors) || 1)),
       status: buildingForm.status,
     };
     const errors: { building_code?: string; address?: string } = {};
-    if (!nextForm.building_code) errors.building_code = "Vui lòng nhập Mã tòa";
-    if (!nextForm.address) errors.address = "Vui lòng nhập Địa chỉ";
+    if (!nextForm.building_code) errors.building_code = "Vui lòng nhập Tên tòa";
+    if (!nextForm.address) errors.address = "Vui lòng nhập địa chỉ";
     if (Object.keys(errors).length > 0) {
       setBuildingValidationErrors(errors);
       return;
@@ -325,7 +369,7 @@ export default function AdminBuildingManagement() {
     const normalizedAddress = nextForm.address.trim();
     const codeExists = buildings.some((b) => b.building_code.trim().toUpperCase() === normalizedCode && (editingBuildingId ? b.id !== editingBuildingId : true));
     if (codeExists) {
-      setBuildingValidationErrors({ building_code: "Mã tòa đã tồn tại" });
+      setBuildingValidationErrors({ building_code: "Tòa đã tồn tại" });
       return;
     }
 
@@ -339,26 +383,25 @@ export default function AdminBuildingManagement() {
 
     if (editingBuildingId !== null && !isEditingFromMaintenance) {
       if (nextForm.status === "MAINTENANCE" && formOccupiedStudents > 0) {
-        setBuildingFormError(`Tòa đang có ${formOccupiedStudents} sinh viên ở. Cần di dời trước khi chuyển sang BẢO TRÌ.`);
+        setBuildingFormError(`Tòa đang có ${formOccupiedStudents} sinh viên. Cần di dời trước khi chuyển sang BẢO TRÌ.`);
         return;
       }
 
       if (nextForm.status === "INACTIVE" && formOccupiedStudents > 0) {
-        setBuildingFormError(`Tòa đang có ${formOccupiedStudents} sinh viên ở nên không thể chuyển sang NGỪNG HOẠT ĐỘNG. Hãy di dời sinh viên đi trước.`);
+        setBuildingFormError(`Tòa đang có ${formOccupiedStudents} sinh viên nên không thể chuyển sang NGƯNG HOẠT ĐỘNG. Hãy di dời sinh viên đi trước.`);
         return;
       }
 
-      // Allow switching to ACTIVE (Ngừng hoạt động -> Đang hoạt động) even if there are currently 0 students.
+      // Allow switching to ACTIVE (Ngưng hoạt động -> Đang hoạt động) even if there are currently 0 students.
     }
 
     if (editingBuildingId === null) {
-      const nextId = buildings.length > 0 ? Math.max(...buildings.map((building) => building.id)) + 1 : 1;
+      const nextId = buildings.length > 0 ? Math.max(...buildings.map((b) => b.id)) + 1 : 1;
       setBuildings((current) => [
         {
           id: nextId,
           building_code: nextForm.building_code,
           address: nextForm.address || undefined,
-          total_floors: nextForm.total_floors,
           status: nextForm.status,
           floors: [],
         },
@@ -372,7 +415,6 @@ export default function AdminBuildingManagement() {
                 ...building,
                 building_code: nextForm.building_code,
                 address: nextForm.address || undefined,
-                total_floors: nextForm.total_floors,
                 status: nextForm.status,
               }
             : building,
@@ -401,10 +443,11 @@ export default function AdminBuildingManagement() {
   }
 
   const removeBuilding = (building: Building) => {
-    const metrics = getBuildingMetrics(building);
+    const currentRooms = readRoomRecords();
+    const metrics = getBuildingMetrics(building, currentRooms);
     if (metrics.students > 0) {
       showConfirm(
-        `Không thể xóa tòa ${building.building_code} vì đang có ${metrics.students} sinh viên ở. Hãy chuyển sinh viên sang tòa khác trước.`,
+        `Không thể xóa tòa ${building.building_code} vì đang có ${metrics.students} sinh viên. Hãy chuyển sinh viên sang tòa khác trước.`,
         () => {},
       );
       return;
@@ -412,6 +455,7 @@ export default function AdminBuildingManagement() {
 
     showConfirm(`Bạn có chắc muốn xóa tòa ${building.building_code} không?`, () => {
       setBuildings((current) => current.filter((item) => item.id !== building.id));
+      removeRoomsForBuilding(building.building_code);
     });
   };
 
@@ -468,7 +512,7 @@ export default function AdminBuildingManagement() {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
-      className="flex min-h-full flex-col gap-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
+      className="flex flex-col gap-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
     >
       {typeof document !== "undefined" && isScrollToTopVisible
         ? createPortal(
@@ -491,20 +535,20 @@ export default function AdminBuildingManagement() {
         ? createPortal(
             <div className="fixed inset-0 z-[80] flex items-start justify-center p-4 sm:items-center">
               <div className="absolute inset-0 bg-black/30" onClick={closeConfirm} />
-              <div className="relative w-full max-w-3xl rounded-[26px] bg-white p-7 shadow-[0_30px_90px_rgba(15,23,42,0.22)]">
-                <p className="text-lg font-semibold text-[#1a2d52]">{confirmMessage}</p>
-                <div className="mt-6 flex justify-end gap-3">
+              <div className="relative w-full max-w-md rounded-xl bg-white p-5 shadow-lg">
+                <p className="text-sm text-slate-700">{confirmMessage}</p>
+                <div className="mt-4 flex justify-end gap-3">
                   <button
                     type="button"
                     onClick={closeConfirm}
-                    className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+                    className="rounded-xl border px-3 py-2 text-sm"
                   >
-                    Cancel
+                    Hủy
                   </button>
                   <button
                     type="button"
                     onClick={confirmNow}
-                    className="inline-flex h-11 items-center justify-center rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white transition hover:bg-slate-900"
+                    className="rounded-xl bg-red-600 px-3 py-2 text-sm text-white"
                   >
                     OK
                   </button>
@@ -528,7 +572,7 @@ export default function AdminBuildingManagement() {
                     { value: "all", label: "Tất cả" },
                     { value: "ACTIVE", label: "Đang hoạt động" },
                     { value: "MAINTENANCE", label: "Bảo trì" },
-                    { value: "INACTIVE", label: "Ngừng hoạt động" },
+                    { value: "INACTIVE", label: "Ngưng hoạt động" },
                   ].map((option) => {
                     const selected = draftFilterStatus === option.value;
 
@@ -630,25 +674,12 @@ export default function AdminBuildingManagement() {
           )
         : null}
 
-      <>
-        <div className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div>
-              <h1 className="text-[28px] font-bold tracking-tight text-[#1a2d52]">Quản lý tòa</h1>
-              <p className="mt-1 text-sm text-[#62789f]">Quản lý tòa, tầng và trạng thái cấu hình trong ký túc xá.</p>
-            </div>
+      <div className="relative rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
+        <div className="pr-0 xl:pr-52">
+          <h1 className="text-[28px] font-bold tracking-tight text-[#1a2d52]">Quản lý tòa</h1>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-[#62789f]">Quản lý tòa, tầng và trạng thái cấu hình trong ký túc xá.</p>
 
-              <button
-                type="button"
-                onClick={openAddBuilding}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(36,76,184,0.28)] transition hover:-translate-y-0.5 hover:brightness-110"
-              >
-                <Plus className="h-4 w-4" />
-                Thêm tòa nhà
-              </button>
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+          <div className="mt-5 grid max-w-2xl grid-cols-1 gap-3 md:grid-cols-2">
             <SelectField value={filterBuilding} onChange={(event) => setFilterBuilding(event.target.value)}>
               <option value="all">Tất cả tòa</option>
               {buildingCodes.map((buildingCode) => (
@@ -662,20 +693,30 @@ export default function AdminBuildingManagement() {
               <option value="all">Tất cả trạng thái</option>
               <option value="ACTIVE">Đang hoạt động</option>
               <option value="MAINTENANCE">Bảo trì</option>
-              <option value="INACTIVE">Ngừng hoạt động</option>
+              <option value="INACTIVE">Ngưng hoạt động</option>
             </SelectField>
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          {statCards.map((card) => (
-            <StatCard key={card.label} label={card.label} value={card.value} />
-          ))}
-        </div>
+        <button
+          type="button"
+          onClick={openAddBuilding}
+          className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(36,76,184,0.28)] transition hover:-translate-y-0.5 hover:brightness-110 xl:absolute xl:right-6 xl:top-6 xl:mt-0"
+        >
+          <Plus className="h-4 w-4" />
+          Thêm tòa nhà
+        </button>
+      </div>
 
-        <div className="overflow-hidden rounded-[32px] border border-[#d7e2f0] bg-white shadow-[0_18px_40px_rgba(36,76,184,0.08)]">
-          <div className="overflow-x-auto">
-            <table className="w-full table-fixed border-separate border-spacing-0">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {statCards.map((card) => (
+          <StatCard key={card.label} label={card.label} value={card.value} />
+        ))}
+      </div>
+
+      <div className="rounded-[32px] border border-[#d7e2f0] bg-white shadow-[0_18px_40px_rgba(36,76,184,0.08)]">
+        <div className="overflow-x-auto">
+          <table className="w-full table-fixed border-separate border-spacing-0">
               <colgroup>
                 <col className="w-[10%]" />
                 <col className="w-[22%]" />
@@ -729,13 +770,17 @@ export default function AdminBuildingManagement() {
               <tbody>
                 {filteredBuildings.length > 0 ? (
                   filteredBuildings.map((building) => {
-                    const metrics = getBuildingMetrics(building);
+                    const metrics = getBuildingMetrics(building, rooms);
 
                     return (
-                      <tr key={building.id} className="group transition-colors duration-200 hover:bg-[#f8fbff]">
+                      <tr
+                        key={building.id}
+                        onClick={() => navigate(`/admin/buildings/${building.id}`)}
+                        className="group cursor-pointer transition-colors duration-200 hover:bg-[#f8fbff]"
+                      >
                         <td className="border-t border-[#e7eef9] px-3 py-4 text-center text-sm font-semibold text-[#1f3152]">Tòa {building.building_code}</td>
                         <td className="border-t border-[#e7eef9] px-3 py-4 text-center text-sm text-[#5d7299]">{building.address ?? "-"}</td>
-                        <td className="border-t border-[#e7eef9] px-3 py-4 text-center text-sm text-[#5d7299]">{building.total_floors}</td>
+                        <td className="border-t border-[#e7eef9] px-3 py-4 text-center text-sm text-[#5d7299]">{building.floors.length}</td>
                         <td className="border-t border-[#e7eef9] px-3 py-4 text-center text-sm text-[#5d7299]">{metrics.rooms}</td>
                         <td className="border-t border-[#e7eef9] px-3 py-4 text-center text-sm text-[#5d7299]">{metrics.beds}</td>
                         <td className="border-t border-[#e7eef9] px-3 py-4 text-center text-sm text-[#5d7299]">{metrics.students}</td>
@@ -747,14 +792,14 @@ export default function AdminBuildingManagement() {
                         <td className="border-t border-[#e7eef9] px-3 py-4 text-center">
                           <div className="flex flex-col items-center justify-center gap-2">
                             <div className="flex items-center justify-center gap-2">
-                              <button type="button" onClick={() => navigate(`/admin/buildings/${building.id}`)} aria-label="Xem chi tiết" title="Xem chi tiết" className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.12)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white">
+                              <button type="button" onClick={(event) => { event.stopPropagation(); navigate(`/admin/buildings/${building.id}`); }} aria-label="Xem chi tiết" title="Xem chi tiết" className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.12)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white">
                                 <Eye className="h-3.5 w-3.5" />
                               </button>
-                              <button type="button" onClick={() => openEditBuilding(building)} aria-label="Sửa" title="Sửa" className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.12)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white">
+                              <button type="button" onClick={(event) => { event.stopPropagation(); openEditBuilding(building); }} aria-label="Sửa" title="Sửa" className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.12)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white">
                                 <Pencil className="h-3.5 w-3.5" />
                               </button>
                             </div>
-                            <button type="button" onClick={() => removeBuilding(building)} aria-label="Xóa" title="Xóa" className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-700 shadow-[0_8px_18px_rgba(225,85,105,0.12)] transition duration-200 hover:-translate-y-0.5 hover:border-red-300 hover:bg-red-100">
+                            <button type="button" onClick={(event) => { event.stopPropagation(); removeBuilding(building); }} aria-label="Xóa" title="Xóa" className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-700 shadow-[0_8px_18px_rgba(225,85,105,0.12)] transition duration-200 hover:-translate-y-0.5 hover:border-red-300 hover:bg-red-100">
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           </div>
@@ -768,17 +813,16 @@ export default function AdminBuildingManagement() {
                     <div className="mx-auto flex max-w-md flex-col items-center justify-center rounded-[28px] border border-dashed border-[#cfdcf0] bg-[#f8fbff] px-6 py-10 text-center">
                         <p className="mt-3 text-sm font-semibold text-[#1a2d52]">Không tìm thấy tầng phù hợp với bộ lọc hiện tại</p>
                         <button type="button" onClick={() => { setFilterStatus("all"); setFilterBuilding("all"); }} className="mt-4 inline-flex h-8 items-center justify-center rounded-xl bg-[#244cb8] px-3.5 text-sm font-semibold text-white transition hover:bg-[#1f44a4]">
-                          Bỏ bộ lọc
+                            Bỏ bộ lọc
                         </button>
                       </div>
                     </td>
                   </tr>
                 )}
               </tbody>
-            </table>
-          </div>
+          </table>
         </div>
-      </>
+      </div>
 
       {isBuildingModalOpen ? (
         <ModalShell
@@ -804,8 +848,8 @@ export default function AdminBuildingManagement() {
         >
           <form id="building-form" onSubmit={saveBuilding} className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-[#1a2d52]">Mã tòa <span className="ml-1 text-red-500">*</span></label>
-              <InputField value={buildingForm.building_code} onChange={(event) => { setBuildingForm((current) => ({ ...current, building_code: event.target.value.toUpperCase() })); setBuildingValidationErrors({}); }} placeholder="A" />
+              <label className="mb-1.5 block text-sm font-semibold text-[#1a2d52]">Tên tòa <span className="ml-1 text-red-500">*</span></label>
+              <InputField value={buildingForm.building_code} onChange={(event) => { setBuildingForm((current) => ({ ...current, building_code: event.target.value.toUpperCase() })); setBuildingValidationErrors({}); }} placeholder="Nhập tên tòa" />
               {buildingSubmitAttempted && buildingValidationErrors.building_code ? (
                 <div className="mt-1 text-xs text-red-600">{buildingValidationErrors.building_code}</div>
               ) : null}
@@ -815,7 +859,7 @@ export default function AdminBuildingManagement() {
               <SelectField value={buildingForm.status} onChange={(event) => { setBuildingForm((current) => ({ ...current, status: event.target.value as BuildingStatus })); setBuildingValidationErrors({}); setBuildingFormError(""); }}>
                 <option value="ACTIVE">Đang hoạt động</option>
                 <option value="MAINTENANCE">Bảo trì</option>
-                <option value="INACTIVE">Ngừng hoạt động</option>
+                <option value="INACTIVE">Ngưng hoạt động</option>
               </SelectField>
               {isBuildingStatusBlocked ? (
                 <p className="mt-2 text-xs font-medium text-amber-700">{blockedBuildingStatusMessage}</p>
@@ -823,15 +867,12 @@ export default function AdminBuildingManagement() {
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1.5 block text-sm font-semibold text-[#1a2d52]">Địa chỉ <span className="ml-1 text-red-500">*</span></label>
-              <InputField value={buildingForm.address} onChange={(event) => { setBuildingForm((current) => ({ ...current, address: event.target.value })); setBuildingValidationErrors({}); }} placeholder="180 Cao Lỗ, Quận 8, TP.HCM" />
+              <InputField value={buildingForm.address} onChange={(event) => { setBuildingForm((current) => ({ ...current, address: event.target.value })); setBuildingValidationErrors({}); }} placeholder="Nhập địa chỉ tòa" />
               {buildingSubmitAttempted && buildingValidationErrors.address ? (
                 <div className="mt-1 text-xs text-red-600">{buildingValidationErrors.address}</div>
               ) : null}
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-[#1a2d52]">Số tầng <span className="ml-1 text-red-500">*</span></label>
-              <InputField type="number" min={1} value={buildingForm.total_floors} onChange={(event) => { setBuildingForm((current) => ({ ...current, total_floors: Number(event.target.value) })); setBuildingValidationErrors({}); }} />
-            </div>
+             </div>
+          
           </form>
           {buildingFormError ? (
             <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
@@ -843,4 +884,6 @@ export default function AdminBuildingManagement() {
     </motion.section>
   );
 }
+
+
 

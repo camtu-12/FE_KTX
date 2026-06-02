@@ -166,8 +166,19 @@ export default function AdminRegistrationsPage() {
 
     void loadRequests();
 
+    const refreshRequests = () => {
+      if (!isMounted) {
+        return;
+      }
+
+      void loadRequests();
+    };
+
+    window.addEventListener("ktx-registrations-updated", refreshRequests);
+
     return () => {
       isMounted = false;
+      window.removeEventListener("ktx-registrations-updated", refreshRequests);
     };
   }, []);
 
@@ -244,8 +255,15 @@ export default function AdminRegistrationsPage() {
   const handleApprove = async (id: number) => {
     setIsUpdatingStatus(true);
     try {
-      const updated = await updateRegistrationStatus({ id, status: "approved" });
-      setRequests((prev) => prev.map((request) => (request.id === id ? updated : request)));
+      const currentRequest = requests.find((request) => request.id === id);
+      const updated = await updateRegistrationStatus({
+        id,
+        status: "approved",
+        currentRequest: currentRequest ?? undefined,
+      });
+      setRequests((prev) =>
+        prev.map((request) => (request.id === id ? updated : request)),
+      );
     } catch {
       // Bỏ qua thao tác trên dòng cũ khi trạng thái đã được cập nhật.
     } finally {
@@ -271,10 +289,12 @@ export default function AdminRegistrationsPage() {
     setIsUpdatingStatus(true);
 
     try {
+      const currentRequest = requests.find((request) => request.id === rejectingRequestId);
       const updated = await updateRegistrationStatus({
         id: rejectingRequestId,
         status: "rejected",
         rejectionReason,
+        currentRequest: currentRequest ?? undefined,
       });
 
       setRequests((prev) =>
@@ -333,7 +353,7 @@ export default function AdminRegistrationsPage() {
         initial={shouldSkipInitialModalAnimation ? false : { opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: "easeOut" }}
-        className="flex min-h-full flex-col space-y-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
+        className="flex min-h-[calc(100vh-8rem)] flex-col space-y-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
       >
         <motion.div
           transition={{ duration: 0.2 }}
@@ -374,7 +394,7 @@ export default function AdminRegistrationsPage() {
           transition={{ duration: 0.46, delay: 0.16, ease: "easeOut" }}
           className="p-0"
         >
-          <div className="relative mt-1 overflow-hidden rounded-[14px] border border-[#d6e2f1] bg-white">
+          <div className="relative mt-1 overflow-x-auto overflow-y-hidden rounded-[14px] border border-[#d6e2f1] bg-white">
             <table className="w-full table-fixed border-separate border-spacing-0">
               <colgroup>
                 <col className="w-[14%]" />
@@ -656,7 +676,7 @@ export default function AdminRegistrationsPage() {
               </div>
 
               <div className="mt-4 inline-flex rounded-2xl border border-[#c6d8f0] bg-[#f2f7ff] p-1">
-                <button
+                  <button
                   type="button"
                   onClick={() => setRequestModalTab("info")}
                   className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
@@ -695,12 +715,12 @@ export default function AdminRegistrationsPage() {
                   ) : null}
                   <div>
                     <Link
-                      to={`/admin/registrations/${selectedRequest.id}`}
-                      state={{ request: selectedRequest, returnToModal: true }}
-                      className="inline-flex rounded-xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-4 py-2 text-sm font-semibold text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.12)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white"
-                    >
-                      Mở trang chi tiết
-                    </Link>
+                        to={`/admin/registrations/${selectedRequest.id}`}
+                        state={{ request: selectedRequest, returnToModal: true }}
+                        className="inline-flex rounded-xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-4 py-2 text-sm font-semibold text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.12)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white"
+                      >
+                        Mở trang chi tiết
+                      </Link>
                   </div>
                 </div>
               ) : (
@@ -714,7 +734,7 @@ export default function AdminRegistrationsPage() {
                         className="rounded-2xl border border-[#c8d9f0] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-4 py-3 shadow-[0_10px_22px_rgba(36,76,184,0.10)]"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-3">
-                          <p className="text-sm font-semibold text-[#1b3766]">Lần nộp {index + 1}</p>
+                              <p className="text-sm font-semibold text-[#1b3766]">Lần nộp {index + 1}</p>
                           <span
                             className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold ${itemStatus.className}`}
                           >
@@ -828,3 +848,4 @@ export default function AdminRegistrationsPage() {
     </>
   );
 }
+

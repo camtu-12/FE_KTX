@@ -12,13 +12,17 @@ import {
   X,
   ArrowUp,
 } from "lucide-react";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useSearchParams } from "react-router-dom";
 import { createPortal } from "react-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
-import { initialRooms, createBeds, ROOM_CAPACITY } from "../../../mocks/roommanagement";
+import { initialRooms, createBeds, hasOccupancy, validateBedStatusChange, calculateRoomStatistics } from "../../../mocks/roommanagement";
+import { initialBuildings } from "../../../mocks/buildings";
+
+const ROOM_STORAGE_KEY = "ktx_rooms_dashboard_v2";
+const BUILDING_STORAGE_KEY = "ktx_buildings_dashboard_v2";
 
 type RoomStatus = "AVAILABLE" | "FULL" | "MAINTENANCE";
-type BedStatus = "EMPTY" | "OCCUPIED" | "MAINTENANCE";
+type BedStatus = "ACTIVE" | "MAINTENANCE";
 type BedPosition = "UPPER" | "LOWER";
 type RoomGender = "MALE" | "FEMALE";
 
@@ -26,10 +30,12 @@ type Room = {
   id: number;
   building_code: string;
   room_number: string;
-  gender: RoomGender;
+  floor_id?: number;
+  floor?: { id: number; building_code?: string; floor_number: number; gender?: RoomGender };
+  floor_number?: number;
   capacity: number;
-  occupied_beds: number;
   status: RoomStatus;
+  beds: Bed[];
 };
 
 type Bed = {
@@ -46,7 +52,8 @@ type RoomWithBeds = Room & {
 type RoomFormState = {
   building_code: string;
   room_number: string;
-  gender: RoomGender;
+  floor_number: number;
+  capacity: string;
   status: RoomStatus;
 };
 
@@ -72,18 +79,19 @@ const statusMeta: Record<RoomStatus, { label: string; className: string }> = {
 };
 
 const bedStatusMeta: Record<BedStatus, { label: string; className: string }> = {
-  EMPTY: {
-    label: "EMPTY",
+  ACTIVE: {
+    label: "Trống",
     className: "border-emerald-200 bg-emerald-50 text-emerald-700",
   },
-  OCCUPIED: {
-    label: "OCCUPIED",
-    className: "border-blue-200 bg-blue-50 text-blue-700",
-  },
   MAINTENANCE: {
-    label: "MAINTENANCE",
+    label: "Bảo trì",
     className: "border-amber-200 bg-amber-50 text-amber-700",
   },
+};
+
+const maintenanceRoomBedMeta = {
+  label: "Tạm ngưng sử dụng",
+  className: "border-amber-200 bg-amber-50 text-amber-700",
 };
 
 const genderLabel: Record<RoomGender, string> = {
@@ -94,28 +102,219 @@ const genderLabel: Record<RoomGender, string> = {
 const initialFormState: RoomFormState = {
   building_code: "A",
   room_number: "",
-  gender: "MALE",
+  floor_number: 1,
+  capacity: "",
   status: "AVAILABLE",
 };
 
-function getOccupiedBeds(beds: Bed[]) {
-  return beds.filter((bed) => bed.status === "OCCUPIED").length;
+function normalizeBedStatus(status: string): BedStatus {
+  if (status === "MAINTENANCE") {
+    return "MAINTENANCE";
+  }
+  return "ACTIVE";
 }
 
-function getEmptyBeds(beds: Bed[]) {
-  return beds.filter((bed) => bed.status === "EMPTY").length;
+function getRoomOccupiedBeds(room: Room) {
+  return calculateRoomStatistics(
+    {
+      id: room.id,
+      capacity: room.capacity,
+      beds: room.beds.map((bed) => ({ id: bed.id, status: bed.status })),
+    },
+  ).occupiedBeds;
+}
+
+function getEmptyBeds(room: Room) {
+  return calculateRoomStatistics(
+    {
+      id: room.id,
+      capacity: room.capacity,
+      beds: room.beds.map((bed) => ({ id: bed.id, status: bed.status })),
+    },
+  ).availableBeds;
+}
+
+function getRoomMaintenanceBeds(room: Room) {
+  return calculateRoomStatistics(
+    {
+      id: room.id,
+      capacity: room.capacity,
+      beds: room.beds.map((bed) => ({ id: bed.id, status: bed.status })),
+    },
+  ).maintenanceBeds;
+}
+
+function getRoomDisplayStatus(room: Room): RoomStatus {
+  if (room.status === "MAINTENANCE") {
+    return "MAINTENANCE";
+  }
+
+  const stats = calculateRoomStatistics(
+    {
+      id: room.id,
+      capacity: room.capacity,
+      beds: room.beds.map((bed) => ({ id: bed.id, status: bed.status })),
+    },
+  );
+
+  const activeBeds = stats.capacity - stats.maintenanceBeds;
+  if (activeBeds === 0) {
+    return "MAINTENANCE";
+  }
+
+  const availableBeds = stats.availableBeds;
+
+  if (availableBeds === 0) {
+    return "FULL";
+  }
+
+  return "AVAILABLE";
+}
+
+function getBedDisplayStatus(room: Room, bed: Bed): string {
+  if (room.status === "MAINTENANCE") {
+    return "Tạm ngưng sử dụng";
+  }
+  if (bed.status === "MAINTENANCE") {
+    return "Bảo trì";
+  }
+  if (hasOccupancy(bed.id)) {
+    return "Có người";
+  }
+  return "Trống";
 }
 
 function getRoomCode(room: Pick<Room, "building_code" | "room_number">) {
   return `${room.building_code}${room.room_number}`;
 }
 
-function getFloorFromRoomNumber(roomNumber: string) {
-  const numeric = roomNumber.replace(/\D/g, "");
-  if (!numeric) {
-    return 0;
+function readBuildingCodesFromStorage() {
+  const fallbackCodes = initialBuildings.map((building) => building.building_code);
+
+  if (typeof window === "undefined") {
+    return fallbackCodes;
   }
-  return Number(numeric.charAt(0));
+
+  try {
+    const raw = window.localStorage.getItem(BUILDING_STORAGE_KEY);
+    if (!raw) {
+      return fallbackCodes;
+    }
+
+    const parsed = JSON.parse(raw) as Array<{ building_code?: unknown }>;
+    if (!Array.isArray(parsed)) {
+      return fallbackCodes;
+    }
+
+    const storedCodes = parsed
+      .map((item) => (typeof item?.building_code === "string" ? item.building_code.trim().toUpperCase() : ""))
+      .filter((code) => code.length > 0);
+
+    return storedCodes.length > 0 ? storedCodes : fallbackCodes;
+  } catch {
+    return fallbackCodes;
+  }
+}
+
+function readBuildingsFromStorage() {
+  if (typeof window === "undefined") {
+    return initialBuildings;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(BUILDING_STORAGE_KEY);
+    if (!raw) {
+      return initialBuildings;
+    }
+
+    const parsed = JSON.parse(raw) as typeof initialBuildings;
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : initialBuildings;
+  } catch {
+    return initialBuildings;
+  }
+}
+
+function getFloorGenderByLocation(buildingCode: string, floorNumber: number): RoomGender | null {
+  const buildings = readBuildingsFromStorage();
+  const building = buildings.find((item) => item.building_code === buildingCode);
+  const floor = building?.floors.find((item) => item.floorNumber === floorNumber);
+  return floor?.gender ?? null;
+}
+
+function getFloorNumbersByBuilding(buildingCode: string) {
+  const buildings = readBuildingsFromStorage();
+  const building = buildings.find((item) => item.building_code === buildingCode);
+  return (building?.floors ?? [])
+    .map((floor) => floor.floorNumber)
+    .filter((floorNumber) => floorNumber > 0)
+    .sort((a, b) => a - b);
+}
+
+function getRoomFloor(room: Room) {
+  // Prefer explicit floor data when available
+  if (room.floor && typeof room.floor.floor_number === "number") return room.floor.floor_number;
+  // some datasets may include a floor_number field directly
+  if (typeof room.floor_number === "number") return room.floor_number;
+  return 0;
+}
+
+function getRoomGender(room: Room): RoomGender | null {
+  return (room.floor?.gender as RoomGender | undefined) ?? getFloorGenderByLocation(room.building_code, getRoomFloor(room));
+}
+
+function getNextRoomNumber(buildingCode: string, floorNumber: number, existingRooms: RoomWithBeds[]): string {
+  const baseNumber = floorNumber * 100;
+  const roomsOnFloor = existingRooms.filter((room) => room.building_code === buildingCode && getRoomFloor(room) === floorNumber);
+  
+  if (roomsOnFloor.length === 0) {
+    return String(baseNumber + 1);
+  }
+  
+  const maxRoomNumber = Math.max(...roomsOnFloor.map((room) => {
+    const roomNum = Number(room.room_number);
+    return Number.isFinite(roomNum) ? roomNum : baseNumber;
+  }));
+  
+  return String(maxRoomNumber + 1);
+}
+
+function readRoomRecords() {
+  if (typeof window === "undefined") return initialRooms as RoomWithBeds[];
+
+  try {
+    const stored = window.localStorage.getItem(ROOM_STORAGE_KEY);
+    if (!stored) return initialRooms as RoomWithBeds[];
+    const parsed = JSON.parse(stored) as Array<Partial<RoomWithBeds>>;
+    if (!Array.isArray(parsed)) return initialRooms as RoomWithBeds[];
+
+    return parsed.map((room) => ({
+      ...room,
+      beds: Array.isArray(room?.beds)
+        ? room.beds.map((bed) => ({
+            ...bed,
+            status: normalizeBedStatus(String((bed as Partial<Bed>)?.status)),
+          }))
+        : [],
+    })) as RoomWithBeds[];
+  } catch {
+    return initialRooms as RoomWithBeds[];
+  }
+}
+
+function buildBedsForCapacity(roomId: number, capacity: number, existingBeds: Bed[] = []) {
+  const nextBeds = createBeds(roomId, capacity);
+
+  return nextBeds.map((bed, index) => {
+    const existingBed = existingBeds[index];
+    if (!existingBed) {
+      return bed;
+    }
+
+    return {
+      ...bed,
+      status: normalizeBedStatus(String(existingBed.status)),
+    };
+  });
 }
 
 function toBedPairs(beds: Bed[]): BedPair[] {
@@ -154,11 +353,60 @@ function SelectField(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
 
 export default function AdminRoomManagement() {
   const { headerSearchValue } = useOutletContext<AdminLayoutOutletContext>();
-  const [rooms, setRooms] = useState<RoomWithBeds[]>(initialRooms as unknown as RoomWithBeds[]);
-  const [filterBuilding, setFilterBuilding] = useState<string>("all");
-  const [filterFloor, setFilterFloor] = useState<string>("all");
-  const [filterGender, setFilterGender] = useState<"all" | RoomGender>("all");
-  const [filterStatus, setFilterStatus] = useState<"all" | RoomStatus>("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryBuilding = searchParams.get("building") ?? "all";
+  const queryFloor = searchParams.get("floor") ?? "all";
+  const rawQueryGender = searchParams.get("gender");
+  const queryGender: "all" | RoomGender =
+    rawQueryGender === "MALE" || rawQueryGender === "FEMALE" ? rawQueryGender : "all";
+  const rawQueryStatus = searchParams.get("status");
+  const queryStatus: "all" | RoomStatus =
+    rawQueryStatus === "AVAILABLE" || rawQueryStatus === "FULL" || rawQueryStatus === "MAINTENANCE"
+      ? rawQueryStatus
+      : "all";
+  const [rooms, setRooms] = useState<RoomWithBeds[]>(() => readRoomRecords());
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const refreshRooms = () => {
+      try {
+        const raw = window.localStorage.getItem(ROOM_STORAGE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw) as Array<Partial<RoomWithBeds>>;
+        if (!Array.isArray(parsed)) return;
+
+        const normalized = parsed.map((room) => ({
+          ...room,
+          beds: Array.isArray(room?.beds)
+            ? room.beds.map((bed) => ({
+                ...bed,
+                status: normalizeBedStatus(String((bed as Partial<Bed>)?.status)),
+              }))
+            : [],
+        })) as RoomWithBeds[];
+
+        setRooms((prev) => {
+          const prevJson = JSON.stringify(prev);
+          const nextJson = JSON.stringify(normalized);
+          return prevJson === nextJson ? prev : normalized;
+        });
+      } catch {
+        // ignore invalid stored value
+      }
+    };
+
+    window.addEventListener("storage", refreshRooms);
+    window.addEventListener("ktx-rooms-updated", refreshRooms);
+
+    return () => {
+      window.removeEventListener("storage", refreshRooms);
+      window.removeEventListener("ktx-rooms-updated", refreshRooms);
+    };
+  }, []);
+
+  const filterGender = queryGender;
+  const filterStatus = queryStatus;
 
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
   const [editingRoomId, setEditingRoomId] = useState<number | null>(null);
@@ -177,7 +425,23 @@ export default function AdminRoomManagement() {
     roomId: number | null;
     bed: Bed | null;
   } | null>(null);
-  const [editingBedStatus, setEditingBedStatus] = useState<BedStatus>("EMPTY");
+  const [editingBedStatus, setEditingBedStatus] = useState<BedStatus>("ACTIVE");
+  const [editingBedError, setEditingBedError] = useState("");
+  const [buildingDataVersion, setBuildingDataVersion] = useState(0);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const refreshBuildingData = () => setBuildingDataVersion((prev) => prev + 1);
+
+    window.addEventListener("storage", refreshBuildingData);
+    window.addEventListener("ktx-buildings-updated", refreshBuildingData);
+
+    return () => {
+      window.removeEventListener("storage", refreshBuildingData);
+      window.removeEventListener("ktx-buildings-updated", refreshBuildingData);
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -198,6 +462,19 @@ export default function AdminRoomManagement() {
   }, [isBedsModalOpen, isRoomModalOpen]);
 
   const [isScrollToTopVisible, setIsScrollToTopVisible] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(ROOM_STORAGE_KEY, JSON.stringify(rooms));
+      window.dispatchEvent(new Event("ktx-rooms-updated"));
+    } catch {
+      // ignore storage write failures
+    }
+  }, [rooms]);
+
+  const filterBuilding = queryBuilding;
+  const filterFloor = queryFloor;
 
   const handleScrollToTop = () => {
     const scrollContainer = document.querySelector(".auth-scrollbar") as HTMLElement | null;
@@ -235,14 +512,47 @@ export default function AdminRoomManagement() {
   }, []);
 
   const buildingOptions = useMemo(() => {
-    const buildings = new Set(rooms.map((room) => room.building_code));
-    return Array.from(buildings).sort();
-  }, [rooms]);
+    void buildingDataVersion;
+    const buildingCodes = new Set<string>(readBuildingCodesFromStorage());
+    if (queryBuilding !== "all") {
+      buildingCodes.add(queryBuilding);
+    }
+    return Array.from(buildingCodes).sort();
+  }, [queryBuilding, buildingDataVersion]);
 
   const floorOptions = useMemo(() => {
-    const floors = new Set(rooms.map((room) => getFloorFromRoomNumber(room.room_number)).filter((floor) => floor > 0));
-    return Array.from(floors).sort((a, b) => a - b);
-  }, [rooms]);
+    void buildingDataVersion;
+    const buildingCode = filterBuilding === "all" ? null : filterBuilding;
+    const storedBuildings = readBuildingsFromStorage();
+    const floors = buildingCode
+      ? storedBuildings.find((building) => building.building_code === buildingCode)?.floors.map((floor) => floor.floorNumber) ?? []
+      : Array.from(new Set(storedBuildings.flatMap((building) => building.floors.map((floor) => floor.floorNumber))));
+
+    const sortedFloors = floors.filter((floorNumber) => Number.isInteger(floorNumber) && floorNumber > 0).sort((a, b) => a - b);
+    if (sortedFloors.length > 0) {
+      return sortedFloors;
+    }
+
+    const queryFloorNumber = Number(queryFloor);
+    if (queryFloor !== "all" && Number.isInteger(queryFloorNumber) && queryFloorNumber > 0) {
+      return [queryFloorNumber];
+    }
+
+    return [1];
+  }, [filterBuilding, queryFloor, buildingDataVersion]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (filterFloor === "all") return;
+
+    const floorNumber = Number(filterFloor);
+    if (!Number.isInteger(floorNumber)) return;
+    if (!floorOptions.includes(floorNumber)) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("floor");
+      setSearchParams(next, { replace: true });
+    }
+  }, [filterFloor, floorOptions, searchParams, setSearchParams]);
 
   const selectedRoomBedPairs = useMemo(() => {
     if (!selectedRoom) {
@@ -258,10 +568,10 @@ export default function AdminRoomManagement() {
       const matchedKeyword = keyword
         ? roomCode.includes(keyword) || room.room_number.toLowerCase().includes(keyword)
         : true;
-      const roomFloor = getFloorFromRoomNumber(room.room_number);
+      const roomFloor = getRoomFloor(room);
       const matchedBuilding = filterBuilding === "all" ? true : room.building_code === filterBuilding;
       const matchedFloor = filterFloor === "all" ? true : roomFloor === Number(filterFloor);
-      const matchedGender = filterGender === "all" ? true : room.gender === filterGender;
+      const matchedGender = filterGender === "all" ? true : getRoomGender(room) === filterGender;
       const matchedStatus = filterStatus === "all" ? true : room.status === filterStatus;
       return matchedKeyword && matchedBuilding && matchedFloor && matchedGender && matchedStatus;
     });
@@ -273,65 +583,120 @@ export default function AdminRoomManagement() {
   }, [filteredRooms]);
 
   const resetAllFilters = () => {
-    setFilterBuilding("all");
-    setFilterFloor("all");
-    setFilterGender("all");
-    setFilterStatus("all");
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("building");
+      next.delete("floor");
+      next.delete("gender");
+      next.delete("status");
+      return next;
+    }, { replace: true });
   };
 
   const totalRooms = filteredRooms.length;
-  const totalBeds = filteredRooms.reduce((sum, room) => sum + room.capacity, 0);
-  const totalOccupiedBeds = filteredRooms.reduce((sum, room) => sum + getOccupiedBeds(room.beds), 0);
-  const totalEmptyBeds = totalBeds - totalOccupiedBeds;
+  const totalBeds = filteredRooms.reduce(
+    (sum, room) => sum + calculateRoomStatistics({ id: room.id, capacity: room.capacity, beds: room.beds.map((bed) => ({ id: bed.id, status: bed.status })) }).capacity,
+    0,
+  );
+  const totalOccupiedBeds = filteredRooms.reduce(
+    (sum, room) => sum + calculateRoomStatistics({ id: room.id, capacity: room.capacity, beds: room.beds.map((bed) => ({ id: bed.id, status: bed.status })) }).occupiedBeds,
+    0,
+  );
+  const totalEmptyBeds = filteredRooms.reduce(
+    (sum, room) => sum + calculateRoomStatistics({ id: room.id, capacity: room.capacity, beds: room.beds.map((bed) => ({ id: bed.id, status: bed.status })) }).availableBeds,
+    0,
+  );
 
   const editingRoom = useMemo(() => {
     if (!editingRoomId) return null;
     return rooms.find((room) => room.id === editingRoomId) ?? null;
   }, [rooms, editingRoomId]);
 
-  const editingRoomOccupiedBeds = editingRoom ? getOccupiedBeds(editingRoom.beds) : 0;
-  const editingRoomEmptyBeds = editingRoom ? getEmptyBeds(editingRoom.beds) : 0;
+  const editingRoomOccupiedBeds = editingRoom ? getRoomOccupiedBeds(editingRoom) : 0;
+  const editingRoomMaintenanceBeds = editingRoom ? getRoomMaintenanceBeds(editingRoom) : 0;
 
   const formOccupiedBeds = editingRoomId ? editingRoomOccupiedBeds : 0;
-  const formEmptyBeds = editingRoomId ? editingRoomEmptyBeds : ROOM_CAPACITY;
+  const formCapacity = Number(roomForm.capacity);
+  const formEmptyBeds = Number.isFinite(formCapacity) && formCapacity > 0 ? Math.max(formCapacity - formOccupiedBeds - editingRoomMaintenanceBeds, 0) : 0;
+  const isCapacityInvalid = !Number.isFinite(formCapacity) || formCapacity < 1 || !Number.isInteger(formCapacity);
+  const isCapacityOdd = Number.isFinite(formCapacity) && Number.isInteger(formCapacity) && formCapacity % 2 !== 0;
+  const isCapacityTooSmall = Boolean(editingRoomId && editingRoom && formCapacity > 0 && formCapacity < editingRoomOccupiedBeds);
 
   const isMaintenanceBlocked = roomForm.status === "MAINTENANCE" && formOccupiedBeds > 0;
-  const isFullBlocked =
-    roomForm.status === "FULL"
-    && (formEmptyBeds > 0 || formOccupiedBeds === 0 || Boolean(editingRoom?.status === "MAINTENANCE"));
-  const isAvailableBlocked = roomForm.status === "AVAILABLE" && formEmptyBeds === 0;
+  const oddCapacityError = useMemo(() => {
+    if (!isCapacityOdd) return "";
+    return "Sức chứa phải là số chẵn vì ký túc xá dùng giường đôi.";
+  }, [isCapacityOdd]);
 
-  const isRoomStatusBlocked = Boolean(isMaintenanceBlocked || isFullBlocked || isAvailableBlocked);
+  const capacityTooSmallError = useMemo(() => {
+    if (!isCapacityTooSmall) return "";
+    return `Giường đang có sinh viên ở không thể giảm. Vui lòng dời sinh viên qua giường khác trước khi giảm số giường trong phòng ${
+      editingRoom ? getRoomCode(editingRoom) : "này"
+    }.`;
+  }, [isCapacityTooSmall, editingRoom]);
+
+  const fullStatusError = useMemo(() => {
+    if (roomForm.status !== "FULL") return "";
+    if (editingRoom?.status === "MAINTENANCE") {
+      return "Phòng đang BẢO TRÌ. Hãy chuyển về CÒN CHỖ và phân giường trước.";
+    }
+
+    if (formOccupiedBeds === 0) {
+      return "Không thể chuyển sang ĐẦY khi phòng chưa có sinh viên ở.";
+    }
+
+    if (formEmptyBeds > 0) {
+      return `Phòng vẫn còn ${formEmptyBeds} giường trống nên không thể chuyển sang ĐẦY. Hãy phân giường hết trước.`;
+    }
+
+    return "";
+  }, [roomForm.status, editingRoom?.status, formOccupiedBeds, formEmptyBeds]);
+
+  const availableStatusError = useMemo(() => {
+    if (roomForm.status !== "AVAILABLE" || formCapacity < 1 || formEmptyBeds > 0) return "";
+    return "Phòng không còn giường trống nên không thể chuyển sang CÒN CHỖ. Hãy chuyển ít nhất 1 giường về TRỐNG trước.";
+  }, [roomForm.status, formCapacity, formEmptyBeds]);
+
+  const isFullBlocked = Boolean(fullStatusError);
+  const isAvailableBlocked = Boolean(availableStatusError);
+
+  const isRoomStatusBlocked = Boolean(
+    isMaintenanceBlocked || isFullBlocked || isAvailableBlocked || isCapacityTooSmall,
+  );
+  const isRoomSubmitBlocked = Boolean(isRoomStatusBlocked || isCapacityInvalid || isCapacityOdd);
+
+  const autoGeneratedRoomNumber = useMemo(() => {
+    if (editingRoomId) {
+      return roomForm.room_number;
+    }
+    return getNextRoomNumber(roomForm.building_code, roomForm.floor_number, rooms);
+  }, [roomForm.building_code, roomForm.floor_number, roomForm.room_number, editingRoomId, rooms]);
 
   const blockedStatusMessage = useMemo(() => {
+    if (capacityTooSmallError) {
+      return capacityTooSmallError;
+    }
+
     if (isMaintenanceBlocked) {
       return `Phòng đang có ${formOccupiedBeds} sinh viên ở. Cần di dời trước khi chuyển sang BẢO TRÌ.`;
     }
 
-    if (isAvailableBlocked) {
-      return "Phòng không còn giường trống nên không thể chuyển sang AVAILABLE. Hãy chuyển ít nhất 1 giường về EMPTY trước.";
+    if (availableStatusError) {
+      return availableStatusError;
     }
 
     if (isFullBlocked) {
-      if (editingRoom?.status === "MAINTENANCE") {
-        return "Phòng đang BẢO TRÌ. Hãy chuyển về AVAILABLE trước khi cho sinh viên ở.";
-      }
-
-      if (formOccupiedBeds === 0) {
-        return "Không thể chuyển sang FULL khi phòng chưa có sinh viên ở.";
-      }
-
-      return `Phòng vẫn còn ${formEmptyBeds} giường trống nên không thể chuyển sang FULL. Hãy phân phòng hết trước.`;
+      return fullStatusError;
     }
 
     return "";
   }, [
-    editingRoom?.status,
-    formEmptyBeds,
     formOccupiedBeds,
-    isAvailableBlocked,
     isFullBlocked,
     isMaintenanceBlocked,
+    fullStatusError,
+    capacityTooSmallError,
+    availableStatusError,
   ]);
 
   const resetRoomForm = () => {
@@ -343,30 +708,21 @@ export default function AdminRoomManagement() {
   };
 
   const openAddRoomModal = () => {
-    // prepare form with expected next room number for selected/default building
     const defaultBuilding = buildingOptions.length > 0 ? buildingOptions[0] : initialFormState.building_code;
-    const expected = computeExpectedNextRoomNumber(defaultBuilding);
-    setRoomForm({ ...initialFormState, building_code: defaultBuilding, room_number: String(expected) });
+    const defaultFloors = getFloorNumbersByBuilding(defaultBuilding);
+    const defaultFloor = defaultFloors[0] ?? initialFormState.floor_number;
+    const nextRoomNum = getNextRoomNumber(defaultBuilding, defaultFloor, rooms);
+    setRoomForm({
+      ...initialFormState,
+      building_code: defaultBuilding,
+      floor_number: defaultFloor,
+      room_number: nextRoomNum,
+    });
     setRoomFormError("");
     setRoomValidationErrors({});
     setEditingRoomId(null);
     setRoomSubmitAttempted(false);
     setIsRoomModalOpen(true);
-  };
-
-  // Compute expected next room number for a building (numeric part)
-  const computeExpectedNextRoomNumber = (buildingCode: string) => {
-    const normalized = buildingCode.trim().toUpperCase();
-    const nums = rooms
-      .filter((r) => r.building_code.trim().toUpperCase() === normalized)
-      .map((r) => {
-        const n = r.room_number.replace(/\D/g, "");
-        return n ? Number(n) : NaN;
-      })
-      .filter((v) => !Number.isNaN(v));
-
-    const max = nums.length ? Math.max(...nums) : null;
-    return max !== null ? max + 1 : 101; // default first room = 101
   };
 
   // removed effect-based auto-fill to avoid cascading renders
@@ -376,7 +732,8 @@ export default function AdminRoomManagement() {
     setRoomForm({
       building_code: room.building_code,
       room_number: room.room_number,
-      gender: room.gender,
+      floor_number: getRoomFloor(room),
+      capacity: String(room.capacity),
       status: room.status,
     });
     setRoomFormError("");
@@ -391,42 +748,34 @@ export default function AdminRoomManagement() {
   };
 
   const validateRoomForm = () => {
-    const normalizedRoomNumber = roomForm.room_number.trim().toUpperCase();
     const normalizedBuildingCode = roomForm.building_code.trim().toUpperCase();
-    if (!normalizedRoomNumber) {
-      return "Vui lòng nhập số phòng.";
-    }
+    const parsedCapacity = Number(roomForm.capacity);
 
     if (!normalizedBuildingCode) {
       return "Vui lòng chọn tòa.";
     }
 
+    if (!Number.isFinite(parsedCapacity) || parsedCapacity < 1 || !Number.isInteger(parsedCapacity)) {
+      return "";
+    }
+
+    if (parsedCapacity % 2 !== 0) {
+      return "Sức chứa phải là số chẵn vì ký túc xá dùng giường đôi.";
+    }
+
+    const normalizedGeneratedRoomNumber = autoGeneratedRoomNumber.trim().toUpperCase();
     const duplicated = rooms.some((room) => {
       if (editingRoomId && room.id === editingRoomId) {
         return false;
       }
       return (
         room.building_code.trim().toUpperCase() === normalizedBuildingCode
-        && room.room_number.trim().toUpperCase() === normalizedRoomNumber
+        && room.room_number.trim().toUpperCase() === normalizedGeneratedRoomNumber
       );
     });
 
     if (duplicated) {
       return "Phòng đã tồn tại trong tòa này. Vui lòng kiểm tra lại.";
-    }
-
-    // Enforce sequential numeric room number when adding (not editing)
-    if (!editingRoomId) {
-      const numericPart = (s: string) => {
-        const n = s.replace(/\D/g, "");
-        return n ? Number(n) : NaN;
-      };
-
-      const expected = computeExpectedNextRoomNumber(normalizedBuildingCode);
-      const entered = numericPart(normalizedRoomNumber);
-      if (Number.isNaN(entered) || entered !== expected) {
-        return `Khi thêm phòng cho tòa ${normalizedBuildingCode}, số phòng bắt buộc phải là ${expected}.`;
-      }
     }
 
     return "";
@@ -437,10 +786,9 @@ export default function AdminRoomManagement() {
     setRoomSubmitAttempted(true);
     setRoomValidationErrors({});
 
-    const normalizedRoomNumber = roomForm.room_number.trim().toUpperCase();
     const normalizedBuildingCode = roomForm.building_code.trim().toUpperCase();
+    const parsedCapacity = Number(roomForm.capacity);
     const fieldErrors: { room_number?: string; building_code?: string } = {};
-    if (!normalizedRoomNumber) fieldErrors.room_number = "Vui lòng nhập Số phòng";
     if (!normalizedBuildingCode) fieldErrors.building_code = "Vui lòng chọn Tòa";
     if (Object.keys(fieldErrors).length > 0) {
       setRoomValidationErrors(fieldErrors);
@@ -458,36 +806,40 @@ export default function AdminRoomManagement() {
       return;
     }
 
+    if (!Number.isFinite(parsedCapacity) || parsedCapacity < 1 || !Number.isInteger(parsedCapacity)) {
+      return;
+    }
+
+    if (parsedCapacity % 2 !== 0) {
+      setRoomFormError("Sức chứa phải là số chẵn vì ký túc xá dùng giường đôi.");
+      return;
+    }
+
+    if (capacityTooSmallError) {
+      setRoomFormError(capacityTooSmallError);
+      return;
+    }
+
     if (roomForm.status === "MAINTENANCE" && formOccupiedBeds > 0) {
       setRoomFormError(
-        `Chỉ được chuyển phòng sang BẢO TRÌ khi phòng không có sinh viên ở. Hiện đang có ${formOccupiedBeds} sinh viên.`,
+        `Không được chuyển phòng sang BẢO TRÌ khi phòng không có sinh viên ở. Hiện đang có ${formOccupiedBeds} sinh viên.`,
       );
       return;
     }
 
-    if (roomForm.status === "FULL") {
-      if (editingRoom?.status === "MAINTENANCE") {
-        setRoomFormError("Phòng đang BẢO TRÌ. Hãy chuyển về AVAILABLE trước khi cho sinh viên ở.");
-        return;
-      }
-
-      if (formOccupiedBeds === 0) {
-        setRoomFormError("Không thể chuyển sang FULL khi phòng chưa có sinh viên ở.");
-        return;
-      }
-
-      if (formEmptyBeds > 0) {
-        setRoomFormError("Không thể chuyển sang FULL khi phòng vẫn còn giường trống. Hãy phân phòng hết trước.");
-        return;
-      }
-    }
-
-    if (roomForm.status === "AVAILABLE" && formEmptyBeds === 0) {
-      setRoomFormError("Không thể chuyển sang AVAILABLE khi phòng không còn giường trống.");
+    if (fullStatusError) {
+      setRoomFormError(fullStatusError);
       return;
     }
 
-    // use previously-normalized values above
+    if (availableStatusError) {
+      setRoomFormError(availableStatusError);
+      return;
+    }
+
+    const nextCapacity = parsedCapacity;
+    const nextGender = getFloorGenderByLocation(normalizedBuildingCode, roomForm.floor_number) ?? "MALE";
+    const normalizedRoomNumber = autoGeneratedRoomNumber.trim().toUpperCase();
 
     if (editingRoomId) {
       setRooms((prevRooms) =>
@@ -496,30 +848,42 @@ export default function AdminRoomManagement() {
             return room;
           }
 
+          const nextBeds = buildBedsForCapacity(room.id, nextCapacity, room.beds);
+
           return {
             ...room,
             building_code: normalizedBuildingCode,
             room_number: normalizedRoomNumber,
-            gender: roomForm.gender,
-            capacity: ROOM_CAPACITY,
-            occupied_beds: getOccupiedBeds(room.beds),
+            floor_number: roomForm.floor_number,
+            floor: {
+              id: room.floor?.id ?? roomForm.floor_number,
+              building_code: normalizedBuildingCode,
+              floor_number: roomForm.floor_number,
+              gender: nextGender,
+            },
+            capacity: nextCapacity,
             status: roomForm.status,
-            beds: room.beds,
+            beds: nextBeds,
           };
         }),
       );
     } else {
       const nextId = rooms.length > 0 ? Math.max(...rooms.map((room) => room.id)) + 1 : 1;
-      const nextBeds = createBeds(nextId, 0);
+      const nextBeds = createBeds(nextId, nextCapacity);
 
       setRooms((prevRooms) => [
         {
           id: nextId,
           building_code: normalizedBuildingCode,
           room_number: normalizedRoomNumber,
-          gender: roomForm.gender,
-          capacity: ROOM_CAPACITY,
-          occupied_beds: 0,
+          floor_number: roomForm.floor_number,
+          floor: {
+            id: roomForm.floor_number,
+            building_code: normalizedBuildingCode,
+            floor_number: roomForm.floor_number,
+            gender: nextGender,
+          },
+          capacity: nextCapacity,
           status: roomForm.status,
           beds: nextBeds,
         },
@@ -531,7 +895,7 @@ export default function AdminRoomManagement() {
   };
 
   const handleDeleteRoom = (room: RoomWithBeds) => {
-    const occupiedBeds = getOccupiedBeds(room.beds);
+    const occupiedBeds = getRoomOccupiedBeds(room);
     if (occupiedBeds > 0) {
       showConfirm(
         `Không thể xóa phòng ${getRoomCode(room)} vì đang có sinh viên ở`,
@@ -571,51 +935,63 @@ export default function AdminRoomManagement() {
     closeConfirm();
   }
 
+  function getEditingBedStatusError(): string {
+    if (!editingBed || !editingBed.bed) return "";
+
+    const room = rooms.find((r) => r.id === editingBed.roomId);
+    if (room?.status === "MAINTENANCE") {
+      return "Phòng đang bảo trì. Vui lòng kích hoạt lại phòng trước khi chỉnh sửa giường.";
+    }
+
+    // Kiểm tra ràng buộc chuyển trạng thái
+    const validation = validateBedStatusChange(
+      editingBed.bed.id,
+      editingBedStatus,
+      editingBed.bed.status
+    );
+
+    if (!validation.valid && validation.error) {
+      return validation.error;
+    }
+
+    return "";
+  }
+
   function openEditBed(bed: Bed, roomId: number) {
     setEditingBed({ roomId, bed });
     setEditingBedStatus(bed.status);
+    setEditingBedError("");
   }
 
   function closeEditBed() {
     setEditingBed(null);
+    setEditingBedError("");
   }
 
   function saveEditBed() {
     if (!editingBed || !editingBed.bed) return;
     const { roomId, bed } = editingBed;
+    const error = getEditingBedStatusError();
 
-    const room = rooms.find((r) => r.id === roomId);
-    if (room?.status === "MAINTENANCE" && editingBedStatus === "OCCUPIED") {
-      showConfirm("Phòng đang ở trạng thái BẢO TRÌ nên không thể có sinh viên ở. Hãy chuyển phòng về AVAILABLE trước.", () => {});
+    if (error) {
+      setEditingBedError(error);
       return;
     }
 
-    setRooms((prev) =>
-      prev.map((r) => {
+    setRooms((prev) => {
+      const updatedRooms = prev.map((r) => {
         if (r.id !== roomId) return r;
         const updatedBeds = r.beds.map((b) => (b.id === bed.id ? { ...b, status: editingBedStatus } : b));
-        const occupied = updatedBeds.filter((b) => b.status === "OCCUPIED").length;
-        const empty = updatedBeds.filter((b) => b.status === "EMPTY").length;
+        return { ...r, beds: updatedBeds };
+      });
 
-        // Auto-update room status based on beds
-        let newRoomStatus = r.status;
-        if (empty === 0 && occupied > 0) {
-          // Tất cả giường (không tính maintenance) đều chiếm -> phòng FULL
-          newRoomStatus = "FULL";
-        } else if (empty > 0 && r.status === "FULL") {
-          // Có giường trống lại, nếu phòng hiện là FULL -> chuyển AVAILABLE
-          newRoomStatus = "AVAILABLE";
-        }
+      if (selectedRoom?.id === roomId) {
+        const updatedSelected = updatedRooms.find((r) => r.id === roomId) ?? null;
+        setSelectedRoom(updatedSelected);
+      }
 
-        return { ...r, beds: updatedBeds, occupied_beds: occupied, status: newRoomStatus };
-      }),
-    );
-
-    // nếu đang sửa phòng hiện được chọn, cập nhật tham chiếu selectedRoom
-    if (selectedRoom?.id === roomId) {
-      const updated = rooms.find((r) => r.id === roomId) ?? selectedRoom;
-      setSelectedRoom(updated ?? null);
-    }
+      return updatedRooms;
+    });
 
     closeEditBed();
   }
@@ -673,7 +1049,15 @@ export default function AdminRoomManagement() {
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
           <SelectField
             value={filterBuilding}
-            onChange={(event) => setFilterBuilding(event.target.value)}
+            onChange={(event) => {
+              const next = new URLSearchParams(searchParams);
+              if (event.target.value === "all") {
+                next.delete("building");
+              } else {
+                next.set("building", event.target.value);
+              }
+              setSearchParams(next, { replace: true });
+            }}
           >
             <option value="all">Tất cả tòa</option>
             {buildingOptions.map((buildingCode) => (
@@ -685,7 +1069,15 @@ export default function AdminRoomManagement() {
 
           <SelectField
             value={filterFloor}
-            onChange={(event) => setFilterFloor(event.target.value)}
+            onChange={(event) => {
+              const next = new URLSearchParams(searchParams);
+              if (event.target.value === "all") {
+                next.delete("floor");
+              } else {
+                next.set("floor", event.target.value);
+              }
+              setSearchParams(next, { replace: true });
+            }}
           >
               <option value="all">Tất cả tầng</option>
               {floorOptions.map((floor) => (
@@ -697,7 +1089,16 @@ export default function AdminRoomManagement() {
 
           <SelectField
             value={filterGender}
-            onChange={(event) => setFilterGender(event.target.value as "all" | RoomGender)}
+            onChange={(event) => {
+              const nextValue = event.target.value as "all" | RoomGender;
+              const next = new URLSearchParams(searchParams);
+              if (nextValue === "all") {
+                next.delete("gender");
+              } else {
+                next.set("gender", nextValue);
+              }
+              setSearchParams(next, { replace: true });
+            }}
           >
             <option value="all">Tất cả giới tính</option>
             <option value="MALE">Nam</option>
@@ -705,7 +1106,16 @@ export default function AdminRoomManagement() {
           </SelectField>
           <SelectField
             value={filterStatus}
-            onChange={(event) => setFilterStatus(event.target.value as "all" | RoomStatus)}
+            onChange={(event) => {
+              const nextValue = event.target.value as "all" | RoomStatus;
+              const next = new URLSearchParams(searchParams);
+              if (nextValue === "all") {
+                next.delete("status");
+              } else {
+                next.set("status", nextValue);
+              }
+              setSearchParams(next, { replace: true });
+            }}
           >
             <option value="all">Tất cả trạng thái</option>
             <option value="AVAILABLE">Còn trống</option>
@@ -736,8 +1146,9 @@ export default function AdminRoomManagement() {
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3">
         {displayedRooms.map((room) => {
-          const occupiedBeds = getOccupiedBeds(room.beds);
-          const emptyBeds = room.capacity - occupiedBeds;
+          const occupiedBeds = getRoomOccupiedBeds(room);
+          const emptyBeds = getEmptyBeds(room);
+          const roomDisplayStatus = getRoomDisplayStatus(room);
 
           return (
             <article
@@ -748,13 +1159,13 @@ export default function AdminRoomManagement() {
                 <div>
                   <h2 className="text-xl font-bold text-[#1a2d52]">Phòng {getRoomCode(room)}</h2>
                   <p className="mt-1 text-sm text-[#61779d]">
-                    Tòa {room.building_code} • Tầng {getFloorFromRoomNumber(room.room_number)}
+                    Tòa {room.building_code} · Tầng {getRoomFloor(room)}
                   </p>
                 </div>
                 <span
-                  className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${statusMeta[room.status].className}`}
+                  className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${statusMeta[roomDisplayStatus].className}`}
                 >
-                  {statusMeta[room.status].label}
+                  {statusMeta[roomDisplayStatus].label}
                 </span>
               </div>
 
@@ -764,19 +1175,19 @@ export default function AdminRoomManagement() {
                   Giới tính áp dụng:
                   <span
                     className={`ml-1 rounded-full px-2 py-0.5 text-sm font-semibold ${
-                      room.gender === "MALE" ? "bg-sky-100 text-sky-700" : "bg-pink-100 text-pink-700"
+                      getRoomGender(room) === "MALE" ? "bg-sky-100 text-sky-700" : "bg-pink-100 text-pink-700"
                     }`}
                   >
-                    {genderLabel[room.gender]}
+                    {getRoomGender(room) ? genderLabel[getRoomGender(room)!] : "Chưa xác định"}
                   </span>
                 </p>
                 <p className="flex items-center gap-2">
                   <Settings2 className="h-4 w-4 text-slate-400" />
-                  Cấu hình chuẩn: <span className="font-semibold text-slate-700">14 giường</span>
+                  Sức chứa: <span className="font-semibold text-slate-700">{room.capacity} giường</span>
                 </p>
                 <p className="flex items-center gap-2">
                   <Users className="h-4 w-4 text-slate-400" />
-                  Đã dùng/Tổng: <span className="font-semibold text-slate-700">{occupiedBeds}/{room.capacity}</span>
+                  Đã sử dụng: <span className="font-semibold text-slate-700">{occupiedBeds}</span>
                 </p>
                 <p className="flex items-center gap-2">
                   <BedSingle className="h-4 w-4 text-slate-400" />
@@ -834,7 +1245,7 @@ export default function AdminRoomManagement() {
                   <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-slate-100 bg-white p-5 sm:p-6">
                     <div>
                       <h3 className="text-xl font-bold text-[#1a2d52]">Danh sách giường - Phòng {getRoomCode(selectedRoom)}</h3>
-                      <p className="mt-1 text-sm text-[#61779d]">Mỗi phòng gồm 7 cặp giường, mỗi cặp có 1 giường trên và 1 giường dưới.</p>
+                      <p className="mt-1 text-sm text-[#61779d]">Phòng này có {selectedRoom.capacity} giường, danh sách bên dưới phản ánh đúng sức chứa hiện tại.</p>
                     </div>
                     <button
                       type="button"
@@ -863,11 +1274,24 @@ export default function AdminRoomManagement() {
                               <p className="text-sm font-semibold text-[#1f3152]">Giường {bed.bed_number}</p>
                               <p className="text-xs text-[#6f84ad]">Vị trí: {bed.position === "UPPER" ? "Trên" : "Dưới"}</p>
                             </div>
-                            <span
-                              className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${bedStatusMeta[bed.status].className}`}
-                            >
-                              {bedStatusMeta[bed.status].label}
-                            </span>
+                                    {(() => {
+                              const displayStatus = getBedDisplayStatus(selectedRoom, bed);
+                              let meta = bedStatusMeta[bed.status];
+                              
+                              if (selectedRoom.status === "MAINTENANCE") {
+                                meta = maintenanceRoomBedMeta;
+                              } else if (hasOccupancy(bed.id)) {
+                                meta = { label: "Có người", className: "border-blue-200 bg-blue-50 text-blue-700" };
+                              }
+                              
+                              return (
+                                <span
+                                  className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${meta.className}`}
+                                >
+                                  {displayStatus}
+                                </span>
+                              );
+                            })()}
                           </div>
                         ))}
                       </div>
@@ -889,8 +1313,20 @@ export default function AdminRoomManagement() {
               <div className="relative w-full max-w-md rounded-xl bg-white p-5 shadow-lg">
                 <p className="text-sm text-slate-700">{confirmMessage}</p>
                 <div className="mt-4 flex justify-end gap-3">
-                  <button onClick={closeConfirm} className="rounded-xl border px-3 py-2 text-sm">Cancel</button>
-                  <button onClick={confirmNow} className="rounded-xl bg-red-600 px-3 py-2 text-sm text-white">OK</button>
+                  {confirmAction ? (
+                    <>
+                      <button onClick={closeConfirm} className="rounded-xl border px-3 py-2 text-sm">
+                        Hủy
+                      </button>
+                      <button onClick={confirmNow} className="rounded-xl bg-red-600 px-3 py-2 text-sm text-white">
+                        OK
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={closeConfirm} className="rounded-xl bg-slate-200 px-3 py-2 text-sm text-slate-700">
+                      Đóng
+                    </button>
+                  )}
                 </div>
               </div>
             </div>,
@@ -904,26 +1340,54 @@ export default function AdminRoomManagement() {
               <div className="absolute inset-0 bg-black/30" onClick={closeEditBed} />
               <div className="relative w-full max-w-md rounded-xl bg-white p-5 shadow-lg">
                 <h3 className="text-lg font-semibold">Chỉnh sửa giường {editingBed.bed.bed_number}</h3>
-                <div className="mt-3">
-                  <label className="block text-sm text-slate-600">Trạng thái</label>
-                  <select
-                    value={editingBedStatus}
-                    onChange={(e) => setEditingBedStatus(e.target.value as BedStatus)}
-                    className="mt-2 w-full rounded-md border px-3 py-2"
-                  >
-                    <option value="EMPTY">EMPTY</option>
-                    <option
-                      value="OCCUPIED"
-                      disabled={rooms.find((r) => r.id === editingBed.roomId)?.status === "MAINTENANCE"}
+                
+                {selectedRoom?.status === "MAINTENANCE" ? (
+                  <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                    <p className="text-sm text-amber-700">
+                      Phòng đang bảo trì. Vui lòng kích hoạt lại phòng trước khi chỉnh sửa giường.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-3">
+                    <label className="block text-sm text-slate-600">Trạng thái</label>
+                    <select
+                      value={editingBedStatus}
+                      onChange={(e) => {
+                        const nextStatus = e.target.value as BedStatus;
+                        setEditingBedStatus(nextStatus);
+                        
+                        // Tính error dựa trên nextStatus
+                        if (editingBed && editingBed.bed) {
+                          const validation = validateBedStatusChange(
+                            editingBed.bed.id,
+                            nextStatus,
+                            editingBed.bed.status
+                          );
+                          setEditingBedError(validation.valid ? "" : (validation.error || ""));
+                        }
+                      }}
+                      className={`mt-2 w-full rounded-md border px-3 py-2 ${editingBedError ? "border-red-500 focus:border-red-500" : "border-slate-200"}`}
                     >
-                      OCCUPIED
-                    </option>
-                    <option value="MAINTENANCE">MAINTENANCE</option>
-                  </select>
-                </div>
+                      <option value="ACTIVE">Hoạt động</option>
+                      <option value="MAINTENANCE">Bảo trì</option>
+                    </select>
+                    {editingBedError ? (
+                      <p className="mt-2 text-sm text-red-600">{editingBedError}</p>
+                    ) : null}
+                  </div>
+                )}
+
                 <div className="mt-4 flex justify-end gap-3">
-                  <button onClick={closeEditBed} className="rounded-xl border px-3 py-2 text-sm">Hủy</button>
-                  <button onClick={saveEditBed} className="rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_45%,#1f46ad_100%)] px-3 py-2 text-sm text-white">Lưu</button>
+                  <button onClick={closeEditBed} className="rounded-xl border px-3 py-2 text-sm">
+                    Hủy
+                  </button>
+                  <button
+                    onClick={saveEditBed}
+                    disabled={Boolean(editingBedError) || selectedRoom?.status === "MAINTENANCE"}
+                    className={`rounded-xl px-3 py-2 text-sm text-white ${editingBedError || selectedRoom?.status === "MAINTENANCE" ? "bg-slate-300 cursor-not-allowed" : "bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_45%,#1f46ad_100%)]"}`}
+                  >
+                    Lưu
+                  </button>
                 </div>
               </div>
             </div>,
@@ -942,7 +1406,7 @@ export default function AdminRoomManagement() {
                     <h3 className="text-xl font-bold text-[#1a2d52]">
                       {editingRoomId ? "Cập nhật phòng" : "Thêm phòng mới"}
                     </h3>
-                    <p className="mt-1 text-sm text-[#61779d]">Nhập thông tin phòng theo chuẩn quản lý ký túc xá.</p>
+                    <p className="mt-1 text-sm text-[#61779d]">Nhập thông tin phòng và sức chứa thực tế của từng phòng.</p>
                   </div>
                   <button
                     type="button"
@@ -959,12 +1423,14 @@ export default function AdminRoomManagement() {
                       <label className="text-sm font-medium text-slate-600">Tòa <span className="ml-1 text-red-500">*</span></label>
                       <SelectField
                         value={roomForm.building_code}
+                        disabled={Boolean(editingRoomId)}
                         onChange={(event) => {
                           const newCode = event.target.value;
+                          const nextFloors = getFloorNumbersByBuilding(newCode);
                           setRoomForm((prev) => ({
                             ...prev,
                             building_code: newCode,
-                            room_number: !editingRoomId ? String(computeExpectedNextRoomNumber(newCode)) : prev.room_number,
+                            floor_number: nextFloors.includes(prev.floor_number) ? prev.floor_number : nextFloors[0] ?? 1,
                           }));
                           setRoomValidationErrors({});
                         }}
@@ -988,35 +1454,58 @@ export default function AdminRoomManagement() {
                       ) : null}
                     </div>
 
-                    <div className="sm:col-span-2">
-                      <label className="text-sm font-medium text-slate-600">Số phòng <span className="ml-1 text-red-500">*</span></label>
-                      <InputField
-                        value={roomForm.room_number}
-                        onChange={(event) => { setRoomForm((prev) => ({ ...prev, room_number: event.target.value })); setRoomValidationErrors({}); }}
-                        readOnly={!editingRoomId}
-                      
-                      />
-                      {!editingRoomId ? (
-                        <div className="mt-1 text-xs text-slate-500">Số phòng bắt buộc: {computeExpectedNextRoomNumber(roomForm.building_code)} — để đúng thứ tự số phòng trong tòa {roomForm.building_code}.</div>
-                      ) : null}
-                      {roomSubmitAttempted && roomValidationErrors.room_number ? (
-                        <div className="mt-1 text-xs text-red-600">{roomValidationErrors.room_number}</div>
-                      ) : null}
-                    </div>
-
                     <div>
-                      <label className="text-sm font-medium text-slate-600">Giới tính <span className="ml-1 text-red-500">*</span></label>
+                      <label className="text-sm font-medium text-slate-600">Tầng <span className="ml-1 text-red-500">*</span></label>
                       <SelectField
-                        value={roomForm.gender}
-                        onChange={(event) => setRoomForm((prev) => ({ ...prev, gender: event.target.value as RoomGender }))}
+                        value={String(roomForm.floor_number)}
+                        disabled={Boolean(editingRoomId)}
+                        onChange={(event) => setRoomForm((prev) => ({ ...prev, floor_number: Number(event.target.value) }))}
                       >
-                        <option value="MALE">Nam</option>
-                        <option value="FEMALE">Nữ</option>
+                        {floorOptions.length > 0 ? (
+                          floorOptions.map((f) => (
+                            <option key={f} value={f}>
+                              Tầng {f}
+                            </option>
+                          ))
+                        ) : (
+                          <option value={1}>Tầng 1</option>
+                        )}
                       </SelectField>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Giới tính áp dụng: {genderLabel[getFloorGenderByLocation(roomForm.building_code, roomForm.floor_number) ?? "MALE"]}
+                      </p>
                     </div>
 
                     <div>
-                      <label className="text-sm font-medium text-slate-600">Trạng thái phòng <span className="ml-1 text-red-500">*</span></label>
+                      <label className="text-sm font-medium text-slate-600">Số phòng <span className="ml-1 text-red-500">*</span></label>
+                      <div className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm text-slate-700 shadow-sm flex items-center">
+                        {autoGeneratedRoomNumber}
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Phòng được đánh số tự động theo tòa và tầng đã chọn.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-slate-600">Sức chứa (số giường) <span className="ml-1 text-red-500">*</span></label>
+                      <InputField
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={roomForm.capacity}
+                        onChange={(event) => {
+                          setRoomForm((prev) => ({ ...prev, capacity: event.target.value }));
+                          setRoomFormError("");
+                        }}
+                        placeholder="Ví dụ: 12, 14, 16"
+                      />
+                      {oddCapacityError ? (
+                        <div className="mt-1 text-xs text-red-600">{oddCapacityError}</div>
+                      ) : null}
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="text-sm font-medium text-slate-600">Trạng thái <span className="ml-1 text-red-500">*</span></label>
                       <SelectField
                         value={roomForm.status}
                         onChange={(event) => {
@@ -1054,7 +1543,7 @@ export default function AdminRoomManagement() {
                     </button>
                     <button
                       type="submit"
-                      disabled={isRoomStatusBlocked}
+                      disabled={isRoomSubmitBlocked}
                       title={isRoomStatusBlocked ? blockedStatusMessage : undefined}
                       className="inline-flex h-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#1f5fd1_0%,#244cb8_42%,#31b7d4_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(36,76,184,0.28)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:brightness-100"
                     >
@@ -1070,3 +1559,4 @@ export default function AdminRoomManagement() {
     </motion.section>
   );
 }
+

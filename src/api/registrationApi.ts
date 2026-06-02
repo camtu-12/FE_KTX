@@ -32,6 +32,15 @@ export const submitRegistration = (formData: FormData) => {
 export const getRegistrationById = (id: number) => {
   return API.get(`/registration/${id}`).then((res) => res.data);
 };
+
+export const approveRegistration = (id: number) => {
+  return API.put(`/registration/${id}/approve`).then((res) => res.data);
+};
+
+export const rejectRegistration = (id: number, rejectionReason: string) => {
+  return API.put(`/registration/${id}/reject`, { rejectionReason }).then((res) => res.data);
+};
+
 export const getRegistrations = () => {
   return API.get("/registration").then((res) => res.data);
 };

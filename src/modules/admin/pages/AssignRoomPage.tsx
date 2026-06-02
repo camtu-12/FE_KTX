@@ -5,12 +5,12 @@ import { createPortal } from "react-dom";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import {
   getDormRoomsInstant,
-  getRegistrationRequests,
+  getRegistrations,
   getRegistrationRequestsInstant,
-  type DormRoom,
 } from "../../../api/registrationService";
 import type { RegistrationRequest } from "../data/registrationRequests";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
+import type { DormRoom } from "../../../types/dormRoom";
 
 type AssignmentFilter = "all" | "unassigned" | "assigned";
 type StudentSortOrder = "desc" | "asc";
@@ -34,7 +34,7 @@ export default function AssignRoomPage() {
   const location = useLocation();
   const { headerSearchValue } = useOutletContext<AdminLayoutOutletContext>();
 
-  const [requests, setRequests] = useState<RegistrationRequest[]>(() => getRegistrationRequestsInstant());
+  const [requests, setRequests] = useState<RegistrationRequest[] | undefined>(() => undefined);
   const [rooms, setRooms] = useState<DormRoom[]>(() => getDormRoomsInstant());
   const [toast, setToast] = useState<ToastState>(null);
 
@@ -59,19 +59,53 @@ export default function AssignRoomPage() {
     let isMounted = true;
 
     const loadData = async () => {
-      const nextRequests = await getRegistrationRequests();
-      if (!isMounted) {
-        return;
+      try {
+        const nextRequests = await getRegistrations();
+        if (!isMounted) return;
+        setRequests(nextRequests);
+      } catch (error) {
+        console.error("AssignRoomPage loadData failed, falling back to local snapshot", error);
+        // fallback only if backend fails
+        if (isMounted) setRequests(getRegistrationRequestsInstant());
+      } finally {
+        if (isMounted) setRooms(getDormRoomsInstant());
       }
-
-      setRequests(nextRequests);
-      setRooms(getDormRoomsInstant());
     };
 
     void loadData();
 
+    const refreshRooms = () => {
+      if (!isMounted) {
+        return;
+      }
+
+      setRooms(getDormRoomsInstant());
+    };
+
+    const refreshRequests = async () => {
+      if (!isMounted) return;
+
+      try {
+        const nextRequests = await getRegistrations();
+        if (!isMounted) return;
+        setRequests(nextRequests);
+      } catch (error) {
+        console.error("AssignRoomPage refreshRequests failed", error);
+        // keep current requests; do not fall back here to avoid flashing old data
+      }
+    };
+
+    window.addEventListener("storage", refreshRooms);
+    window.addEventListener("focus", refreshRooms);
+    window.addEventListener("ktx-rooms-updated", refreshRooms);
+    window.addEventListener("ktx-registrations-updated", refreshRequests);
+
     return () => {
       isMounted = false;
+      window.removeEventListener("storage", refreshRooms);
+      window.removeEventListener("focus", refreshRooms);
+      window.removeEventListener("ktx-rooms-updated", refreshRooms);
+      window.removeEventListener("ktx-registrations-updated", refreshRequests);
     };
   }, []);
 
@@ -146,6 +180,7 @@ export default function AssignRoomPage() {
   }, [toast]);
 
   const approvedStudents = useMemo(() => {
+    if (!requests) return [];
     return requests.filter((request) => request.status === "approved");
   }, [requests]);
 
@@ -206,12 +241,32 @@ export default function AssignRoomPage() {
     setIsFilterOpen(false);
   };
 
+  if (typeof requests === "undefined") {
+    return (
+      <motion.section
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: "easeOut" }}
+        className="flex min-h-[calc(100vh-8rem)] flex-col space-y-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
+      >
+        <div className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
+          <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">Phân phòng</h1>
+          <p className="mt-1 text-sm text-[#62789f]">Đang tải danh sách sinh viên đã được duyệt…</p>
+        </div>
+
+        <div className="rounded-[20px] border border-[#d8e4f5] bg-white px-6 py-10 text-center">
+          <div className="text-sm text-[#62789f]">Đang tải dữ liệu, vui lòng chờ...</div>
+        </div>
+      </motion.section>
+    );
+  }
+
   return (
     <motion.section
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
-      className="flex min-h-full flex-col space-y-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
+      className="flex min-h-[calc(100vh-8rem)] flex-col space-y-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
     >
       {typeof document !== "undefined"
         ? createPortal(
@@ -275,7 +330,7 @@ export default function AssignRoomPage() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <article className="flex flex-col items-center rounded-[24px] border border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
+          <article className="flex flex-col items-center rounded-[24px] border border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#7c8fb5]">Đã duyệt</p>
           <p className="mt-3 text-[2rem] font-extrabold leading-none text-[#16784b]">{approvedStudents.length}</p>
         </article>
@@ -283,13 +338,13 @@ export default function AssignRoomPage() {
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#7c8fb5]">Chưa phân phòng</p>
           <p className="mt-3 text-[2rem] font-extrabold leading-none text-[#9b6b00]">{unassignedCount}</p>
         </article>
-        <article className="flex flex-col items-center rounded-[24px] border border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
+          <article className="flex flex-col items-center rounded-[24px] border border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#7c8fb5]">Đã phân phòng</p>
           <p className="mt-3 text-[2rem] font-extrabold leading-none text-[#244cb8]">{assignedCount}</p>
         </article>
       </div>
 
-      <div className="space-y-3 sm:space-y-4">
+      <div className="flex flex-col space-y-3 sm:space-y-4">
         <div className="overflow-x-auto rounded-[22px] border border-[#dde7f5] bg-white shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
           <table className="min-w-[740px] w-full table-fixed border-separate border-spacing-0">
             <colgroup>
@@ -314,7 +369,7 @@ export default function AssignRoomPage() {
                   Trạng thái
                 </th>
                 <th className="relative z-30 px-3 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
-                  <div className="inline-flex items-center justify-center gap-2">
+                    <div className="inline-flex items-center justify-center gap-2">
                     <span>Hành động</span>
                     <button
                       ref={filterButtonRef}
@@ -325,7 +380,7 @@ export default function AssignRoomPage() {
                            ? "text-[#244cb8]"
                             : "text-[#6f84ad] hover:text-[#244cb8]"
                       }`}
-                      title="Bộ lọc"
+                      title="Bật lọc"
                     >
                       <Funnel className="h-3.5 w-3.5" />
                     </button>
@@ -382,7 +437,7 @@ export default function AssignRoomPage() {
         </div>
 
         {visibleStudents.length === 0 ? (
-          <div className="mt-3 rounded-xl border border-[#d8e3f2] bg-[#f8fbff] px-4 py-3 text-sm text-[#5a7197]">
+            <div className="mt-3 rounded-xl border border-[#d8e3f2] bg-[#f8fbff] px-4 py-3 text-sm text-[#5a7197]">
             Không có sinh viên phù hợp với bộ lọc.
           </div>
         ) : null}
@@ -471,3 +526,4 @@ export default function AssignRoomPage() {
     </motion.section>
   );
 }
+
