@@ -3,19 +3,16 @@ import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Funnel, Pencil, Plus, Trash2 } from "lucide-react";
 import {
-  initialBuildings,
   type Building,
   type BuildingFloor,
   type BuildingStatus,
   type FloorGender,
   type FloorStatus,
 } from "../../../mocks/buildings";
-import { initialRooms, hasOccupancy } from "../../../mocks/roommanagement";
+import { createFloor as createFloorApi, deleteFloor as deleteFloorApi, getBuilding, updateFloor as updateFloorApi } from "../../../api/buildingApi";
+import { listRooms, type RoomApi } from "../../../api/roomApi";
 
-const STORAGE_KEY = "ktx_buildings_dashboard_v2";
-const ROOM_STORAGE_KEY = "ktx_rooms_dashboard_v2";
-
-type RoomRecord = (typeof initialRooms)[number];
+type RoomRecord = RoomApi;
 
 type RoomMetrics = {
   rooms: number;
@@ -46,8 +43,8 @@ function getRoomMetrics(rooms: RoomRecord[]) {
   return rooms.reduce<RoomMetrics>(
     (accumulator, room) => {
       accumulator.rooms += 1;
-      accumulator.beds += room.beds.length;
-      accumulator.students += room.beds.filter((bed) => hasOccupancy(bed.id)).length;
+      accumulator.beds += room.beds?.length ?? 0;
+      accumulator.students += room.beds?.filter((bed) => !!(bed as any).occupied).length ?? 0;
       return accumulator;
     },
     { rooms: 0, beds: 0, students: 0 },
@@ -76,19 +73,11 @@ function getGenderLabel(gender: FloorGender) {
 export default function AdminBuildingDetailPage() {
   const navigate = useNavigate();
   const params = useParams();
-  const id = Number(params.buildingId || "");
+  const buildingCode = params.buildingCode || params.buildingId || "";
 
-  const [buildings, setBuildings] = useState<Building[]>(() => {
-    if (typeof window === "undefined") return initialBuildings;
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) return initialBuildings;
-      const parsed = JSON.parse(raw) as Building[];
-      return Array.isArray(parsed) && parsed.length > 0 ? parsed : initialBuildings;
-    } catch {
-      return initialBuildings;
-    }
-  });
+  const [buildings, setBuildings] = useState<Building[]>([]);
+  const [isBuildingLoading, setIsBuildingLoading] = useState(true);
+  const [buildingLoadError, setBuildingLoadError] = useState("");
 
   const [filterStatus, setFilterStatus] = useState<"all" | FloorStatus>("all");
   const [filterGender, setFilterGender] = useState<"all" | FloorGender>("all");
@@ -108,20 +97,57 @@ export default function AdminBuildingDetailPage() {
   const floorFilterButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
-    function handleStorage(e: StorageEvent) {
-      if (e.key !== STORAGE_KEY) return;
-      try {
-        const parsed = JSON.parse(e.newValue ?? "null") as Building[] | null;
-        if (Array.isArray(parsed)) {
-          setBuildings(parsed);
-        }
-      } catch {
-        // ignore parse errors
-      }
-    }
+    let active = true;
 
-    window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
+    const loadBuilding = async () => {
+      if (!buildingCode) {
+        if (active) {
+          setIsBuildingLoading(false);
+          setBuildingLoadError("Không tìm thấy mã tòa.");
+        }
+        return;
+      }
+
+      try {
+        const nextBuilding = await getBuilding(buildingCode);
+        if (!active) return;
+        setBuildings([nextBuilding]);
+        setBuildingLoadError("");
+      } catch {
+        if (!active) return;
+        setBuildings([]);
+        setBuildingLoadError("Không thể tải dữ liệu tòa từ BE.");
+      } finally {
+        if (active) {
+          setIsBuildingLoading(false);
+        }
+      }
+    };
+
+    void loadBuilding();
+
+    return () => {
+      active = false;
+    };
+  }, [buildingCode]);
+  // No localStorage building cache; UI updates rely on backend changes
+
+  const [rooms, setRooms] = useState<RoomRecord[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const data = await listRooms();
+        if (!mounted) return;
+        setRooms(data as RoomRecord[]);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -191,47 +217,11 @@ export default function AdminBuildingDetailPage() {
     };
   }, [isFloorFilterOpen]);
 
-  const building = useMemo(() => buildings.find((b) => b.id === id) ?? null, [buildings, id]);
+  // No localStorage caching for buildings; rely on backend state
 
-  const [rooms, setRooms] = useState<RoomRecord[]>(() => {
-    if (typeof window === "undefined") return initialRooms as RoomRecord[];
-    try {
-      const stored = window.localStorage.getItem(ROOM_STORAGE_KEY);
-      if (!stored) return initialRooms as RoomRecord[];
-      const parsed = JSON.parse(stored) as RoomRecord[];
-      return Array.isArray(parsed) ? parsed : (initialRooms as RoomRecord[]);
-    } catch {
-      return initialRooms as RoomRecord[];
-    }
-  });
+  const building = useMemo(() => buildings.find((b) => b.id === buildingCode) ?? null, [buildings, buildingCode]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      window.localStorage.setItem(ROOM_STORAGE_KEY, JSON.stringify(rooms));
-    } catch {
-      // ignore storage write failures
-    }
-  }, [rooms]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key !== ROOM_STORAGE_KEY || !event.newValue) return;
-      try {
-        const parsed = JSON.parse(event.newValue) as RoomRecord[];
-        if (Array.isArray(parsed)) {
-          setRooms(parsed);
-        }
-      } catch {
-        // ignore invalid payloads from storage
-      }
-    };
-
-    window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
-  }, []);
+  // Rooms state is loaded from backend via `listRooms()` (see effect above)
 
   const [floorDialogMode, setFloorDialogMode] = useState<"create" | "edit" | null>(null);
   const [selectedFloorNumber, setSelectedFloorNumber] = useState<number | null>(null);
@@ -297,29 +287,31 @@ export default function AdminBuildingDetailPage() {
     }
 
     showConfirm(`Bạn có chắc muốn xóa tầng ${floor.floorNumber} không?`, () => {
-      if (!building) return;
-
-      setBuildings((prev) => {
-        const updated = prev.map((item) => {
-          if (item.id !== building.id) return item;
-          return { ...item, floors: item.floors.filter((itemFloor) => itemFloor.floorNumber !== floor.floorNumber) };
-        });
+      void (async () => {
+        if (!building) return;
 
         try {
-          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-        } catch {
-          // ignore
+          await deleteFloorApi(building.building_code, floor.floorNumber);
+          setBuildings((prev) => {
+            const updated = prev.map((item) => {
+              if (item.id !== building.id) return item;
+              return { ...item, floors: item.floors.filter((itemFloor) => itemFloor.floorNumber !== floor.floorNumber) };
+            });
+
+            return updated;
+          });
+
+          if (floorDialogMode !== null) {
+            closeFloorDialog();
+          }
+
+          setSuccessMessage(`Đã xóa tầng ${floor.floorNumber}`);
+          setTimeout(() => setSuccessMessage(null), 3500);
+        } catch (error) {
+          setSuccessMessage(error instanceof Error ? error.message : "Không thể xóa tầng.");
+          setTimeout(() => setSuccessMessage(null), 3500);
         }
-
-        return updated;
-      });
-
-      if (floorDialogMode !== null) {
-        closeFloorDialog();
-      }
-
-      setSuccessMessage(`Đã xóa tầng ${floor.floorNumber}`);
-      setTimeout(() => setSuccessMessage(null), 3500);
+      })();
     });
   };
 
@@ -334,42 +326,55 @@ export default function AdminBuildingDetailPage() {
       return;
     }
 
-    const floorMetrics = getFloorMetricsFromRooms(
-      rooms.filter((room) => getRoomBuildingCode(room) === building.building_code),
-      floorNumber,
-    );
-
-    const newFloor: BuildingFloor = {
-      floorNumber,
-      gender: floorForm.gender,
-      roomCount: floorMetrics.rooms,
-      bedCount: floorMetrics.rooms > 0 ? Math.max(1, Math.floor(floorMetrics.beds / floorMetrics.rooms)) : 0,
-      occupiedStudents: floorMetrics.students,
-      status: floorForm.status,
-    };
-
-    setBuildings((prev) => {
-      const updated = prev.map((b) => {
-        if (b.id !== building.id) return b;
-        if (floorDialogMode === "edit") {
-          return {
-            ...b,
-            floors: b.floors.map((floor) => (floor.floorNumber === floorNumber ? newFloor : floor)),
-          };
-        }
-        return { ...b, floors: [...b.floors, newFloor] };
-      });
+    void (async () => {
       try {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      } catch {
-        // ignore
-      }
-      return updated;
-    });
+        const payload = {
+          floor_number: floorNumber,
+          gender: floorForm.gender,
+          status: floorForm.status,
+        };
 
-    closeFloorDialog();
-    setSuccessMessage(floorDialogMode === "edit" ? `Đã cập nhật tầng ${floorNumber}` : `Thiết lập tầng ${floorNumber} thành công`);
-    setTimeout(() => setSuccessMessage(null), 3500);
+        const floorMetrics = getFloorMetricsFromRooms(
+          rooms.filter((room) => getRoomBuildingCode(room) === building.building_code),
+          floorNumber,
+        );
+
+        const nextFloor: BuildingFloor = {
+          floorNumber,
+          gender: floorForm.gender,
+          roomCount: floorMetrics.rooms,
+          bedCount: floorMetrics.rooms > 0 ? Math.max(1, Math.floor(floorMetrics.beds / Math.max(floorMetrics.rooms, 1))) : 0,
+          occupiedStudents: floorMetrics.students,
+          status: floorForm.status,
+        };
+
+        const savedFloor = floorDialogMode === "edit"
+          ? await updateFloorApi(building.building_code, selectedFloorNumber ?? floorNumber, payload)
+          : await createFloorApi(building.building_code, payload);
+
+        setBuildings((prev) => {
+          const updated = prev.map((item) => {
+            if (item.id !== building.id) return item;
+            if (floorDialogMode === "edit") {
+              return {
+                ...item,
+                floors: item.floors.map((floor) => (floor.floorNumber === (selectedFloorNumber ?? floorNumber) ? savedFloor : floor)),
+              };
+            }
+            return { ...item, floors: [...item.floors, savedFloor ?? nextFloor] };
+          });
+
+          return updated;
+        });
+
+        closeFloorDialog();
+        setSuccessMessage(floorDialogMode === "edit" ? `Đã cập nhật tầng ${floorNumber}` : `Thiết lập tầng ${floorNumber} thành công`);
+        setTimeout(() => setSuccessMessage(null), 3500);
+      } catch (error) {
+        setSuccessMessage(error instanceof Error ? error.message : "Không thể lưu tầng.");
+        setTimeout(() => setSuccessMessage(null), 3500);
+      }
+    })();
   };
 
   const filteredFloors = useMemo(() => {
@@ -396,8 +401,8 @@ export default function AdminBuildingDetailPage() {
 
       const current = metrics.get(floorNumber) ?? { rooms: 0, beds: 0, students: 0 };
       current.rooms += 1;
-      current.beds += room.beds.length;
-      current.students += room.beds.filter((bed) => hasOccupancy(bed.id)).length;
+      current.beds += room.beds?.length ?? 0;
+      current.students += room.beds?.filter((bed) => !!(bed as any).occupied).length ?? 0;
       metrics.set(floorNumber, current);
     });
 
@@ -480,6 +485,28 @@ export default function AdminBuildingDetailPage() {
     setIsGenderFilterOpen(false);
     setIsFloorFilterOpen(false);
   };
+
+  if (isBuildingLoading) {
+    return (
+      <section className="relative isolate flex min-h-[calc(100vh-8rem)] flex-col gap-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6">
+        <div className="rounded-[24px] border border-[#d7e3f5] bg-white p-5 shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
+          <p className="text-lg font-bold text-[#1a2d52]">Đang tải dữ liệu tòa...</p>
+          <p className="mt-2 text-sm text-[#61779d]">Vui lòng chờ trong giây lát.</p>
+        </div>
+      </section>
+    );
+  }
+
+  if (buildingLoadError) {
+    return (
+      <section className="relative isolate flex min-h-[calc(100vh-8rem)] flex-col gap-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6">
+        <div className="rounded-[24px] border border-[#d7e3f5] bg-white p-5 shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
+          <p className="text-lg font-bold text-[#1a2d52]">Không thể tải tòa</p>
+          <p className="mt-2 text-sm text-[#61779d]">{buildingLoadError}</p>
+        </div>
+      </section>
+    );
+  }
 
   if (!building) {
     return (

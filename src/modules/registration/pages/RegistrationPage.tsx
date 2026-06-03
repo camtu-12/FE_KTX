@@ -17,6 +17,7 @@ import {
   getLatestRegistrationByEmail,
   submitRegistration,
 } from "../../../api/registrationService";
+import { listRooms, type RoomApi } from "../../../api/roomApi";
 import { checkStudentCodeExists } from "../../auth/services/auth.api";
 import { useAuthStore } from "../../auth/store";
 import type { RegistrationRequest } from "../../admin/data/registrationRequests";
@@ -321,6 +322,7 @@ export default function RegistrationPage() {
   const [isCheckingMssv, setIsCheckingMssv] = useState(false);
   const [studentDataReadonly, setStudentDataReadonly] = useState(false);
   const [autoLoaded, setAutoLoaded] = useState(false);
+  const [roomCatalog, setRoomCatalog] = useState<RoomApi[]>([]);
   const formRef = useRef<HTMLFormElement | null>(null);
   const fieldRefs = useRef<
     Partial<Record<keyof FormData, HTMLInputElement | HTMLSelectElement | null>>
@@ -352,6 +354,34 @@ export default function RegistrationPage() {
     }
     return (await getLatestRegistrationByEmail(studentEmail)) as RegistrationWithAssignment | null;
   };
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadRooms = async () => {
+      try {
+        const rooms = await listRooms();
+        if (mounted) {
+          setRoomCatalog(rooms);
+        }
+      } catch {
+        if (mounted) {
+          setRoomCatalog([]);
+        }
+      }
+    };
+
+    void loadRooms();
+
+    window.addEventListener("ktx-rooms-updated", loadRooms);
+    window.addEventListener("ktx-registrations-updated", loadRooms);
+
+    return () => {
+      mounted = false;
+      window.removeEventListener("ktx-rooms-updated", loadRooms);
+      window.removeEventListener("ktx-registrations-updated", loadRooms);
+    };
+  }, []);
 
   // When user is logged in with a student_code, auto-load student info and prefill form
   // reusable loader to populate formData from student_code
@@ -556,7 +586,9 @@ export default function RegistrationPage() {
       return registration;
     }
 
-    const assignedRoom = getDormRoomsInstant().find((room) => room.id === registration.assigned_room_id);
+    const assignedRoom =
+      roomCatalog.find((room) => room.id === registration.assigned_room_id) ??
+      getDormRoomsInstant().find((room) => room.id === registration.assigned_room_id);
     if (!assignedRoom) {
       return registration;
     }
@@ -566,14 +598,30 @@ export default function RegistrationPage() {
       building_code: assignedRoom.building_code,
       room_number: assignedRoom.room_number,
     };
-  }, [registration]);
+  }, [registration, roomCatalog]);
   const statusForView = registrationForView?.status ?? status;
   const assignedRoomName = registrationForView?.assigned_room_id
     ? registrationForView?.room_number
       ? `${registrationForView.building_code ?? ""}${registrationForView.room_number}`
       : `Phòng ${registrationForView.assigned_room_id}`
     : null;
-  const selectedBedName = registrationForView?.bedId ? `Giường ${registrationForView.bedId}` : null;
+  const selectedBedNumber = useMemo(() => {
+    if (!registrationForView?.bedId) {
+      return null;
+    }
+
+    for (const room of roomCatalog) {
+      const bed = room.beds.find((item) => item.id === registrationForView.bedId);
+      if (bed) {
+        return bed.bed_number;
+      }
+    }
+
+    const assignedRoom = getDormRoomsInstant().find((room) => room.id === registrationForView.assigned_room_id);
+    const bed = assignedRoom?.beds?.find((item) => item.id === registrationForView.bedId);
+    return bed?.bed_number ?? registrationForView.bedId;
+  }, [registrationForView?.assigned_room_id, registrationForView?.bedId, roomCatalog]);
+  const selectedBedName = selectedBedNumber ? `Giường ${selectedBedNumber}` : null;
   const hasSelectedBed = Boolean(registrationForView?.bedId);
 
   const progressStatus: ProgressStatus = useMemo(() => {

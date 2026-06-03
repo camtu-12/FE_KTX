@@ -3,11 +3,8 @@ import { CheckCircle2, Funnel, XCircle, ArrowUp } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
-import {
-  getDormRoomsInstant,
-  getRegistrations,
-  getRegistrationRequestsInstant,
-} from "../../../api/registrationService";
+import { getRegistrations } from "../../../api/registrationService";
+import { listRooms } from "../../../api/roomApi";
 import type { RegistrationRequest } from "../data/registrationRequests";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import type { DormRoom } from "../../../types/dormRoom";
@@ -35,7 +32,7 @@ export default function AssignRoomPage() {
   const { headerSearchValue } = useOutletContext<AdminLayoutOutletContext>();
 
   const [requests, setRequests] = useState<RegistrationRequest[] | undefined>(() => undefined);
-  const [rooms, setRooms] = useState<DormRoom[]>(() => getDormRoomsInstant());
+  const [rooms, setRooms] = useState<DormRoom[]>([]);
   const [toast, setToast] = useState<ToastState>(null);
 
   const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilter>("all");
@@ -64,47 +61,78 @@ export default function AssignRoomPage() {
         if (!isMounted) return;
         setRequests(nextRequests);
       } catch (error) {
-        console.error("AssignRoomPage loadData failed, falling back to local snapshot", error);
-        // fallback only if backend fails
-        if (isMounted) setRequests(getRegistrationRequestsInstant());
-      } finally {
-        if (isMounted) setRooms(getDormRoomsInstant());
+        console.error("AssignRoomPage loadData failed", error);
+        if (isMounted) setRequests([]);
+      }
+
+      try {
+        const roomData = await listRooms();
+        if (!isMounted) return;
+        const mapped = (roomData as any[]).map((r) => ({
+          id: r.id,
+          building_code: r.building_code,
+          room_number: r.room_number,
+          totalBeds: r.beds?.length ?? r.capacity ?? 0,
+          availableBeds: r.available_beds ?? (r.beds?.filter((b: any) => !b.occupied).length) ?? 0,
+          capacity: r.capacity ?? r.beds?.length,
+          gender: r.floor?.gender ?? null,
+          floor_id: r.floor?.id ?? r.floor_id,
+          floor: r.floor ? { id: r.floor.id, building_code: r.building_code, floor_number: r.floor.floor_number, gender: r.floor.gender } : undefined,
+          floor_number: r.floor_number ?? r.floor?.floor_number,
+          beds: Array.isArray(r.beds)
+            ? r.beds.map((b: any) => ({ id: b.id, room_id: r.id, bed_number: Number(b.bed_number) || 0, position: String(b.position).toLowerCase() === "upper" ? "upper" : "lower", status: String(b.status).toLowerCase() === "maintenance" ? "maintenance" : "active" }))
+            : [],
+        })) as DormRoom[];
+        setRooms(mapped);
+      } catch (err) {
+        // ignore
       }
     };
 
     void loadData();
 
-    const refreshRooms = () => {
-      if (!isMounted) {
-        return;
+    const refreshRooms = async () => {
+      if (!isMounted) return;
+      try {
+        const roomData = await listRooms();
+        if (!isMounted) return;
+        const mapped = (roomData as any[]).map((r) => ({
+          id: r.id,
+          building_code: r.building_code,
+          room_number: r.room_number,
+          totalBeds: r.beds?.length ?? r.capacity ?? 0,
+          availableBeds: r.available_beds ?? (r.beds?.filter((b: any) => !b.occupied).length) ?? 0,
+          capacity: r.capacity ?? r.beds?.length,
+          gender: r.floor?.gender ?? null,
+          floor_id: r.floor?.id ?? r.floor_id,
+          floor: r.floor ? { id: r.floor.id, building_code: r.building_code, floor_number: r.floor.floor_number, gender: r.floor.gender } : undefined,
+          floor_number: r.floor_number ?? r.floor?.floor_number,
+          beds: Array.isArray(r.beds)
+            ? r.beds.map((b: any) => ({ id: b.id, room_id: r.id, bed_number: Number(b.bed_number) || 0, position: String(b.position).toLowerCase() === "upper" ? "upper" : "lower", status: String(b.status).toLowerCase() === "maintenance" ? "maintenance" : "active" }))
+            : [],
+        })) as DormRoom[];
+        setRooms(mapped);
+      } catch (err) {
+        // ignore
       }
-
-      setRooms(getDormRoomsInstant());
     };
 
     const refreshRequests = async () => {
-      if (!isMounted) return;
-
       try {
         const nextRequests = await getRegistrations();
         if (!isMounted) return;
         setRequests(nextRequests);
-      } catch (error) {
-        console.error("AssignRoomPage refreshRequests failed", error);
-        // keep current requests; do not fall back here to avoid flashing old data
+      } catch {
+        // ignore
       }
     };
 
-    window.addEventListener("storage", refreshRooms);
     window.addEventListener("focus", refreshRooms);
-    window.addEventListener("ktx-rooms-updated", refreshRooms);
     window.addEventListener("ktx-registrations-updated", refreshRequests);
 
     return () => {
       isMounted = false;
-      window.removeEventListener("storage", refreshRooms);
       window.removeEventListener("focus", refreshRooms);
-      window.removeEventListener("ktx-rooms-updated", refreshRooms);
       window.removeEventListener("ktx-registrations-updated", refreshRequests);
     };
   }, []);

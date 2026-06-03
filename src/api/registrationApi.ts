@@ -41,9 +41,20 @@ export const rejectRegistration = (id: number, rejectionReason: string) => {
   return API.put(`/registration/${id}/reject`, { rejectionReason }).then((res) => res.data);
 };
 
+export const assignRoom = (id: number, roomId: number) => {
+  return API.put(`/registration/${id}/assign-room`, { room_id: roomId }).then((res) => res.data);
+};
+
 export const getRegistrations = () => {
   return API.get("/registration").then((res) => res.data);
 };
 export const getRooms = () => {
   return API.get("/rooms").then((res) => res.data);
+};
+
+export const selectBed = (email: string, bedId: number) => {
+  return API.put("/registration/select-bed", {
+    email,
+    bed_id: bedId,
+  }).then((res) => res.data);
 };

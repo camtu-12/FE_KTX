@@ -3,9 +3,10 @@ import { ArrowLeft, ArrowUp, CheckCircle2, DoorOpen, Home, Star, UserRound, XCir
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
-import { assignRoomToRegistration, getDormRoomsInstant, getRegistrations } from "../../../api/registrationService";
-import { initialBuildings, type Building } from "../../../mocks/buildings";
-import { assignMockOccupancy } from "../../../mocks/roommanagement";
+import { assignRoomToRegistration, getRegistrations } from "../../../api/registrationService";
+import { listBuildings } from "../../../api/buildingApi";
+import { listRooms } from "../../../api/roomApi";
+import type { Building } from "../../../types/building";
 import type { RegistrationRequest } from "../data/registrationRequests";
 import type { DormRoom } from "../../../types/dormRoom";
 
@@ -59,27 +60,30 @@ const normalizeGender = (gender: string | null | undefined) => {
   return null;
 };
 
-const BUILDING_STORAGE_KEY = "ktx_buildings_dashboard_v2";
-const readBuildingsFromStorage = (): Building[] => {
-  if (typeof window === "undefined") {
-    return initialBuildings;
-  }
-
-  try {
-    const raw = window.localStorage.getItem(BUILDING_STORAGE_KEY);
-    if (!raw) {
-      return initialBuildings;
-    }
-
-    const parsed = JSON.parse(raw) as Building[];
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : initialBuildings;
-  } catch {
-    return initialBuildings;
-  }
-};
-
 const getBuildingFloorNumbers = (building: Building) =>
   building.floors.map((floor) => floor.floorNumber).sort((a, b) => a - b);
+
+const mapRoomFromApi = (r: any): DormRoomWithFloor => ({
+  id: r.id,
+  building_code: r.building_code,
+  room_number: r.room_number,
+  totalBeds: r.beds?.length ?? r.capacity ?? 0,
+  availableBeds: r.available_beds ?? (r.beds?.filter((b: any) => !b.occupied).length) ?? 0,
+  capacity: r.capacity ?? r.beds?.length,
+  gender: r.floor?.gender ?? null,
+  floor_id: r.floor?.id ?? r.floor_id,
+  floor: r.floor ? { id: r.floor.id, building_code: r.building_code, floor_number: r.floor.floor_number, gender: r.floor.gender } : undefined,
+  floor_number: r.floor_number ?? r.floor?.floor_number,
+  beds: Array.isArray(r.beds)
+    ? r.beds.map((b: any) => ({
+        id: b.id,
+        room_id: r.id,
+        bed_number: Number(b.bed_number) || 0,
+        position: String(b.position).toLowerCase() === "upper" ? "upper" : "lower",
+        status: String(b.status).toLowerCase() === "maintenance" ? "maintenance" : "active",
+      }))
+    : [],
+});
 
 export default function AssignRoomDetailPage() {
   const navigate = useNavigate();
@@ -92,8 +96,8 @@ export default function AssignRoomDetailPage() {
   const [request, setRequest] = useState<RegistrationRequest | null | undefined>(() =>
     Number.isFinite(numericRequestId) ? undefined : null,
   );
-  const [rooms, setRooms] = useState<DormRoomWithFloor[]>(() => getDormRoomsInstant() as DormRoomWithFloor[]);
-  const [buildings, setBuildings] = useState<Building[]>(() => readBuildingsFromStorage());
+  const [rooms, setRooms] = useState<DormRoomWithFloor[]>([]);
+  const [buildings, setBuildings] = useState<Building[]>([]);
   const [toast, setToast] = useState<ToastState>(null);
   const [isAssigning, setIsAssigning] = useState(false);
   const [buildingFilter, setBuildingFilter] = useState<string>("all");
@@ -131,37 +135,59 @@ export default function AssignRoomDetailPage() {
         return;
       }
 
-      const requests = await getRegistrations();
-      if (!isMounted) {
-        return;
-      }
+      try {
+        const [requests, roomData, buildingData] = await Promise.all([
+          getRegistrations(),
+          listRooms(),
+          listBuildings(),
+        ]);
+        if (!isMounted) {
+          return;
+        }
 
-      setRequest(requests.find((item) => item.id === numericRequestId) ?? null);
-      setRooms(getDormRoomsInstant());
+        setRequest(requests.find((item) => item.id === numericRequestId) ?? null);
+        setRooms((roomData as any[]).map(mapRoomFromApi));
+        setBuildings(buildingData);
+      } catch {
+        if (!isMounted) {
+          return;
+        }
+        setRequest(null);
+        setRooms([]);
+        setBuildings([]);
+      }
     };
 
     void load();
 
-    const refreshRooms = () => {
+    const refreshRooms = async () => {
       if (!isMounted) {
         return;
       }
 
-      setRooms(getDormRoomsInstant() as DormRoomWithFloor[]);
-      setBuildings(readBuildingsFromStorage());
+      try {
+        const [roomData, buildingData] = await Promise.all([listRooms(), listBuildings()]);
+        if (!isMounted) {
+          return;
+        }
+        setRooms((roomData as any[]).map(mapRoomFromApi));
+        setBuildings(buildingData);
+      } catch {
+        if (!isMounted) {
+          return;
+        }
+        setRooms([]);
+        setBuildings([]);
+      }
     };
 
-    window.addEventListener("storage", refreshRooms);
     window.addEventListener("focus", refreshRooms);
     window.addEventListener("ktx-buildings-updated", refreshRooms);
-    window.addEventListener("ktx-rooms-updated", refreshRooms);
 
     return () => {
       isMounted = false;
-      window.removeEventListener("storage", refreshRooms);
       window.removeEventListener("focus", refreshRooms);
       window.removeEventListener("ktx-buildings-updated", refreshRooms);
-      window.removeEventListener("ktx-rooms-updated", refreshRooms);
     };
   }, [numericRequestId]);
   useEffect(() => {
@@ -274,11 +300,9 @@ export default function AssignRoomDetailPage() {
 
     setIsAssigning(true);
     try {
-      const occupancy = assignMockOccupancy(room);
       const updatedRequest = await assignRoomToRegistration({
         requestId: request.id,
         roomId: room.id,
-        bedId: occupancy?.bedId ?? null,
         currentRequest: request,
       });
 
@@ -287,7 +311,6 @@ export default function AssignRoomDetailPage() {
       }
 
       setRequest(updatedRequest);
-      setRooms(getDormRoomsInstant());
       handleBack({ kind: "success", message: "Phân phòng thành công" });
     } catch (error) {
       setToast({

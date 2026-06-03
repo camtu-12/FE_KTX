@@ -53,7 +53,7 @@ export default function AppRoutes() {
           <Route path="students" element={<AdminStudentsPage />} />
           <Route path="rooms" element={<AdminRoomManagement />} />
           <Route path="buildings" element={<AdminBuildingManagement />} />
-          <Route path="buildings/:buildingId" element={<AdminBuildingDetailPage />} />
+          <Route path="buildings/:buildingCode" element={<AdminBuildingDetailPage />} />
         </Route>
 
         <Route

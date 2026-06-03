@@ -140,6 +140,14 @@ const upsertStoredBedSelection = (selection: BedSelectionSnapshot) => {
   return writeStoredBedSelections(selections);
 };
 
+const dispatchRoomsUpdated = () => {
+  if (!isBrowser()) {
+    return;
+  }
+
+  window.dispatchEvent(new Event("ktx-rooms-updated"));
+};
+
 const applyStoredAssignments = (requests: RegistrationRequest[]): RegistrationRequest[] => {
   const assignments = readStoredAssignments();
   const bedSelections = readStoredBedSelections();
@@ -160,8 +168,8 @@ const applyStoredAssignments = (requests: RegistrationRequest[]): RegistrationRe
     return {
       ...request,
       assigned_room_id: assignment?.roomId ?? request.assigned_room_id ?? null,
-      assigned_bed_id: bedSelection?.bedId ?? null,
-      bedId: bedSelection?.bedId ?? null,
+      assigned_bed_id: bedSelection?.bedId ?? request.assigned_bed_id ?? null,
+      bedId: bedSelection?.bedId ?? request.bedId ?? request.assigned_bed_id ?? null,
     };
   });
 };
@@ -591,6 +599,8 @@ export const assignRoomToRegistration = async ({
     throw new Error("Không tìm thấy đơn đăng ký.");
   }
 
+  await regApi.assignRoom(requestId, roomId);
+
   const nextRequest = persistRegistrationRequest({
     ...current,
     assigned_room_id: roomId,
@@ -603,6 +613,7 @@ export const assignRoomToRegistration = async ({
     roomId,
   });
   dispatchRegistrationRequestsUpdated();
+  dispatchRoomsUpdated();
 
   return nextRequest;
 };
@@ -623,6 +634,8 @@ export const selectBedForRegistration = async ({
     throw new Error("Không tìm thấy đơn đăng ký của sinh viên.");
   }
 
+  await regApi.selectBed(email, bedId);
+
   const nextRequest = persistRegistrationRequest({
     ...current,
     assigned_bed_id: bedId,
@@ -634,6 +647,7 @@ export const selectBedForRegistration = async ({
     bedId,
   });
   dispatchRegistrationRequestsUpdated();
+  dispatchRoomsUpdated();
 
   return nextRequest;
 };

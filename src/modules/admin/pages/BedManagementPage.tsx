@@ -1,15 +1,46 @@
 import { motion } from "framer-motion";
 import { ArrowUp, Funnel } from "lucide-react";
-import { getRegistrations } from "../../../api/registrationApi";
+import { getRegistrations } from "../../../api/registrationService";
+import { listRooms, type RoomApi } from "../../../api/roomApi";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DormRoom } from "../../../types/dormRoom";
 import { useOutletContext } from "react-router-dom";
 import { createPortal } from "react-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
-import { getRooms } from "../../../api/registrationApi";
 import type { RegistrationRequest } from "../data/registrationRequests";
 
 const getRoomName = (room: DormRoom) => `${room.building_code}${room.room_number}`;
+
+const mapRoomApiToDormRoom = (room: RoomApi): DormRoom => ({
+  id: room.id,
+  building_code: room.building_code,
+  room_number: room.room_number,
+  totalBeds: room.capacity,
+  availableBeds: room.available_beds,
+  capacity: room.capacity,
+  gender: room.floor?.gender ?? null,
+  floor_id: room.floor_id,
+  floor: room.floor
+    ? {
+        id: room.floor.id,
+        building_code: room.floor.building_code,
+        floor_number: room.floor.floor_number,
+        gender: room.floor.gender ?? undefined,
+      }
+    : undefined,
+  floor_number: room.floor_number,
+  beds: room.beds.map((bed) => {
+    const bedNumber = Number(bed.bed_number);
+
+    return {
+      id: bed.id,
+      room_id: bed.room_id,
+      bed_number: Number.isFinite(bedNumber) ? bedNumber : bed.id,
+      position: bed.position === "LOWER" ? "lower" : "upper",
+      status: bed.status === "MAINTENANCE" ? "maintenance" : "active",
+    };
+  }),
+});
 
 type BedSelectionFilter = "all" | "selected" | "not_selected";
 type BedSelectionSortOrder = "desc" | "asc";
@@ -57,18 +88,15 @@ export default function BedManagementPage() {
 
     const load = async () => {
       try {
-        const res = await getRegistrations();
+        const [registrationsRes, roomsRes] = await Promise.all([
+          getRegistrations(),
+          listRooms(),
+        ]);
 
         if (!isMounted) return;
 
-        setRequests(res);
-
-        try {
-          const roomsRes = await getRooms();
-          setRooms(roomsRes ?? []);
-        } catch {
-          setRooms([]);
-        }
+        setRequests(registrationsRes);
+        setRooms(roomsRes.map(mapRoomApiToDormRoom));
       } catch (err) {
         console.log(err);
         setRequests([]);
@@ -87,16 +115,30 @@ export default function BedManagementPage() {
     };
 
     window.addEventListener("ktx-registrations-updated", refreshRequests);
+    window.addEventListener("ktx-rooms-updated", refreshRequests);
+    window.addEventListener("focus", refreshRequests);
 
     return () => {
       isMounted = false;
       window.removeEventListener("ktx-registrations-updated", refreshRequests);
+      window.removeEventListener("ktx-rooms-updated", refreshRequests);
+      window.removeEventListener("focus", refreshRequests);
     };
   }, []);
 
   const roomNameById = useMemo(() => {
     const map = new Map<number, string>();
     rooms.forEach((room) => map.set(room.id, getRoomName(room)));
+    return map;
+  }, [rooms]);
+
+  const bedLabelById = useMemo(() => {
+    const map = new Map<number, string>();
+    rooms.forEach((room) => {
+      room.beds?.forEach((bed) => {
+        map.set(bed.id, `#${bed.bed_number}`);
+      });
+    });
     return map;
   }, [rooms]);
 
@@ -290,8 +332,9 @@ export default function BedManagementPage() {
                 const roomName = request.assigned_room_id
                   ? roomNameById.get(request.assigned_room_id) ?? "-"
                   : "-";
-                const bedNumber = request.bedId ? request.bedId % 100 : null;
-                const bedLabel = bedNumber ? `#${bedNumber}` : "Chưa chọn";
+                const bedLabel = request.bedId
+                  ? bedLabelById.get(request.bedId) ?? `#${request.bedId}`
+                  : "Chưa chọn";
                 const meta = getSelectionMeta(request);
 
                 return (

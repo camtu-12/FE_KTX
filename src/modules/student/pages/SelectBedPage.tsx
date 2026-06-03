@@ -3,13 +3,7 @@ import { ArrowLeft, CheckCircle2, LoaderCircle, MapPin, ShieldCheck } from "luci
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import {
-  getDormBedPairsForRoomInstant,
-  getDormRoomsInstant,
-  getLatestRegistrationByEmail,
-  getLatestRegistrationByEmailInstant,
-  selectBedForRegistration,
-} from "../../../api/registrationService";
+import { getLatestRegistrationByEmail, getLatestRegistrationByEmailInstant, selectBedForRegistration } from "../../../api/registrationService";
 import { getStoredAuth } from "../../auth/utils/authStorage";
 import bunkBedIcon from "../../../assets/icons8-bunk-bed-64.png";
 import maintenanceIcon from "../../../assets/icons8-maintenance-94.png";
@@ -17,15 +11,15 @@ import personIcon from "../../../assets/icons8-person-100.png";
 import roomIcon from "../../../assets/icons8-dormitory-66.png";
 import type { DormBed, DormBedPair, DormRoom } from "../../../types/dormRoom";
 import getBedDisplayStatus from "../../../utils/bedDisplay";
-import { hasOccupancy } from "../../../mocks/roommanagement";
+import { listRooms } from "../../../api/roomApi";
 import type { RegistrationRequest } from "../../admin/data/registrationRequests";
 
 const getRoomName = (room: DormRoom) => `${room.building_code}${room.room_number}`;
 
 const getPositionLabel = (position: DormBed["position"]) => (position === "upper" ? "Trên" : "Dưới");
 
-const getStatusMeta = (bed: DormBed) => {
-  const display = getBedDisplayStatus(bed, undefined, hasOccupancy);
+const getStatusMeta = (bed: DormBed, hasOccupancyFn?: (id: number) => boolean) => {
+  const display = getBedDisplayStatus(bed, undefined, hasOccupancyFn);
 
   if (display === "MAINTENANCE") {
     return {
@@ -62,13 +56,15 @@ function BedRow({
   bed,
   isSelected,
   onSelect,
+  hasOccupancyFn,
 }: {
   bed: DormBed;
   isSelected: boolean;
   onSelect: (bedId: number) => void;
+  hasOccupancyFn?: (id: number) => boolean;
 }) {
-  const meta = getStatusMeta(bed);
-  const isClickable = getBedDisplayStatus(bed, undefined, hasOccupancy) === "NO_OCCUPANCY";
+  const meta = getStatusMeta(bed, hasOccupancyFn);
+  const isClickable = getBedDisplayStatus(bed, undefined, hasOccupancyFn) === "NO_OCCUPANCY";
 
   return (
     <button
@@ -87,11 +83,11 @@ function BedRow({
     >
       <div
         className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border text-base shadow-sm ${
-          getBedDisplayStatus(bed, undefined, hasOccupancy) === "NO_OCCUPANCY"
+          getBedDisplayStatus(bed, undefined, hasOccupancyFn) === "NO_OCCUPANCY"
             ? isSelected
               ? "border-[#2f63da] bg-white text-[#244cb8]"
               : "border-[#cfe2ff] bg-white text-[#244cb8]"
-            : getBedDisplayStatus(bed, undefined, hasOccupancy) === "HAS_OCCUPANCY"
+            : getBedDisplayStatus(bed, undefined, hasOccupancyFn) === "HAS_OCCUPANCY"
               ? "border-slate-200 bg-slate-200 text-slate-600"
               : "border-amber-200 bg-amber-100 text-amber-700"
         }`}
@@ -120,10 +116,12 @@ function BedPairCard({
   pair,
   selectedBedId,
   onSelect,
+  hasOccupancyFn,
 }: {
   pair: DormBedPair;
   selectedBedId: number | null;
   onSelect: (bedId: number) => void;
+  hasOccupancyFn?: (id: number) => boolean;
 }) {
   return (
     <article className="overflow-hidden rounded-[24px] border border-[#c9daf1] bg-white shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
@@ -135,9 +133,9 @@ function BedPairCard({
       </div>
 
       <div className="space-y-3 p-4">
-        <BedRow bed={pair.upper} isSelected={pair.upper.id === selectedBedId} onSelect={onSelect} />
+        <BedRow bed={pair.upper} isSelected={pair.upper.id === selectedBedId} onSelect={onSelect} hasOccupancyFn={hasOccupancyFn} />
 
-        <BedRow bed={pair.lower} isSelected={pair.lower.id === selectedBedId} onSelect={onSelect} />
+        <BedRow bed={pair.lower} isSelected={pair.lower.id === selectedBedId} onSelect={onSelect} hasOccupancyFn={hasOccupancyFn} />
       </div>
     </article>
   );
@@ -212,11 +210,10 @@ export default function SelectBedPage() {
   const navigate = useNavigate();
   const storedAuth = getStoredAuth();
   const studentEmail = storedAuth?.user.email ?? "";
-  const [rooms, setRooms] = useState<DormRoom[]>(() => getDormRoomsInstant());
+  const [rooms, setRooms] = useState<DormRoom[]>([]);
   const [registrationVersion, setRegistrationVersion] = useState(0);
-  const [request, setRequest] = useState<RegistrationRequest | null | undefined>(() =>
-    studentEmail ? getLatestRegistrationByEmailInstant(studentEmail) : null,
-  );
+  const [request, setRequest] = useState<RegistrationRequest | null | undefined>(undefined);
+  const [isRequestLoaded, setIsRequestLoaded] = useState(false);
 
   useEffect(() => {
     try {
@@ -234,25 +231,39 @@ export default function SelectBedPage() {
   }, []);
 
   useEffect(() => {
-    const refreshRooms = () => setRooms(getDormRoomsInstant());
     const refreshRegistrations = () => setRegistrationVersion((prev) => prev + 1);
 
-    refreshRooms();
-    refreshRegistrations();
+    const loadRooms = async () => {
+      try {
+        const data = await listRooms();
+        const mapped = (data as any[]).map((r) => ({
+          id: r.id,
+          building_code: r.building_code,
+          room_number: r.room_number,
+          totalBeds: r.beds?.length ?? r.capacity ?? 0,
+          availableBeds: (r.beds?.filter((b: any) => !b.occupied).length) ?? 0,
+          capacity: r.capacity ?? r.beds?.length,
+          gender: r.floor?.gender ?? null,
+          floor_id: r.floor?.id ?? r.floor_id,
+          floor: r.floor ? { id: r.floor.id, building_code: r.building_code, floor_number: r.floor.floor_number, gender: r.floor.gender } : undefined,
+          floor_number: r.floor_number ?? r.floor?.floor_number,
+          beds: Array.isArray(r.beds)
+            ? r.beds.map((b: any) => ({ id: b.id, room_id: r.id, bed_number: Number(b.bed_number) || 0, position: String(b.position).toLowerCase() === "upper" ? "upper" : "lower", status: String(b.status).toLowerCase() === "maintenance" ? "maintenance" : "active", occupied: Boolean(b.occupied) }))
+            : [],
+        })) as DormRoom[];
 
-    if (typeof window === "undefined") {
-      return;
-    }
+        setRooms(mapped);
+      } catch {
+        // ignore
+      }
+    };
 
-    window.addEventListener("storage", refreshRooms);
-    window.addEventListener("focus", refreshRooms);
-    window.addEventListener("ktx-rooms-updated", refreshRooms);
+    void loadRooms();
+    window.addEventListener("focus", loadRooms);
     window.addEventListener("ktx-registrations-updated", refreshRegistrations);
 
     return () => {
-      window.removeEventListener("storage", refreshRooms);
-      window.removeEventListener("focus", refreshRooms);
-      window.removeEventListener("ktx-rooms-updated", refreshRooms);
+      window.removeEventListener("focus", loadRooms);
       window.removeEventListener("ktx-registrations-updated", refreshRegistrations);
     };
   }, []);
@@ -261,8 +272,11 @@ export default function SelectBedPage() {
     let isMounted = true;
 
     const loadRequest = async () => {
+      setIsRequestLoaded(false);
+
       if (!studentEmail) {
         setRequest(null);
+        setIsRequestLoaded(true);
         return;
       }
 
@@ -275,10 +289,14 @@ export default function SelectBedPage() {
         const latestRequest = await getLatestRegistrationByEmail(studentEmail);
         if (isMounted) {
           setRequest(latestRequest);
+          setIsRequestLoaded(true);
         }
       } catch {
         if (isMounted && !instantRequest) {
           setRequest(null);
+        }
+        if (isMounted) {
+          setIsRequestLoaded(true);
         }
       }
     };
@@ -301,7 +319,18 @@ export default function SelectBedPage() {
 
   const bedPairs = useMemo(() => {
     const roomId = request?.assigned_room_id;
-    return roomId ? getDormBedPairsForRoomInstant(roomId) : [];
+    if (!roomId) return [] as DormBedPair[];
+    const target = rooms.find((r) => r.id === roomId);
+    if (!target || !Array.isArray(target.beds)) return [] as DormBedPair[];
+
+    const pairs: DormBedPair[] = [];
+    for (let i = 0; i < target.beds.length; i += 2) {
+      const upper = target.beds[i];
+      const lower = target.beds[i + 1];
+      if (upper && lower) pairs.push({ pairNumber: i / 2 + 1, upper, lower });
+    }
+
+    return pairs;
   }, [request?.assigned_room_id, rooms]);
 
   const [selectedBedId, setSelectedBedId] = useState<number | null>(null);
@@ -311,20 +340,33 @@ export default function SelectBedPage() {
   const errorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!studentEmail || !request) {
+    if (!isRequestLoaded || !studentEmail || !request) {
       return;
     }
 
     if (request.bedId) {
       navigate("/student/registration", { replace: true });
     }
-  }, [navigate, request, studentEmail]);
+  }, [isRequestLoaded, navigate, request, studentEmail]);
 
   const roomName = room ? getRoomName(room) : request?.assigned_room_id ? `Phòng ${request.assigned_room_id}` : "";
   const selectedBed = useMemo(() => {
     const allBeds = bedPairs.flatMap((pair) => [pair.upper, pair.lower]);
     return allBeds.find((bed) => bed.id === selectedBedId) ?? null;
   }, [bedPairs, selectedBedId]);
+  const hasOccupancyFn = useMemo(() => {
+    const occupiedBedIds = new Set<number>();
+
+    rooms.forEach((item) => {
+      item.beds?.forEach((bed) => {
+        if (Boolean((bed as DormBed & { occupied?: boolean }).occupied)) {
+          occupiedBedIds.add(bed.id);
+        }
+      });
+    });
+
+    return (bedId: number) => occupiedBedIds.has(bedId);
+  }, [rooms]);
 
   const handleCancelSelection = () => {
     if (isSubmitting) {
@@ -418,7 +460,7 @@ export default function SelectBedPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-2">
         {bedPairs.map((pair) => (
-          <BedPairCard key={pair.pairNumber} pair={pair} selectedBedId={selectedBedId} onSelect={handleSelectBed} />
+          <BedPairCard key={pair.pairNumber} pair={pair} selectedBedId={selectedBedId} onSelect={handleSelectBed} hasOccupancyFn={hasOccupancyFn} />
         ))}
       </div>
 

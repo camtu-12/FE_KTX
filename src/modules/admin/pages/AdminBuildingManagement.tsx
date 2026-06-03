@@ -12,13 +12,13 @@ import {
 import { createPortal } from "react-dom";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
-import { initialBuildings, type Building, type BuildingStatus } from "../../../mocks/buildings";
-import { initialRooms, hasOccupancy } from "../../../mocks/roommanagement";
+import { type Building, type BuildingStatus } from "../../../mocks/buildings";
+import { createBuilding, deleteBuilding, listBuildings, updateBuilding } from "../../../api/buildingApi";
+import { listRooms, type RoomApi } from "../../../api/roomApi";
 
-const STORAGE_KEY = "ktx_buildings_dashboard_v2";
-const ROOM_STORAGE_KEY = "ktx_rooms_dashboard_v2";
+// No localStorage keys; data loaded from backend
 
-type RoomRecord = (typeof initialRooms)[number];
+type RoomRecord = RoomApi;
 
 type BuildingForm = {
   building_code: string;
@@ -80,18 +80,7 @@ function getRoomBuildingCode(room: RoomRecord) {
   return room.building_code ?? room.floor?.building_code ?? "";
 }
 
-function readRoomRecords() {
-  if (typeof window === "undefined") return initialRooms as RoomRecord[];
-
-  try {
-    const raw = window.localStorage.getItem(ROOM_STORAGE_KEY);
-    if (!raw) return initialRooms as RoomRecord[];
-    const parsed = JSON.parse(raw) as RoomRecord[];
-    return Array.isArray(parsed) ? parsed : (initialRooms as RoomRecord[]);
-  } catch {
-    return initialRooms as RoomRecord[];
-  }
-}
+// Room records are sourced from backend via `listRooms()`
 
 function getBuildingMetrics(building: Building, rooms: RoomRecord[]) {
   const buildingRooms = rooms.filter((room) => getRoomBuildingCode(room) === building.building_code);
@@ -104,30 +93,18 @@ function getBuildingMetrics(building: Building, rooms: RoomRecord[]) {
       });
 
       accumulator.rooms += floorRooms.length;
-      accumulator.beds += floorRooms.reduce((sum, room) => sum + room.beds.length, 0);
-      accumulator.students += floorRooms.reduce((sum, room) => sum + room.beds.filter((bed) => hasOccupancy(bed.id)).length, 0);
+      accumulator.beds += floorRooms.reduce((sum, room) => sum + (room.beds?.length ?? 0), 0);
+      accumulator.students += floorRooms.reduce(
+        (sum, room) => sum + (room.beds?.filter((bed) => !!(bed as any).occupied).length ?? 0),
+        0,
+      );
       return accumulator;
     },
     { rooms: 0, beds: 0, students: 0 },
   );
 }
 
-function writeRoomRecords(records: RoomRecord[]) {
-  if (typeof window === "undefined") return;
-
-  try {
-    window.localStorage.setItem(ROOM_STORAGE_KEY, JSON.stringify(records));
-    window.dispatchEvent(new Event("ktx-rooms-updated"));
-  } catch {
-    // ignore write failures
-  }
-}
-
-function removeRoomsForBuilding(buildingCode: string) {
-  const existing = readRoomRecords();
-  const nextRooms = existing.filter((room) => getRoomBuildingCode(room) !== buildingCode);
-  writeRoomRecords(nextRooms);
-}
+// No local room persistence helpers
 
 function getBuildingStatusLabel(status: BuildingStatus) {
   if (status === "ACTIVE") return "Đang hoạt động";
@@ -153,22 +130,13 @@ export default function AdminBuildingManagement() {
   const navigate = useNavigate();
   const { headerSearchValue } = useOutletContext<AdminLayoutOutletContext>();
 
-  const [buildings, setBuildings] = useState<Building[]>(() => {
-    if (typeof window === "undefined") return initialBuildings;
-
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) return initialBuildings;
-      const parsed = JSON.parse(raw) as Building[];
-      return Array.isArray(parsed) && parsed.length > 0 ? parsed : initialBuildings;
-    } catch {
-      return initialBuildings;
-    }
-  });
+  const [buildings, setBuildings] = useState<Building[]>([]);
+  const [isBuildingsLoading, setIsBuildingsLoading] = useState(true);
+  const [buildingsLoadError, setBuildingsLoadError] = useState("");
 
   const [isScrollToTopVisible, setIsScrollToTopVisible] = useState(false);
   const [isBuildingModalOpen, setIsBuildingModalOpen] = useState(false);
-  const [editingBuildingId, setEditingBuildingId] = useState<number | null>(null);
+  const [editingBuildingId, setEditingBuildingId] = useState<string | null>(null);
   const [buildingForm, setBuildingForm] = useState<BuildingForm>(createEmptyBuildingForm());
   const [buildingFormError, setBuildingFormError] = useState("");
   const [buildingValidationErrors, setBuildingValidationErrors] = useState<{ building_code?: string; address?: string }>({});
@@ -205,12 +173,52 @@ export default function AdminBuildingManagement() {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(buildings));
-    window.dispatchEvent(new Event("ktx-buildings-updated"));
-  }, [buildings]);
+    // Buildings are sourced from backend; no localStorage caching.
+  }, [buildings, isBuildingsLoading]);
 
-  const rooms = useMemo(() => readRoomRecords(), []);
+  useEffect(() => {
+    let active = true;
+
+    const loadBuildings = async () => {
+      try {
+        const nextBuildings = await listBuildings();
+        if (!active) return;
+        setBuildings(nextBuildings);
+        setBuildingsLoadError("");
+      } catch {
+        if (!active) return;
+        setBuildingsLoadError("Không thể tải dữ liệu tòa từ BE.");
+      } finally {
+        if (active) {
+          setIsBuildingsLoading(false);
+        }
+      }
+    };
+
+    void loadBuildings();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const [rooms, setRooms] = useState<RoomRecord[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const data = await listRooms();
+        if (!mounted) return;
+        setRooms(data as RoomRecord[]);
+      } catch (err) {
+        // ignore
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!isStatusFilterOpen) return;
@@ -284,7 +292,7 @@ export default function AdminBuildingManagement() {
 
         return matchesKeyword && matchesStatus && matchesBuilding;
       })
-      .sort((left, right) => (idSortOrder === "asc" ? left.id - right.id : right.id - left.id));
+      .sort((left, right) => (idSortOrder === "asc" ? left.id.localeCompare(right.id) : right.id.localeCompare(left.id)));
   }, [buildings, filterBuilding, filterStatus, headerSearchValue, idSortOrder, rooms]);
 
   const filteredTotals = useMemo(() => {
@@ -347,7 +355,7 @@ export default function AdminBuildingManagement() {
     setIsBuildingModalOpen(true);
   };
 
-  const saveBuilding = (event: FormEvent) => {
+  const saveBuilding = async (event: FormEvent) => {
     event.preventDefault();
     setBuildingSubmitAttempted(true);
 
@@ -364,21 +372,13 @@ export default function AdminBuildingManagement() {
       return;
     }
 
-    // Prevent duplicate building code or address
+    // Prevent duplicate building code. Address may be shared by buildings in the same campus.
     const normalizedCode = nextForm.building_code.trim().toUpperCase();
     const normalizedAddress = nextForm.address.trim();
     const codeExists = buildings.some((b) => b.building_code.trim().toUpperCase() === normalizedCode && (editingBuildingId ? b.id !== editingBuildingId : true));
     if (codeExists) {
       setBuildingValidationErrors({ building_code: "Tòa đã tồn tại" });
       return;
-    }
-
-    if (normalizedAddress) {
-      const addrExists = buildings.some((b) => (b.address ?? '').trim().toLowerCase() === normalizedAddress.toLowerCase() && (editingBuildingId ? b.id !== editingBuildingId : true));
-      if (addrExists) {
-        setBuildingValidationErrors({ address: "Địa chỉ tòa đã tồn tại" });
-        return;
-      }
     }
 
     if (editingBuildingId !== null && !isEditingFromMaintenance) {
@@ -395,34 +395,30 @@ export default function AdminBuildingManagement() {
       // Allow switching to ACTIVE (Ngưng hoạt động -> Đang hoạt động) even if there are currently 0 students.
     }
 
-    if (editingBuildingId === null) {
-      const nextId = buildings.length > 0 ? Math.max(...buildings.map((b) => b.id)) + 1 : 1;
-      setBuildings((current) => [
-        {
-          id: nextId,
-          building_code: nextForm.building_code,
-          address: nextForm.address || undefined,
-          status: nextForm.status,
-          floors: [],
-        },
-        ...current,
-      ]);
-    } else {
-      setBuildings((current) =>
-        current.map((building) =>
-          building.id === editingBuildingId
-            ? {
-                ...building,
-                building_code: nextForm.building_code,
-                address: nextForm.address || undefined,
-                status: nextForm.status,
-              }
-            : building,
-        ),
-      );
-    }
+    try {
+      const payload = {
+        building_code: normalizedCode,
+        address: normalizedAddress,
+        status: nextForm.status,
+      };
 
-    setIsBuildingModalOpen(false);
+      const nextBuilding = editingBuildingId === null
+        ? await createBuilding(payload)
+        : await updateBuilding(editingBuildingId, payload);
+
+      setBuildings((current) => {
+        if (editingBuildingId === null) {
+          return [nextBuilding, ...current];
+        }
+
+        return current.map((building) => (building.id === editingBuildingId ? nextBuilding : building));
+      });
+
+      setIsBuildingModalOpen(false);
+      setBuildingFormError("");
+    } catch (error) {
+      setBuildingFormError(error instanceof Error ? error.message : "Không thể lưu tòa.");
+    }
   };
 
   function showConfirm(message: string, action: () => void) {
@@ -443,8 +439,7 @@ export default function AdminBuildingManagement() {
   }
 
   const removeBuilding = (building: Building) => {
-    const currentRooms = readRoomRecords();
-    const metrics = getBuildingMetrics(building, currentRooms);
+    const metrics = getBuildingMetrics(building, rooms);
     if (metrics.students > 0) {
       showConfirm(
         `Không thể xóa tòa ${building.building_code} vì đang có ${metrics.students} sinh viên. Hãy chuyển sinh viên sang tòa khác trước.`,
@@ -454,8 +449,14 @@ export default function AdminBuildingManagement() {
     }
 
     showConfirm(`Bạn có chắc muốn xóa tòa ${building.building_code} không?`, () => {
-      setBuildings((current) => current.filter((item) => item.id !== building.id));
-      removeRoomsForBuilding(building.building_code);
+      void (async () => {
+        try {
+          await deleteBuilding(building.building_code);
+          setBuildings((current) => current.filter((item) => item.id !== building.id));
+        } catch (error) {
+          setBuildingFormError(error instanceof Error ? error.message : "Không thể xóa tòa.");
+        }
+      })();
     });
   };
 
@@ -678,6 +679,7 @@ export default function AdminBuildingManagement() {
         <div className="pr-0 xl:pr-52">
           <h1 className="text-[28px] font-bold tracking-tight text-[#1a2d52]">Quản lý tòa</h1>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-[#62789f]">Quản lý tòa, tầng và trạng thái cấu hình trong ký túc xá.</p>
+          {buildingsLoadError ? <p className="mt-2 text-sm font-medium text-red-600">{buildingsLoadError}</p> : null}
 
           <div className="mt-5 grid max-w-2xl grid-cols-1 gap-3 md:grid-cols-2">
             <SelectField value={filterBuilding} onChange={(event) => setFilterBuilding(event.target.value)}>
@@ -775,7 +777,7 @@ export default function AdminBuildingManagement() {
                     return (
                       <tr
                         key={building.id}
-                        onClick={() => navigate(`/admin/buildings/${building.id}`)}
+                        onClick={() => navigate(`/admin/buildings/${building.building_code}`)}
                         className="group cursor-pointer transition-colors duration-200 hover:bg-[#f8fbff]"
                       >
                         <td className="border-t border-[#e7eef9] px-3 py-4 text-center text-sm font-semibold text-[#1f3152]">Tòa {building.building_code}</td>
@@ -792,7 +794,7 @@ export default function AdminBuildingManagement() {
                         <td className="border-t border-[#e7eef9] px-3 py-4 text-center">
                           <div className="flex flex-col items-center justify-center gap-2">
                             <div className="flex items-center justify-center gap-2">
-                              <button type="button" onClick={(event) => { event.stopPropagation(); navigate(`/admin/buildings/${building.id}`); }} aria-label="Xem chi tiết" title="Xem chi tiết" className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.12)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white">
+                              <button type="button" onClick={(event) => { event.stopPropagation(); navigate(`/admin/buildings/${building.building_code}`); }} aria-label="Xem chi tiết" title="Xem chi tiết" className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.12)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white">
                                 <Eye className="h-3.5 w-3.5" />
                               </button>
                               <button type="button" onClick={(event) => { event.stopPropagation(); openEditBuilding(building); }} aria-label="Sửa" title="Sửa" className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.12)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white">
@@ -811,7 +813,7 @@ export default function AdminBuildingManagement() {
                   <tr>
                     <td colSpan={8} className="border-t border-[#e7eef9] px-4 py-14 text-center">
                     <div className="mx-auto flex max-w-md flex-col items-center justify-center rounded-[28px] border border-dashed border-[#cfdcf0] bg-[#f8fbff] px-6 py-10 text-center">
-                        <p className="mt-3 text-sm font-semibold text-[#1a2d52]">Không tìm thấy tầng phù hợp với bộ lọc hiện tại</p>
+                        <p className="mt-3 text-sm font-semibold text-[#1a2d52]">{isBuildingsLoading ? "Đang tải danh sách tòa..." : "Không tìm thấy tòa phù hợp với bộ lọc hiện tại"}</p>
                         <button type="button" onClick={() => { setFilterStatus("all"); setFilterBuilding("all"); }} className="mt-4 inline-flex h-8 items-center justify-center rounded-xl bg-[#244cb8] px-3.5 text-sm font-semibold text-white transition hover:bg-[#1f44a4]">
                             Bỏ bộ lọc
                         </button>

@@ -1,34 +1,17 @@
-export type BuildingStatus = "ACTIVE" | "MAINTENANCE" | "INACTIVE";
+import type { Building } from "../types/building";
 
-export type FloorGender = "MALE" | "FEMALE";
-
-export type FloorStatus = BuildingStatus;
-
-export type BuildingFloor = {
-  floorNumber: number;
-  gender: FloorGender;
-  roomCount: number;
-  bedCount: number;
-  occupiedStudents: number;
-  status: FloorStatus;
-};
-
-export type Building = {
-  id: number;
-  building_code: string;
-  address?: string;
-  status: BuildingStatus;
-  floors: BuildingFloor[];
-};
+export type { Building, BuildingFloor, BuildingStatus, FloorGender, FloorStatus } from "../types/building";
 
 export const initialBuildings: Building[] = [
   {
-    id: 1,
+    id: "A",
     building_code: "A",
+    name: "Tòa A",
     address: "180 Cao Lỗ, Phường 4, Quận 8, TP.HCM",
     status: "ACTIVE",
     floors: [
       {
+        id: 1,
         floorNumber: 1,
         gender: "MALE",
         roomCount: 9,
@@ -37,6 +20,7 @@ export const initialBuildings: Building[] = [
         status: "ACTIVE",
       },
       {
+        id: 2,
         floorNumber: 2,
         gender: "FEMALE",
         roomCount: 10,
@@ -47,12 +31,14 @@ export const initialBuildings: Building[] = [
     ],
   },
   {
-    id: 2,
+    id: "B",
     building_code: "B",
+    name: "Tòa B",
     address: "180 Cao Lỗ, Phường 4, Quận 8, TP.HCM",
     status: "ACTIVE",
     floors: [
       {
+        id: 3,
         floorNumber: 1,
         gender: "MALE",
         roomCount: 8,
@@ -61,6 +47,7 @@ export const initialBuildings: Building[] = [
         status: "ACTIVE",
       },
       {
+        id: 4,
         floorNumber: 2,
         gender: "MALE",
         roomCount: 8,
@@ -69,6 +56,7 @@ export const initialBuildings: Building[] = [
         status: "ACTIVE",
       },
       {
+        id: 5,
         floorNumber: 3,
         gender: "MALE",
         roomCount: 9,
@@ -77,6 +65,7 @@ export const initialBuildings: Building[] = [
         status: "ACTIVE",
       },
       {
+        id: 6,
         floorNumber: 4,
         gender: "MALE",
         roomCount: 9,
@@ -85,6 +74,7 @@ export const initialBuildings: Building[] = [
         status: "ACTIVE",
       },
       {
+        id: 7,
         floorNumber: 5,
         gender: "MALE",
         roomCount: 8,
@@ -95,12 +85,14 @@ export const initialBuildings: Building[] = [
     ],
   },
   {
-    id: 3,
+    id: "C",
     building_code: "C",
+    name: "Tòa C",
     address: "KTX STU - 131 Đường",
     status: "MAINTENANCE",
     floors: [
       {
+        id: 8,
         floorNumber: 1,
         gender: "FEMALE",
         roomCount: 6,
@@ -109,6 +101,7 @@ export const initialBuildings: Building[] = [
         status: "ACTIVE",
       },
       {
+        id: 9,
         floorNumber: 2,
         gender: "FEMALE",
         roomCount: 6,
@@ -117,6 +110,7 @@ export const initialBuildings: Building[] = [
         status: "MAINTENANCE",
       },
       {
+        id: 10,
         floorNumber: 3,
         gender: "FEMALE",
         roomCount: 6,
@@ -125,6 +119,7 @@ export const initialBuildings: Building[] = [
         status: "ACTIVE",
       },
       {
+        id: 11,
         floorNumber: 4,
         gender: "FEMALE",
         roomCount: 6,
