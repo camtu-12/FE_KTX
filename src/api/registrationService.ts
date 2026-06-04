@@ -14,6 +14,7 @@ import type {
 import {
   dispatchRegistrationRequestsUpdated,
 } from "../modules/admin/data/registrationRequests";
+import { markBedSelectionPending } from "../mocks/bedApprovalStore";
 
 // Sử dụng Railway URL từ environment variables (có fallback nếu biến không được set)
 const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) || "http://127.0.0.1:8000").replace(/\/+$/, "");
@@ -499,6 +500,9 @@ export const selectBedForRegistration = async ({
     assigned_bed_id: bedId,
     bedId,
   };
+  if (nextRequest.id && nextRequest.bedId) {
+    markBedSelectionPending(nextRequest.id, nextRequest.bedId);
+  }
   dispatchRegistrationRequestsUpdated();
   dispatchRoomsUpdated();
 

@@ -21,6 +21,10 @@ import { checkStudentCodeExists } from "../../auth/services/auth.api";
 import { useAuthStore } from "../../auth/store";
 import type { RegistrationRequest } from "../../admin/data/registrationRequests";
 import ProgressStep from "../components/ProgressStep";
+import {
+  BED_APPROVAL_UPDATED_EVENT,
+  getEffectiveBedApprovalStatus,
+} from "../../../mocks/bedApprovalStore";
 
 type RegistrationStatus = "unregistered" | "pending" | "approved" | "rejected" | "completed";
 type ProgressStatus = "pending" | "approved" | "assigned_room" | "selected_bed" | "completed";
@@ -374,11 +378,13 @@ export default function RegistrationPage() {
 
     window.addEventListener("ktx-rooms-updated", loadRooms);
     window.addEventListener("ktx-registrations-updated", loadRooms);
+    window.addEventListener(BED_APPROVAL_UPDATED_EVENT, loadRooms);
 
     return () => {
       mounted = false;
       window.removeEventListener("ktx-rooms-updated", loadRooms);
       window.removeEventListener("ktx-registrations-updated", loadRooms);
+      window.removeEventListener(BED_APPROVAL_UPDATED_EVENT, loadRooms);
     };
   }, []);
 
@@ -580,12 +586,21 @@ export default function RegistrationPage() {
     }
   }
 
+  const assignedRoomLookup = useMemo(() => {
+    const assignedRoomId = registration?.assigned_room_id;
+    const assignedBedId = registration?.bedId;
+    const room = assignedRoomId ? roomCatalog.find((item) => item.id === assignedRoomId) ?? null : null;
+    const bed = assignedBedId && room ? room.beds.find((item) => item.id === assignedBedId) ?? null : null;
+
+    return { room, bed };
+  }, [registration?.assigned_room_id, registration?.bedId, roomCatalog]);
+
   const registrationForView = useMemo(() => {
     if (!registration?.assigned_room_id) {
       return registration;
     }
 
-    const assignedRoom = roomCatalog.find((room) => room.id === registration.assigned_room_id);
+    const assignedRoom = assignedRoomLookup.room;
     if (!assignedRoom) {
       return registration;
     }
@@ -595,45 +610,43 @@ export default function RegistrationPage() {
       building_code: assignedRoom.building_code,
       room_number: assignedRoom.room_number,
     };
-  }, [registration, roomCatalog]);
+  }, [assignedRoomLookup.room, registration]);
   const statusForView = registrationForView?.status ?? status;
   const assignedRoomName = registrationForView?.assigned_room_id
     ? registrationForView?.room_number
       ? `${registrationForView.building_code ?? ""}${registrationForView.room_number}`
-      : `Phòng ${registrationForView.assigned_room_id}`
+      : null
     : null;
-  const selectedBedNumber = useMemo(() => {
-    if (!registrationForView?.bedId) {
-      return null;
-    }
-
-    for (const room of roomCatalog) {
-      const bed = room.beds.find((item) => item.id === registrationForView.bedId);
-      if (bed) {
-        return bed.bed_number;
-      }
-    }
-
-    return registrationForView.bedId;
-  }, [registrationForView?.assigned_room_id, registrationForView?.bedId, roomCatalog]);
-  const selectedBedName = selectedBedNumber ? `Giường ${selectedBedNumber}` : null;
-  const hasSelectedBed = Boolean(registrationForView?.bedId);
+  const assignedRoomDisplayName = registrationForView?.assigned_room_id
+    ? assignedRoomName ?? "Đang tải..."
+    : null;
+  const selectedBedNumber = registrationForView?.bedId ? assignedRoomLookup.bed?.bed_number ?? null : null;
+  const selectedBedName = registrationForView?.bedId
+    ? selectedBedNumber
+      ? `Giường ${selectedBedNumber}`
+      : "Đang tải..."
+    : null;
+  const bedApprovalStatus = getEffectiveBedApprovalStatus(registrationForView?.id, registrationForView?.bedId);
+  const hasSelectedBed = Boolean(registrationForView?.bedId && bedApprovalStatus !== "rejected");
 
   const progressStatus: ProgressStatus = useMemo(() => {
     if (statusForView === "completed") {
       return "completed";
     }
-    if (registrationForView?.bedId) {
+    if (registrationForView?.bedId && bedApprovalStatus === "approved") {
+      return "completed";
+    }
+    if (registrationForView?.bedId && bedApprovalStatus !== "rejected") {
       return "selected_bed";
     }
-    if (statusForView === "approved" && registrationForView?.assigned_room_id && assignedRoomName) {
+    if (statusForView === "approved" && registrationForView?.assigned_room_id) {
       return "assigned_room";
     }
     if (statusForView === "approved") {
       return "approved";
     }
     return "pending";
-  }, [assignedRoomName, registrationForView?.assigned_room_id, registrationForView?.bedId, statusForView]);
+  }, [bedApprovalStatus, registrationForView?.assigned_room_id, registrationForView?.bedId, statusForView]);
 
   const currentProgressStep = useMemo(() => getCurrentStep(progressStatus), [progressStatus]);
 
@@ -1341,10 +1354,12 @@ export default function RegistrationPage() {
           <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-emerald-200 bg-emerald-50/95 p-5 text-center shadow-[0_12px_24px_rgba(16,185,129,0.16)]">
             <div className="flex items-center justify-center gap-2 text-emerald-700">
               <BedSingle className="h-5 w-5" />
-              <p className="font-semibold text-emerald-900">Bạn đã chọn giường thành công</p>
+              <p className="font-semibold text-emerald-900">
+                {progressStatus === "completed" ? "Đăng ký nội trú đã hoàn tất" : "Bạn đã chọn giường thành công"}
+              </p>
             </div>
             <p className="mt-1.5 text-sm text-emerald-800/90">
-              Phòng: <span className="font-bold">{assignedRoomName}</span>
+              Phòng: <span className="font-bold">{assignedRoomDisplayName}</span>
             </p>
             <p className="mt-1 text-sm text-emerald-800/90">
               Giường: <span className="font-bold">{selectedBedName}</span>
@@ -1355,14 +1370,14 @@ export default function RegistrationPage() {
                 : "Vui lòng chờ ban quản lý duyệt giường. Nếu được duyệt, đăng ký sẽ hoàn tất."}
             </p>
           </div>
-        ) : registrationForView?.assigned_room_id && assignedRoomName ? (
+        ) : registrationForView?.assigned_room_id && assignedRoomDisplayName ? (
           <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-emerald-200 bg-emerald-50/95 p-5 text-center shadow-[0_12px_24px_rgba(16,185,129,0.16)]">
             <div className="flex items-center justify-center gap-2 text-emerald-700">
               <Home className="h-5 w-5" />
               <p className="font-semibold text-emerald-900">Bạn đã được phân phòng</p>
             </div>
             <p className="mt-1.5 text-sm text-emerald-800/90">
-              Phòng: <span className="font-bold">{assignedRoomName}</span>
+              Phòng: <span className="font-bold">{assignedRoomDisplayName}</span>
             </p>
             <p className="mt-1 text-sm text-emerald-800/90">Vui lòng chọn giường để hoàn tất đăng ký nội trú</p>
             <button

@@ -30,7 +30,9 @@ export default function AdminLayout() {
     ? "Tìm theo số phòng..."
     : isBuildingManagementPage
       ? "Tìm theo mã, tên hoặc địa chỉ tòa..."
-    : "Tìm theo MSSV, họ tên hoặc email";
+      : isAssignRoomListPage || isBedManagementPage
+        ? "Tìm theo MSSV hoặc họ tên"
+        : "Tìm theo MSSV, họ tên hoặc email";
 
   const handleLogout = () => {
     clearAuthStorage();

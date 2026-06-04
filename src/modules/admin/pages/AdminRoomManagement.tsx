@@ -18,6 +18,7 @@ import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import { listRooms, createRoom, updateRoom, deleteRoom, updateBedStatus } from "../../../api/roomApi";
 import { getBuilding, listBuildings } from "../../../api/buildingApi";
 import type { Building } from "../../../types/building";
+import { BED_APPROVAL_UPDATED_EVENT, isBedRejectedByApproval } from "../../../mocks/bedApprovalStore";
 
 type RoomStatus = "AVAILABLE" | "FULL" | "MAINTENANCE";
 type BedStatus = "ACTIVE" | "MAINTENANCE";
@@ -106,8 +107,12 @@ const initialFormState: RoomFormState = {
   status: "AVAILABLE",
 };
 
+function isBedEffectivelyOccupied(bed: Pick<Bed, "id" | "occupied">) {
+  return Boolean(bed.occupied) && !isBedRejectedByApproval(bed.id);
+}
+
 function getRoomOccupiedBeds(room: Room) {
-  return room.beds.filter((bed) => bed.occupied).length;
+  return room.beds.filter(isBedEffectivelyOccupied).length;
 }
 
 function getEmptyBeds(room: Room) {
@@ -144,7 +149,7 @@ function getBedDisplayStatus(room: Room, bed: Bed): string {
   if (bed.status === "MAINTENANCE") {
     return "Bảo trì";
   }
-  if (bed.occupied) {
+  if (isBedEffectivelyOccupied(bed)) {
     return "Có người";
   }
   return "Trống";
@@ -246,6 +251,7 @@ export default function AdminRoomManagement() {
       ? rawQueryStatus
       : "all";
   const [rooms, setRooms] = useState<RoomWithBeds[]>([]);
+  const [hasLoadedRooms, setHasLoadedRooms] = useState(false);
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [hasLoadedBuildings, setHasLoadedBuildings] = useState(false);
 
@@ -261,6 +267,10 @@ export default function AdminRoomManagement() {
         setRooms(data as unknown as RoomWithBeds[]);
       } catch (err) {
         // keep empty fallback
+      } finally {
+        if (mounted) {
+          setHasLoadedRooms(true);
+        }
       }
     };
 
@@ -269,6 +279,7 @@ export default function AdminRoomManagement() {
     if (typeof window !== "undefined") {
       window.addEventListener("ktx-rooms-updated", loadRooms);
       window.addEventListener("ktx-registrations-updated", loadRooms);
+      window.addEventListener(BED_APPROVAL_UPDATED_EVENT, loadRooms);
       window.addEventListener("focus", loadRooms);
     }
 
@@ -277,6 +288,7 @@ export default function AdminRoomManagement() {
       if (typeof window !== "undefined") {
         window.removeEventListener("ktx-rooms-updated", loadRooms);
         window.removeEventListener("ktx-registrations-updated", loadRooms);
+        window.removeEventListener(BED_APPROVAL_UPDATED_EVENT, loadRooms);
         window.removeEventListener("focus", loadRooms);
       }
     };
@@ -826,7 +838,7 @@ export default function AdminRoomManagement() {
     }
 
     // Kiểm tra ràng buộc chuyển trạng thái
-    if (editingBed.bed.occupied && editingBedStatus === "MAINTENANCE") {
+    if (isBedEffectivelyOccupied(editingBed.bed) && editingBedStatus === "MAINTENANCE") {
       return "Giường đang có sinh viên ở nên không thể chuyển sang bảo trì.";
     }
 
@@ -874,6 +886,26 @@ export default function AdminRoomManagement() {
     setIsBedsModalOpen(false);
     setSelectedRoom(null);
   };
+
+  if (!hasLoadedRooms || !hasLoadedBuildings) {
+    return (
+      <motion.section
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: "easeOut" }}
+        className="flex min-h-full flex-col gap-6 rounded-[28px] border border-[#cfdbef] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 shadow-[0_18px_44px_rgba(15,23,42,0.10)] sm:p-6"
+      >
+        <header className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
+          <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">Quản lý phòng</h1>
+          <p className="mt-1 text-sm text-[#62789f]">Đang tải danh sách phòng, giường và trạng thái lưu trú.</p>
+        </header>
+
+        <div className="rounded-[20px] border border-[#d8e4f5] bg-white px-6 py-10 text-center">
+          <div className="text-sm text-[#62789f]">Đang tải dữ liệu, vui lòng chờ...</div>
+        </div>
+      </motion.section>
+    );
+  }
 
   return (
     <motion.section
@@ -1154,7 +1186,7 @@ export default function AdminRoomManagement() {
                               
                               if (selectedRoom.status === "MAINTENANCE") {
                                 meta = maintenanceRoomBedMeta;
-                              } else if (bed.occupied) {
+                              } else if (isBedEffectivelyOccupied(bed)) {
                                 meta = { label: "Có người", className: "border-blue-200 bg-blue-50 text-blue-700" };
                               }
                               
@@ -1233,7 +1265,7 @@ export default function AdminRoomManagement() {
                         // Tính error dựa trên nextStatus
                         if (editingBed && editingBed.bed) {
                           setEditingBedError(
-                            editingBed.bed.occupied && nextStatus === "MAINTENANCE"
+                            isBedEffectivelyOccupied(editingBed.bed) && nextStatus === "MAINTENANCE"
                               ? "Giường đang có sinh viên ở nên không thể chuyển sang bảo trì."
                               : "",
                           );

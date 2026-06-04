@@ -11,12 +11,19 @@ import personIcon from "../../../assets/icons8-person-100.png";
 import roomIcon from "../../../assets/icons8-dormitory-66.png";
 import type { DormBed, DormBedPair, DormRoom } from "../../../types/dormRoom";
 import getBedDisplayStatus from "../../../utils/bedDisplay";
-import { listRooms } from "../../../api/roomApi";
+import { listRooms, type RoomApi } from "../../../api/roomApi";
 import type { RegistrationRequest } from "../../admin/data/registrationRequests";
+import {
+  BED_APPROVAL_UPDATED_EVENT,
+  getEffectiveBedApprovalStatus,
+  isBedRejectedByApproval,
+} from "../../../mocks/bedApprovalStore";
 
 const getRoomName = (room: DormRoom) => `${room.building_code}${room.room_number}`;
 
 const getPositionLabel = (position: DormBed["position"]) => (position === "upper" ? "Trên" : "Dưới");
+
+type SelectableDormBed = DormBed & { occupied?: boolean };
 
 const getStatusMeta = (bed: DormBed, hasOccupancyFn?: (id: number) => boolean) => {
   const display = getBedDisplayStatus(bed, undefined, hasOccupancyFn);
@@ -233,19 +240,19 @@ export default function SelectBedPage() {
     const loadRooms = async () => {
       try {
         const data = await listRooms();
-        const mapped = (data as any[]).map((r) => ({
+        const mapped = data.map((r: RoomApi) => ({
           id: r.id,
           building_code: r.building_code,
           room_number: r.room_number,
           totalBeds: r.beds?.length ?? r.capacity ?? 0,
-          availableBeds: (r.beds?.filter((b: any) => !b.occupied).length) ?? 0,
+          availableBeds: (r.beds?.filter((b) => !b.occupied || isBedRejectedByApproval(b.id)).length) ?? 0,
           capacity: r.capacity ?? r.beds?.length,
           gender: r.floor?.gender ?? null,
           floor_id: r.floor?.id ?? r.floor_id,
           floor: r.floor ? { id: r.floor.id, building_code: r.building_code, floor_number: r.floor.floor_number, gender: r.floor.gender } : undefined,
           floor_number: r.floor_number ?? r.floor?.floor_number,
           beds: Array.isArray(r.beds)
-            ? r.beds.map((b: any) => ({ id: b.id, room_id: r.id, bed_number: Number(b.bed_number) || 0, position: String(b.position).toLowerCase() === "upper" ? "upper" : "lower", status: String(b.status).toLowerCase() === "maintenance" ? "maintenance" : "active", occupied: Boolean(b.occupied) }))
+            ? r.beds.map((b): SelectableDormBed => ({ id: b.id, room_id: r.id, bed_number: Number(b.bed_number) || 0, position: String(b.position).toLowerCase() === "upper" ? "upper" : "lower", status: String(b.status).toLowerCase() === "maintenance" ? "maintenance" : "active", occupied: Boolean(b.occupied) }))
             : [],
         })) as DormRoom[];
 
@@ -258,10 +265,14 @@ export default function SelectBedPage() {
     void loadRooms();
     window.addEventListener("focus", loadRooms);
     window.addEventListener("ktx-registrations-updated", refreshRegistrations);
+    window.addEventListener(BED_APPROVAL_UPDATED_EVENT, loadRooms);
+    window.addEventListener(BED_APPROVAL_UPDATED_EVENT, refreshRegistrations);
 
     return () => {
       window.removeEventListener("focus", loadRooms);
       window.removeEventListener("ktx-registrations-updated", refreshRegistrations);
+      window.removeEventListener(BED_APPROVAL_UPDATED_EVENT, loadRooms);
+      window.removeEventListener(BED_APPROVAL_UPDATED_EVENT, refreshRegistrations);
     };
   }, []);
 
@@ -341,12 +352,13 @@ export default function SelectBedPage() {
       return;
     }
 
-    if (request.bedId) {
+    const bedApprovalStatus = getEffectiveBedApprovalStatus(request.id, request.bedId);
+    if (request.bedId && bedApprovalStatus !== "rejected") {
       navigate("/student/registration", { replace: true });
     }
   }, [isRequestLoaded, navigate, request, studentEmail]);
 
-  const roomName = room ? getRoomName(room) : request?.assigned_room_id ? `Phòng ${request.assigned_room_id}` : "";
+  const roomName = room ? getRoomName(room) : request?.assigned_room_id ? "Đang tải..." : "";
   const selectedBed = useMemo(() => {
     const allBeds = bedPairs.flatMap((pair) => [pair.upper, pair.lower]);
     return allBeds.find((bed) => bed.id === selectedBedId) ?? null;
@@ -356,7 +368,7 @@ export default function SelectBedPage() {
 
     rooms.forEach((item) => {
       item.beds?.forEach((bed) => {
-        if (Boolean((bed as DormBed & { occupied?: boolean }).occupied)) {
+        if (Boolean((bed as SelectableDormBed).occupied) && !isBedRejectedByApproval(bed.id)) {
           occupiedBedIds.add(bed.id);
         }
       });
