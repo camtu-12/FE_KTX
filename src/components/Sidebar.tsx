@@ -4,7 +4,6 @@ import {
   ClipboardList,
   CreditCard,
   DoorOpen,
-  FileCheck2,
   FilePenLine,
   LayoutDashboard,
   School,

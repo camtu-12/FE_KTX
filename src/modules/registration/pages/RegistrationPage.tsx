@@ -13,7 +13,6 @@ import {
   Users,
 } from "lucide-react";
 import {
-  getDormRoomsInstant,
   getLatestRegistrationByEmail,
   submitRegistration,
 } from "../../../api/registrationService";
@@ -586,9 +585,7 @@ export default function RegistrationPage() {
       return registration;
     }
 
-    const assignedRoom =
-      roomCatalog.find((room) => room.id === registration.assigned_room_id) ??
-      getDormRoomsInstant().find((room) => room.id === registration.assigned_room_id);
+    const assignedRoom = roomCatalog.find((room) => room.id === registration.assigned_room_id);
     if (!assignedRoom) {
       return registration;
     }
@@ -617,9 +614,7 @@ export default function RegistrationPage() {
       }
     }
 
-    const assignedRoom = getDormRoomsInstant().find((room) => room.id === registrationForView.assigned_room_id);
-    const bed = assignedRoom?.beds?.find((item) => item.id === registrationForView.bedId);
-    return bed?.bed_number ?? registrationForView.bedId;
+    return registrationForView.bedId;
   }, [registrationForView?.assigned_room_id, registrationForView?.bedId, roomCatalog]);
   const selectedBedName = selectedBedNumber ? `Giường ${selectedBedNumber}` : null;
   const hasSelectedBed = Boolean(registrationForView?.bedId);

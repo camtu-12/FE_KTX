@@ -17,7 +17,6 @@ type Occupancy = {
   status: "ACTIVE" | "INACTIVE";
 };
 
-const OCCUPANCY_STORAGE_KEY = "mock_occupancies_v1";
 const isBrowser = () => typeof window !== "undefined";
 
 export function createBeds(roomId: number, capacity: number, maintenanceBeds: number[] = []): Bed[] {
@@ -296,41 +295,8 @@ export const mockOccupancies: Occupancy[] = [
 
 const cloneOccupancies = (occupancies: Occupancy[]) => occupancies.map((occupancy) => ({ ...occupancy }));
 
-const isOccupancyLike = (value: unknown): value is Occupancy => {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-
-  const candidate = value as Partial<Occupancy>;
-  return (
-    typeof candidate.id === "number" &&
-    typeof candidate.studentId === "number" &&
-    typeof candidate.roomId === "number" &&
-    typeof candidate.bedId === "number" &&
-    (candidate.status === "ACTIVE" || candidate.status === "INACTIVE")
-  );
-};
-
 const readStoredOccupancies = (): Occupancy[] => {
-  if (!isBrowser()) {
-    return mockOccupancies;
-  }
-
-  try {
-    const raw = window.localStorage.getItem(OCCUPANCY_STORAGE_KEY);
-    if (!raw) {
-      return mockOccupancies;
-    }
-
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed) || !parsed.every(isOccupancyLike)) {
-      return mockOccupancies;
-    }
-
-    return parsed;
-  } catch {
-    return mockOccupancies;
-  }
+  return mockOccupancies;
 };
 
 const writeStoredOccupancies = (occupancies: Occupancy[]) => {
@@ -338,12 +304,9 @@ const writeStoredOccupancies = (occupancies: Occupancy[]) => {
 
   mockOccupancies.splice(0, mockOccupancies.length, ...nextOccupancies);
 
-  if (!isBrowser()) {
-    return nextOccupancies;
+  if (isBrowser()) {
+    window.dispatchEvent(new Event("ktx-rooms-updated"));
   }
-
-  window.localStorage.setItem(OCCUPANCY_STORAGE_KEY, JSON.stringify(nextOccupancies));
-  window.dispatchEvent(new Event("ktx-rooms-updated"));
 
   return nextOccupancies;
 };

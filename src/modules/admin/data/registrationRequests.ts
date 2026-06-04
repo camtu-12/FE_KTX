@@ -181,47 +181,13 @@ export const registrationRequests: RegistrationRequest[] = [];
 
 export const getRegistrationRequestById = () => null;
 
-export const REGISTRATION_STORAGE_KEY = "mock_registration_requests_v5";
-
 const isBrowser = () => typeof window !== "undefined";
-
-const normalizeRegistrationSnapshot = (value: unknown): RegistrationRequest[] => {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.filter((item): item is RegistrationRequest => {
-    return Boolean(item) && typeof item === "object" && typeof (item as RegistrationRequest).id === "number";
-  });
-};
 
 export const getRegistrationRequestsSeed = () => registrationRequests;
 
-export const getStoredRegistrationRequests = (): RegistrationRequest[] => {
-  if (!isBrowser()) {
-    return registrationRequests;
-  }
-
-  try {
-    const raw = window.localStorage.getItem(REGISTRATION_STORAGE_KEY);
-    if (!raw) {
-      return registrationRequests;
-    }
-
-    const parsed = JSON.parse(raw) as unknown;
-    const normalized = normalizeRegistrationSnapshot(parsed);
-    return normalized.length > 0 ? normalized : registrationRequests;
-  } catch {
-    return registrationRequests;
-  }
-};
+export const getStoredRegistrationRequests = (): RegistrationRequest[] => [];
 
 export const writeStoredRegistrationRequests = (requests: RegistrationRequest[]) => {
-  if (!isBrowser()) {
-    return requests;
-  }
-
-  window.localStorage.setItem(REGISTRATION_STORAGE_KEY, JSON.stringify(requests));
   return requests;
 };
 

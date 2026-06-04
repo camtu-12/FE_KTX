@@ -5,6 +5,7 @@ import {
   getDormRoomsInstant,
 } from "../mocks/dormRoomStore.ts";
 import type { DormRoom } from "../types/dormRoom.ts";
+import { listRooms, type RoomApi } from "./roomApi";
 import type {
   RegistrationFormData,
   RegistrationRequest,
@@ -12,133 +13,19 @@ import type {
 } from "../modules/admin/data/registrationRequests";
 import {
   dispatchRegistrationRequestsUpdated,
-  getRegistrationRequestsSeed,
-  getStoredRegistrationRequests,
-  readLatestRegistrationByEmail,
-  readRegistrationRequestById,
-  upsertStoredRegistrationRequest,
 } from "../modules/admin/data/registrationRequests";
 
 // Sử dụng Railway URL từ environment variables (có fallback nếu biến không được set)
 const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) || "http://127.0.0.1:8000").replace(/\/+$/, "");
-const ASSIGNMENT_STORAGE_KEY = "mock_registration_assignments_v1";
-const BED_SELECTION_STORAGE_KEY = "mock_registration_bed_selections_v1";
 
 
 console.log("API_BASE:", API_BASE); // Debug - kiểm tra URL đúng không
 
 type JsonRecord = Record<string, unknown>;
-type AssignmentSnapshot = {
-  requestId: number;
-  roomId: number;
-};
-type BedSelectionSnapshot = {
-  requestId: number;
-  bedId: number;
-};
 
 const isRecord = (value: unknown): value is JsonRecord => typeof value === "object" && value !== null;
 
 const isBrowser = () => typeof window !== "undefined";
-
-const isAssignmentSnapshot = (value: unknown): value is AssignmentSnapshot => {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    typeof value.requestId === "number" &&
-    typeof value.roomId === "number"
-  );
-};
-
-const isBedSelectionSnapshot = (value: unknown): value is BedSelectionSnapshot => {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return typeof value.requestId === "number" && typeof value.bedId === "number";
-};
-
-const readStoredAssignments = (): AssignmentSnapshot[] => {
-  if (!isBrowser()) {
-    return [];
-  }
-
-  try {
-    const raw = window.localStorage.getItem(ASSIGNMENT_STORAGE_KEY);
-    if (!raw) {
-      return [];
-    }
-
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.filter(isAssignmentSnapshot) : [];
-  } catch {
-    return [];
-  }
-};
-
-const writeStoredAssignments = (assignments: AssignmentSnapshot[]) => {
-  if (!isBrowser()) {
-    return assignments;
-  }
-
-  window.localStorage.setItem(ASSIGNMENT_STORAGE_KEY, JSON.stringify(assignments));
-  return assignments;
-};
-
-const upsertStoredAssignment = (assignment: AssignmentSnapshot) => {
-  const assignments = readStoredAssignments();
-  const index = assignments.findIndex((item) => item.requestId === assignment.requestId);
-
-  if (index >= 0) {
-    assignments[index] = assignment;
-  } else {
-    assignments.push(assignment);
-  }
-
-  return writeStoredAssignments(assignments);
-};
-
-const readStoredBedSelections = (): BedSelectionSnapshot[] => {
-  if (!isBrowser()) {
-    return [];
-  }
-
-  try {
-    const raw = window.localStorage.getItem(BED_SELECTION_STORAGE_KEY);
-    if (!raw) {
-      return [];
-    }
-
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.filter(isBedSelectionSnapshot) : [];
-  } catch {
-    return [];
-  }
-};
-
-const writeStoredBedSelections = (selections: BedSelectionSnapshot[]) => {
-  if (!isBrowser()) {
-    return selections;
-  }
-
-  window.localStorage.setItem(BED_SELECTION_STORAGE_KEY, JSON.stringify(selections));
-  return selections;
-};
-
-const upsertStoredBedSelection = (selection: BedSelectionSnapshot) => {
-  const selections = readStoredBedSelections();
-  const index = selections.findIndex((item) => item.requestId === selection.requestId);
-
-  if (index >= 0) {
-    selections[index] = selection;
-  } else {
-    selections.push(selection);
-  }
-
-  return writeStoredBedSelections(selections);
-};
 
 const dispatchRoomsUpdated = () => {
   if (!isBrowser()) {
@@ -146,40 +33,6 @@ const dispatchRoomsUpdated = () => {
   }
 
   window.dispatchEvent(new Event("ktx-rooms-updated"));
-};
-
-const applyStoredAssignments = (requests: RegistrationRequest[]): RegistrationRequest[] => {
-  const assignments = readStoredAssignments();
-  const bedSelections = readStoredBedSelections();
-  if (assignments.length === 0 && bedSelections.length === 0) {
-    return requests;
-  }
-
-  const assignmentByRequestId = new Map(assignments.map((assignment) => [assignment.requestId, assignment]));
-  const bedSelectionByRequestId = new Map(bedSelections.map((selection) => [selection.requestId, selection]));
-
-  return requests.map((request) => {
-    const assignment = assignmentByRequestId.get(request.id);
-    const bedSelection = bedSelectionByRequestId.get(request.id);
-    if (!assignment && !bedSelection) {
-      return request;
-    }
-
-    return {
-      ...request,
-      assigned_room_id: assignment?.roomId ?? request.assigned_room_id ?? null,
-      assigned_bed_id: bedSelection?.bedId ?? request.assigned_bed_id ?? null,
-      bedId: bedSelection?.bedId ?? request.bedId ?? request.assigned_bed_id ?? null,
-    };
-  });
-};
-
-const applyStoredAssignment = (request: RegistrationRequest | null): RegistrationRequest | null => {
-  if (!request) {
-    return request;
-  }
-
-  return applyStoredAssignments([request])[0] ?? request;
 };
 
 const extract = <T>(res: unknown): T => {
@@ -459,64 +312,70 @@ const normalizeRegistrationResponseArray = (value: unknown): RegistrationRequest
     .filter((item): item is RegistrationRequest => item !== null);
 };
 
-const cloneRegistrationRequest = (request: RegistrationRequest): RegistrationRequest => ({
-  ...request,
-  formData: { ...request.formData },
-  documents: { ...request.documents },
-  student: request.student
-    ? {
-        account: request.student.account
-          ? { ...request.student.account }
-          : request.student.account,
-      }
-    : request.student,
-});
-
-const snapshotRegistrationRequests = (): RegistrationRequest[] => {
-  const requests = getStoredRegistrationRequests();
-  const snapshot = requests.length > 0 ? requests.map(cloneRegistrationRequest) : getRegistrationRequestsSeed().map(cloneRegistrationRequest);
-  return applyStoredAssignments(snapshot);
-};
-
-const persistRegistrationRequest = (nextRequest: RegistrationRequest): RegistrationRequest => {
-  upsertStoredRegistrationRequest(nextRequest);
-  dispatchRegistrationRequestsUpdated();
-  return cloneRegistrationRequest(nextRequest);
-};
-
 export const getRegistrationRequests = async () => {
-  return snapshotRegistrationRequests();
+  return [];
 };
 
 export const getRegistrations = async (): Promise<RegistrationRequest[]> => {
   const res = await regApi.getRegistrations();
-  return applyStoredAssignments(normalizeRegistrationResponseArray(res));
+  return normalizeRegistrationResponseArray(res);
 };
 
 export const getRegistrationRequestsInstant = (): RegistrationRequest[] => {
-  return snapshotRegistrationRequests();
+  return [];
 };
 
 export const getRegistrationRequestByIdInstant = (id: number): RegistrationRequest | null => {
-  const request = readRegistrationRequestById(id);
-  return applyStoredAssignment(request ? cloneRegistrationRequest(request) : null);
+  void id;
+  return null;
 };
 
 export const getLatestRegistrationByEmailInstant = (email: string): RegistrationRequest | null => {
-  const request = readLatestRegistrationByEmail(email);
-  return applyStoredAssignment(request ? cloneRegistrationRequest(request) : null);
+  void email;
+  return null;
 };
 
 export { getDormRoomsInstant, getDormBedsForRoomInstant, getDormBedPairsForRoomInstant };
 
+const mapRoomApiToDormRoom = (room: RoomApi): DormRoom => ({
+  id: room.id,
+  building_code: room.building_code,
+  room_number: room.room_number,
+  totalBeds: room.beds?.length ?? room.capacity ?? 0,
+  availableBeds: room.available_beds ?? room.beds?.filter((bed) => !bed.occupied).length ?? 0,
+  capacity: room.capacity ?? room.beds?.length ?? 0,
+  gender: room.floor?.gender ?? null,
+  floor_id: room.floor?.id ?? room.floor_id,
+  floor: room.floor
+    ? {
+        id: room.floor.id,
+        building_code: room.floor.building_code,
+        floor_number: room.floor.floor_number,
+        gender: room.floor.gender ?? undefined,
+      }
+    : undefined,
+  floor_number: room.floor_number ?? room.floor?.floor_number,
+  beds: Array.isArray(room.beds)
+    ? room.beds.map((bed) => ({
+        id: bed.id,
+        room_id: room.id,
+        bed_number: Number(bed.bed_number) || 0,
+        position: bed.position === "LOWER" ? "lower" : "upper",
+        status: bed.status === "MAINTENANCE" ? "maintenance" : "active",
+        occupied: bed.occupied,
+      }))
+    : [],
+});
+
 export const getRooms = async (): Promise<DormRoom[]> => {
-  return getDormRoomsInstant();
+  const rooms = await listRooms();
+  return rooms.map(mapRoomApiToDormRoom);
 };
 
 export const getRegistrationById = async (id: number): Promise<RegistrationRequest | null> => {
   try {
     const res = await regApi.getRegistrationById(id);
-    return applyStoredAssignment(normalizeRegistrationResponse(res));
+    return normalizeRegistrationResponse(res);
   } catch {
     return null;
   }
@@ -564,6 +423,12 @@ export const updateRegistrationStatus = async ({
     return updated;
   }
 
+  const refreshed = normalizeRegistrationResponse(await regApi.getRegistrationById(id));
+  if (refreshed) {
+    dispatchRegistrationRequestsUpdated();
+    return refreshed;
+  }
+
   if (!currentRequest) {
     throw new Error("Không thể cập nhật trạng thái đăng ký.");
   }
@@ -592,26 +457,20 @@ export const assignRoomToRegistration = async ({
 }): Promise<RegistrationRequest | null> => {
   void bedId;
 
-  const current = readRegistrationRequestById(requestId)
-    ?? currentRequest
-    ?? normalizeRegistrationResponse(await regApi.getRegistrationById(requestId));
+  const current = currentRequest ?? normalizeRegistrationResponse(await regApi.getRegistrationById(requestId));
   if (!current) {
     throw new Error("Không tìm thấy đơn đăng ký.");
   }
 
   await regApi.assignRoom(requestId, roomId);
 
-  const nextRequest = persistRegistrationRequest({
+  const refreshed = normalizeRegistrationResponse(await regApi.getRegistrationById(requestId));
+  const nextRequest = refreshed ?? {
     ...current,
     assigned_room_id: roomId,
     assigned_bed_id: null,
     bedId: null,
-  });
-
-  upsertStoredAssignment({
-    requestId,
-    roomId,
-  });
+  };
   dispatchRegistrationRequestsUpdated();
   dispatchRoomsUpdated();
 
@@ -627,25 +486,19 @@ export const selectBedForRegistration = async ({
   bedId: number;
   currentRequest?: RegistrationRequest;
 }) => {
-  const current = readLatestRegistrationByEmail(email)
-    ?? currentRequest
-    ?? applyStoredAssignment(normalizeRegistrationResponse(await regApi.getMyRegistration(email)));
+  const current = currentRequest ?? normalizeRegistrationResponse(await regApi.getMyRegistration(email));
   if (!current) {
     throw new Error("Không tìm thấy đơn đăng ký của sinh viên.");
   }
 
   await regApi.selectBed(email, bedId);
 
-  const nextRequest = persistRegistrationRequest({
+  const refreshed = normalizeRegistrationResponse(await regApi.getMyRegistration(email));
+  const nextRequest = refreshed ?? {
     ...current,
     assigned_bed_id: bedId,
     bedId,
-  });
-
-  upsertStoredBedSelection({
-    requestId: current.id,
-    bedId,
-  });
+  };
   dispatchRegistrationRequestsUpdated();
   dispatchRoomsUpdated();
 
@@ -663,7 +516,7 @@ export const submitRegistration = async (formData: FormData): Promise<Registrati
 
 export const getMyRegistration = async (email: string): Promise<RegistrationRequest | null> => {
   const res = await regApi.getMyRegistration(email);
-  return applyStoredAssignment(normalizeRegistrationRequest(extract<unknown>(res)));
+  return normalizeRegistrationRequest(extract<unknown>(res));
 };
 
 export default {

@@ -219,9 +219,6 @@ export default function SelectBedPage() {
     try {
       const params = new URLSearchParams(window.location.search);
       if (params.get("resetMocks") === "1") {
-        localStorage.removeItem("mock_dorm_beds_v1");
-        localStorage.removeItem("mock_dorm_rooms_v4");
-        localStorage.removeItem("mock_registration_requests_v5");
         const clean = window.location.pathname;
         window.location.replace(clean);
       }

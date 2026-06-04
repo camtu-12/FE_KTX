@@ -1,8 +1,6 @@
 import { calculateRoomStatistics, initialRooms } from "./roommanagement";
 import type { DormBed, DormBedPair, DormRoom } from "../types/dormRoom.ts";
 
-const ROOM_STORAGE_KEY = "ktx_rooms_dashboard_v2";
-
 type StoredBed = {
   id: number;
   bed_number: string;
@@ -19,47 +17,8 @@ type StoredRoom = StoredRoomBase & {
   floor?: { id: number; building_code?: string; floor_number: number; gender?: string };
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
-
-const isStoredBed = (value: unknown): value is StoredBed => {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return typeof value.id === "number" && typeof value.bed_number === "string" && typeof value.position === "string" && typeof value.status === "string";
-};
-
-const isStoredRoom = (value: unknown): value is StoredRoom => {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    typeof value.id === "number" &&
-    typeof value.building_code === "string" &&
-    typeof value.room_number === "string" &&
-    typeof value.capacity === "number" &&
-    Array.isArray(value.beds) &&
-    value.beds.every(isStoredBed)
-  );
-};
-
 function loadStoredRooms(): StoredRoom[] {
-  if (typeof window === "undefined") {
-    return initialRooms;
-  }
-
-  try {
-    const raw = window.localStorage.getItem(ROOM_STORAGE_KEY);
-    if (!raw) {
-      return initialRooms;
-    }
-
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) && parsed.every(isStoredRoom) && parsed.length > 0 ? parsed : initialRooms;
-  } catch {
-    return initialRooms;
-  }
+  return initialRooms;
 }
 
 const toDormRoom = (room: StoredRoom): DormRoom => {
