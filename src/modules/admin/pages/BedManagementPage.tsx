@@ -1,6 +1,11 @@
 import { motion } from "framer-motion";
 import { ArrowUp, CheckCircle2, CircleAlert, Clock3, Funnel } from "lucide-react";
-import { getRegistrations } from "../../../api/registrationService";
+import {
+  approveBedSelectionForRegistration,
+  getEffectiveBedApprovalStatus,
+  getRegistrations,
+  rejectBedSelectionForRegistration,
+} from "../../../api/registrationService";
 import { listRooms, type RoomApi } from "../../../api/roomApi";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DormRoom } from "../../../types/dormRoom";
@@ -8,7 +13,6 @@ import { useOutletContext } from "react-router-dom";
 import { createPortal } from "react-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import type { RegistrationRequest } from "../data/registrationRequests";
-import { getEffectiveBedApprovalStatus, setBedApprovalStatus } from "../../../mocks/bedApprovalStore";
 
 const getRoomName = (room: DormRoom) => `${room.building_code}${room.room_number}`;
 
@@ -94,7 +98,7 @@ const genderFilterOptions: Array<{ value: GenderFilter; label: string }> = [
 ];
 
 const getSelectionMeta = (request: RegistrationRequest) => {
-  const bedApprovalStatus = getEffectiveBedApprovalStatus(request.id, request.bedId);
+  const bedApprovalStatus = getEffectiveBedApprovalStatus(request);
 
   if (request.bedId && bedApprovalStatus === "approved") {
     return {
@@ -333,20 +337,26 @@ export default function BedManagementPage() {
     setIsGenderFilterOpen(false);
   };
 
-  const handleApproveBed = (request: RegistrationRequest) => {
+  const handleApproveBed = async (request: RegistrationRequest) => {
     if (!request.bedId) {
       return;
     }
 
-    setBedApprovalStatus(request.id, request.bedId, "approved");
+    const updated = await approveBedSelectionForRegistration(request.id);
+    if (updated) {
+      setRequests((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    }
   };
 
-  const handleRejectBed = (request: RegistrationRequest) => {
+  const handleRejectBed = async (request: RegistrationRequest) => {
     if (!request.bedId) {
       return;
     }
 
-    setBedApprovalStatus(request.id, request.bedId, "rejected");
+    const updated = await rejectBedSelectionForRegistration(request.id);
+    if (updated) {
+      setRequests((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    }
   };
 
   const visibleStudents = useMemo(() => {
@@ -371,7 +381,7 @@ export default function BedManagementPage() {
           return false;
         }
 
-        const bedApprovalStatus = getEffectiveBedApprovalStatus(request.id, request.bedId);
+        const bedApprovalStatus = getEffectiveBedApprovalStatus(request);
 
         if (selectionFilter === "pending") {
           return bedApprovalStatus === "pending";
@@ -401,13 +411,13 @@ export default function BedManagementPage() {
   }, [latestRequests]);
 
   const pendingApprovalCount = bedApprovalRequests.filter((request) => {
-    return getEffectiveBedApprovalStatus(request.id, request.bedId) === "pending";
+    return getEffectiveBedApprovalStatus(request) === "pending";
   }).length;
   const approvedApprovalCount = bedApprovalRequests.filter((request) => {
-    return getEffectiveBedApprovalStatus(request.id, request.bedId) === "approved";
+    return getEffectiveBedApprovalStatus(request) === "approved";
   }).length;
   const rejectedApprovalCount = bedApprovalRequests.filter((request) => {
-    return getEffectiveBedApprovalStatus(request.id, request.bedId) === "rejected";
+    return getEffectiveBedApprovalStatus(request) === "rejected";
   }).length;
 
   const summaryCards = [
@@ -564,7 +574,7 @@ export default function BedManagementPage() {
                   : "Chưa chọn";
                 const meta = getSelectionMeta(request);
                 const StatusIcon = meta.Icon;
-                const bedApprovalStatus = getEffectiveBedApprovalStatus(request.id, request.bedId);
+                const bedApprovalStatus = getEffectiveBedApprovalStatus(request);
 
                 return (
                   <tr key={request.id} className="transition duration-200 hover:bg-[#f8fbff]">

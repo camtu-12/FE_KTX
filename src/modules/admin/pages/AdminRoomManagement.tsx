@@ -18,7 +18,6 @@ import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import { listRooms, createRoom, updateRoom, deleteRoom, updateBedStatus } from "../../../api/roomApi";
 import { getBuilding, listBuildings } from "../../../api/buildingApi";
 import type { Building } from "../../../types/building";
-import { BED_APPROVAL_UPDATED_EVENT, isBedRejectedByApproval } from "../../../mocks/bedApprovalStore";
 
 type RoomStatus = "AVAILABLE" | "FULL" | "MAINTENANCE";
 type BedStatus = "ACTIVE" | "MAINTENANCE";
@@ -108,7 +107,7 @@ const initialFormState: RoomFormState = {
 };
 
 function isBedEffectivelyOccupied(bed: Pick<Bed, "id" | "occupied">) {
-  return Boolean(bed.occupied) && !isBedRejectedByApproval(bed.id);
+  return Boolean(bed.occupied);
 }
 
 function getRoomOccupiedBeds(room: Room) {
@@ -279,7 +278,6 @@ export default function AdminRoomManagement() {
     if (typeof window !== "undefined") {
       window.addEventListener("ktx-rooms-updated", loadRooms);
       window.addEventListener("ktx-registrations-updated", loadRooms);
-      window.addEventListener(BED_APPROVAL_UPDATED_EVENT, loadRooms);
       window.addEventListener("focus", loadRooms);
     }
 
@@ -288,7 +286,6 @@ export default function AdminRoomManagement() {
       if (typeof window !== "undefined") {
         window.removeEventListener("ktx-rooms-updated", loadRooms);
         window.removeEventListener("ktx-registrations-updated", loadRooms);
-        window.removeEventListener(BED_APPROVAL_UPDATED_EVENT, loadRooms);
         window.removeEventListener("focus", loadRooms);
       }
     };

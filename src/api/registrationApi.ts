@@ -58,3 +58,11 @@ export const selectBed = (email: string, bedId: number) => {
     bed_id: bedId,
   }).then((res) => res.data);
 };
+
+export const approveBedSelection = (id: number) => {
+  return API.put(`/registration/${id}/approve-bed`).then((res) => res.data);
+};
+
+export const rejectBedSelection = (id: number) => {
+  return API.put(`/registration/${id}/reject-bed`).then((res) => res.data);
+};

@@ -1,6 +1,7 @@
 export type RegistrationStatus = "pending" | "approved" | "rejected";
 export type RegistrationFilterStatus = "all" | RegistrationStatus;
 export type RegistrationDocumentField = "portraitPhoto" | "cccdFrontPhoto" | "cccdBackPhoto";
+export type BedApprovalStatus = "pending" | "approved" | "rejected";
 
 export type RegistrationFormData = {
   mssv: string;
@@ -46,6 +47,7 @@ export type RegistrationRequest = {
   assigned_room_id?: number | null;
   assigned_bed_id?: number | null;
   bedId?: number | null;
+  bed_approval_status?: BedApprovalStatus | null;
   student?: {
     account?: {
       student_code?: string;

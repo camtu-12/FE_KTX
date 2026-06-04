@@ -3,7 +3,12 @@ import { ArrowLeft, CheckCircle2, LoaderCircle, MapPin, ShieldCheck } from "luci
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { getLatestRegistrationByEmail, getLatestRegistrationByEmailInstant, selectBedForRegistration } from "../../../api/registrationService";
+import {
+  getEffectiveBedApprovalStatus,
+  getLatestRegistrationByEmail,
+  getLatestRegistrationByEmailInstant,
+  selectBedForRegistration,
+} from "../../../api/registrationService";
 import { getStoredAuth } from "../../auth/utils/authStorage";
 import bunkBedIcon from "../../../assets/icons8-bunk-bed-64.png";
 import maintenanceIcon from "../../../assets/icons8-maintenance-94.png";
@@ -13,11 +18,6 @@ import type { DormBed, DormBedPair, DormRoom } from "../../../types/dormRoom";
 import getBedDisplayStatus from "../../../utils/bedDisplay";
 import { listRooms, type RoomApi } from "../../../api/roomApi";
 import type { RegistrationRequest } from "../../admin/data/registrationRequests";
-import {
-  BED_APPROVAL_UPDATED_EVENT,
-  getEffectiveBedApprovalStatus,
-  isBedRejectedByApproval,
-} from "../../../mocks/bedApprovalStore";
 
 const getRoomName = (room: DormRoom) => `${room.building_code}${room.room_number}`;
 
@@ -245,7 +245,7 @@ export default function SelectBedPage() {
           building_code: r.building_code,
           room_number: r.room_number,
           totalBeds: r.beds?.length ?? r.capacity ?? 0,
-          availableBeds: (r.beds?.filter((b) => !b.occupied || isBedRejectedByApproval(b.id)).length) ?? 0,
+          availableBeds: (r.beds?.filter((b) => !b.occupied).length) ?? 0,
           capacity: r.capacity ?? r.beds?.length,
           gender: r.floor?.gender ?? null,
           floor_id: r.floor?.id ?? r.floor_id,
@@ -265,14 +265,10 @@ export default function SelectBedPage() {
     void loadRooms();
     window.addEventListener("focus", loadRooms);
     window.addEventListener("ktx-registrations-updated", refreshRegistrations);
-    window.addEventListener(BED_APPROVAL_UPDATED_EVENT, loadRooms);
-    window.addEventListener(BED_APPROVAL_UPDATED_EVENT, refreshRegistrations);
 
     return () => {
       window.removeEventListener("focus", loadRooms);
       window.removeEventListener("ktx-registrations-updated", refreshRegistrations);
-      window.removeEventListener(BED_APPROVAL_UPDATED_EVENT, loadRooms);
-      window.removeEventListener(BED_APPROVAL_UPDATED_EVENT, refreshRegistrations);
     };
   }, []);
 
@@ -352,7 +348,7 @@ export default function SelectBedPage() {
       return;
     }
 
-    const bedApprovalStatus = getEffectiveBedApprovalStatus(request.id, request.bedId);
+    const bedApprovalStatus = getEffectiveBedApprovalStatus(request);
     if (request.bedId && bedApprovalStatus !== "rejected") {
       navigate("/student/registration", { replace: true });
     }
@@ -368,7 +364,7 @@ export default function SelectBedPage() {
 
     rooms.forEach((item) => {
       item.beds?.forEach((bed) => {
-        if (Boolean((bed as SelectableDormBed).occupied) && !isBedRejectedByApproval(bed.id)) {
+        if (Boolean((bed as SelectableDormBed).occupied)) {
           occupiedBedIds.add(bed.id);
         }
       });

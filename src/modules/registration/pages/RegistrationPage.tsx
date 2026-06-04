@@ -13,6 +13,7 @@ import {
   Users,
 } from "lucide-react";
 import {
+  getEffectiveBedApprovalStatus,
   getLatestRegistrationByEmail,
   submitRegistration,
 } from "../../../api/registrationService";
@@ -21,10 +22,6 @@ import { checkStudentCodeExists } from "../../auth/services/auth.api";
 import { useAuthStore } from "../../auth/store";
 import type { RegistrationRequest } from "../../admin/data/registrationRequests";
 import ProgressStep from "../components/ProgressStep";
-import {
-  BED_APPROVAL_UPDATED_EVENT,
-  getEffectiveBedApprovalStatus,
-} from "../../../mocks/bedApprovalStore";
 
 type RegistrationStatus = "unregistered" | "pending" | "approved" | "rejected" | "completed";
 type ProgressStatus = "pending" | "approved" | "assigned_room" | "selected_bed" | "completed";
@@ -378,13 +375,11 @@ export default function RegistrationPage() {
 
     window.addEventListener("ktx-rooms-updated", loadRooms);
     window.addEventListener("ktx-registrations-updated", loadRooms);
-    window.addEventListener(BED_APPROVAL_UPDATED_EVENT, loadRooms);
 
     return () => {
       mounted = false;
       window.removeEventListener("ktx-rooms-updated", loadRooms);
       window.removeEventListener("ktx-registrations-updated", loadRooms);
-      window.removeEventListener(BED_APPROVAL_UPDATED_EVENT, loadRooms);
     };
   }, []);
 
@@ -626,7 +621,7 @@ export default function RegistrationPage() {
       ? `Giường ${selectedBedNumber}`
       : "Đang tải..."
     : null;
-  const bedApprovalStatus = getEffectiveBedApprovalStatus(registrationForView?.id, registrationForView?.bedId);
+  const bedApprovalStatus = getEffectiveBedApprovalStatus(registrationForView);
   const hasSelectedBed = Boolean(registrationForView?.bedId && bedApprovalStatus !== "rejected");
 
   const progressStatus: ProgressStatus = useMemo(() => {

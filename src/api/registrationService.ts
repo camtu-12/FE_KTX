@@ -14,7 +14,6 @@ import type {
 import {
   dispatchRegistrationRequestsUpdated,
 } from "../modules/admin/data/registrationRequests";
-import { markBedSelectionPending } from "../mocks/bedApprovalStore";
 
 // Sử dụng Railway URL từ environment variables (có fallback nếu biến không được set)
 const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) || "http://127.0.0.1:8000").replace(/\/+$/, "");
@@ -99,6 +98,14 @@ const normalizeStatus = (value: unknown): RegistrationStatus => {
   }
 
   return "pending";
+};
+
+const normalizeBedApprovalStatus = (value: unknown): RegistrationRequest["bed_approval_status"] => {
+  if (value === "approved" || value === "rejected" || value === "pending") {
+    return value;
+  }
+
+  return null;
 };
 
 const firstDefinedString = (...values: unknown[]) => {
@@ -296,6 +303,7 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
     commitmentConfirmed,
     assigned_room_id: toNumberOrNull(registration.assigned_room_id) ?? null,
     bedId: toNumberOrNull(registration.bedId ?? registration.assigned_bed_id) ?? null,
+    bed_approval_status: normalizeBedApprovalStatus(registration.bed_approval_status),
   };
 };
 
@@ -499,14 +507,45 @@ export const selectBedForRegistration = async ({
     ...current,
     assigned_bed_id: bedId,
     bedId,
+    bed_approval_status: "pending",
   };
-  if (nextRequest.id && nextRequest.bedId) {
-    markBedSelectionPending(nextRequest.id, nextRequest.bedId);
-  }
   dispatchRegistrationRequestsUpdated();
   dispatchRoomsUpdated();
 
   return nextRequest;
+};
+
+export const getEffectiveBedApprovalStatus = (
+  requestOrStatus?: RegistrationRequest | RegistrationRequest["bed_approval_status"] | null,
+  bedId?: number | null,
+): RegistrationRequest["bed_approval_status"] | null => {
+  if (!requestOrStatus) {
+    return null;
+  }
+
+  if (typeof requestOrStatus === "string") {
+    return bedId ? requestOrStatus : null;
+  }
+
+  if (!requestOrStatus.bedId) {
+    return null;
+  }
+
+  return requestOrStatus.bed_approval_status ?? "pending";
+};
+
+export const approveBedSelectionForRegistration = async (id: number): Promise<RegistrationRequest | null> => {
+  const updated = normalizeRegistrationResponse(await regApi.approveBedSelection(id));
+  dispatchRegistrationRequestsUpdated();
+  dispatchRoomsUpdated();
+  return updated;
+};
+
+export const rejectBedSelectionForRegistration = async (id: number): Promise<RegistrationRequest | null> => {
+  const updated = normalizeRegistrationResponse(await regApi.rejectBedSelection(id));
+  dispatchRegistrationRequestsUpdated();
+  dispatchRoomsUpdated();
+  return updated;
 };
 
 export const submitRegistration = async (formData: FormData): Promise<RegistrationRequest | null> => {
@@ -532,6 +571,9 @@ export default {
   getRegistrationRequestByIdInstant,
   assignRoomToRegistration,
   selectBedForRegistration,
+  approveBedSelectionForRegistration,
+  rejectBedSelectionForRegistration,
+  getEffectiveBedApprovalStatus,
   getRooms,
   getRegistrationById,
   getLatestRegistrationByEmail,
