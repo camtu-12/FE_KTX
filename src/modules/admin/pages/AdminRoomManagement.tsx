@@ -247,6 +247,7 @@ export default function AdminRoomManagement() {
       : "all";
   const [rooms, setRooms] = useState<RoomWithBeds[]>([]);
   const [buildings, setBuildings] = useState<Building[]>([]);
+  const [hasLoadedBuildings, setHasLoadedBuildings] = useState(false);
 
   // Load rooms from BE on mount
   useEffect(() => {
@@ -295,6 +296,10 @@ export default function AdminRoomManagement() {
       } catch {
         if (mounted) {
           setBuildings([]);
+        }
+      } finally {
+        if (mounted) {
+          setHasLoadedBuildings(true);
         }
       }
     };
@@ -410,6 +415,7 @@ export default function AdminRoomManagement() {
   }, [buildings, filterBuilding]);
 
   useEffect(() => {
+    if (!hasLoadedBuildings) return;
     if (filterBuilding === "all") return;
     if (buildingOptions.includes(filterBuilding)) return;
 
@@ -417,9 +423,10 @@ export default function AdminRoomManagement() {
     next.delete("building");
     next.delete("floor");
     setSearchParams(next, { replace: true });
-  }, [buildingOptions, filterBuilding, searchParams, setSearchParams]);
+  }, [buildingOptions, filterBuilding, hasLoadedBuildings, searchParams, setSearchParams]);
 
   useEffect(() => {
+    if (!hasLoadedBuildings) return;
     if (typeof window === "undefined") return;
     if (filterFloor === "all") return;
 
@@ -430,7 +437,7 @@ export default function AdminRoomManagement() {
       next.delete("floor");
       setSearchParams(next, { replace: true });
     }
-  }, [filterFloor, floorOptions, searchParams, setSearchParams]);
+  }, [filterFloor, floorOptions, hasLoadedBuildings, searchParams, setSearchParams]);
 
   const selectedRoomBedPairs = useMemo(() => {
     if (!selectedRoom) {
