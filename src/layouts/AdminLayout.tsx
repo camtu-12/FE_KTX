@@ -22,15 +22,21 @@ export default function AdminLayout() {
   const isRegistrationsPage = location.pathname === "/admin/registrations";
   const isAssignRoomListPage = location.pathname === "/admin/assign-room";
   const isBedManagementPage = location.pathname === "/admin/bed-management";
+  const isOccupancyManagementPage = location.pathname === "/admin/occupancies";
   const isRoomManagementPage = location.pathname === "/admin/rooms";
   const isBuildingManagementPage = location.pathname === "/admin/buildings";
   const isSearchEnabled =
-    isRegistrationsPage || isAssignRoomListPage || isBedManagementPage || isRoomManagementPage || isBuildingManagementPage;
+    isRegistrationsPage ||
+    isAssignRoomListPage ||
+    isBedManagementPage ||
+    isOccupancyManagementPage ||
+    isRoomManagementPage ||
+    isBuildingManagementPage;
   const searchPlaceholder = isRoomManagementPage
     ? "Tìm theo số phòng..."
     : isBuildingManagementPage
       ? "Tìm theo mã, tên hoặc địa chỉ tòa..."
-      : isAssignRoomListPage || isBedManagementPage
+      : isAssignRoomListPage || isBedManagementPage || isOccupancyManagementPage
         ? "Tìm theo MSSV hoặc họ tên"
         : "Tìm theo MSSV, họ tên hoặc email";
 

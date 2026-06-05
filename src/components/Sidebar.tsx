@@ -5,6 +5,7 @@ import {
   CreditCard,
   DoorOpen,
   FilePenLine,
+  Hotel,
   LayoutDashboard,
   School,
   UserCog,
@@ -44,6 +45,11 @@ const adminMenu: MenuItem[] = [
     label: "Phân giường",
     to: "/admin/bed-management",
     icon: BedSingle,
+  },
+  {
+    label: "Quản lý lưu trú",
+    to: "/admin/occupancies",
+    icon: Hotel,
   },
   {
     label: "Quản lý phòng",

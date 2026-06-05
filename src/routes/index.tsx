@@ -12,6 +12,7 @@ import AdminBuildingDetailPage from "../modules/admin/pages/AdminBuildingDetailP
 import AssignRoomPage from "../modules/admin/pages/AssignRoomPage.tsx";
 import AssignRoomDetailPage from "../modules/admin/pages/AssignRoomDetailPage";
 import AdminStudentsPage from "../modules/admin/pages/AdminStudentsPage";
+import OccupancyManagementPage from "../modules/admin/pages/OccupancyManagementPage";
 import LoginPage from "../modules/auth/pages/LoginPage";
 import RegisterPage from "../modules/auth/pages/RegisterPage";
 import AboutPage from "../modules/public/pages/AboutPage";
@@ -20,6 +21,7 @@ import HomePage from "../modules/public/pages/HomePage";
 import RegistrationPage from "../modules/registration/pages/RegistrationPage";
 import StudentDashboardPage from "../modules/student/pages/StudentDashboardPage";
 import SelectBedPage from "../modules/student/pages/SelectBedPage";
+import MyRoomPage from "../modules/student/pages/MyRoomPage";
 import ProtectedRoute from "./ProtectedRoute";
 import ForgotPassword from "../modules/auth/pages/ForgotPassword";
 
@@ -50,6 +52,7 @@ export default function AppRoutes() {
           <Route path="assign-room" element={<AssignRoomPage />} />
           <Route path="assign-room/:requestId" element={<AssignRoomDetailPage />} />
           <Route path="bed-management" element={<BedManagementPage />} />
+          <Route path="occupancies" element={<OccupancyManagementPage />} />
           <Route path="students" element={<AdminStudentsPage />} />
           <Route path="rooms" element={<AdminRoomManagement />} />
           <Route path="buildings" element={<AdminBuildingManagement />} />
@@ -66,6 +69,7 @@ export default function AppRoutes() {
         >
           <Route path="dashboard" element={<StudentDashboardPage />} />
           <Route path="registration" element={<RegistrationPage />} />
+          <Route path="room" element={<MyRoomPage />} />
           <Route path="select-bed" element={<SelectBedPage />} />
         </Route>
 
