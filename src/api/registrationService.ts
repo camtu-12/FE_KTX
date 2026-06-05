@@ -304,6 +304,10 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
     assigned_room_id: toNumberOrNull(registration.assigned_room_id) ?? null,
     bedId: toNumberOrNull(registration.bedId ?? registration.assigned_bed_id) ?? null,
     bed_approval_status: normalizeBedApprovalStatus(registration.bed_approval_status),
+    occupancy_status: firstDefinedString(registration.occupancy_status) || null,
+    occupancy_reason: firstDefinedString(registration.occupancy_reason) || null,
+    check_in_date: firstDefinedString(registration.check_in_date) || null,
+    check_out_date: firstDefinedString(registration.check_out_date) || null,
   };
 };
 
@@ -548,6 +552,35 @@ export const rejectBedSelectionForRegistration = async (id: number): Promise<Reg
   return updated;
 };
 
+export const requestCheckoutForRegistration = async ({
+  email,
+  reason,
+  expectedLeaveDate,
+}: {
+  email: string;
+  reason: string;
+  expectedLeaveDate?: string;
+}): Promise<RegistrationRequest | null> => {
+  const updated = normalizeRegistrationResponse(await regApi.requestCheckout(email, reason, expectedLeaveDate));
+  dispatchRegistrationRequestsUpdated();
+  dispatchRoomsUpdated();
+  return updated;
+};
+
+export const confirmCheckoutForRegistration = async (id: number): Promise<RegistrationRequest | null> => {
+  const updated = normalizeRegistrationResponse(await regApi.confirmCheckout(id));
+  dispatchRegistrationRequestsUpdated();
+  dispatchRoomsUpdated();
+  return updated;
+};
+
+export const forceCheckoutForRegistration = async (id: number, reason: string): Promise<RegistrationRequest | null> => {
+  const updated = normalizeRegistrationResponse(await regApi.forceCheckout(id, reason));
+  dispatchRegistrationRequestsUpdated();
+  dispatchRoomsUpdated();
+  return updated;
+};
+
 export const submitRegistration = async (formData: FormData): Promise<RegistrationRequest | null> => {
   const res = await regApi.submitRegistration(formData);
   const result = normalizeRegistrationResponse(res);
@@ -573,6 +606,9 @@ export default {
   selectBedForRegistration,
   approveBedSelectionForRegistration,
   rejectBedSelectionForRegistration,
+  requestCheckoutForRegistration,
+  confirmCheckoutForRegistration,
+  forceCheckoutForRegistration,
   getEffectiveBedApprovalStatus,
   getRooms,
   getRegistrationById,

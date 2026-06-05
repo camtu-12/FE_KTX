@@ -66,3 +66,19 @@ export const approveBedSelection = (id: number) => {
 export const rejectBedSelection = (id: number) => {
   return API.put(`/registration/${id}/reject-bed`).then((res) => res.data);
 };
+
+export const requestCheckout = (email: string, reason: string, expectedLeaveDate?: string) => {
+  return API.put("/registration/request-checkout", {
+    email,
+    reason,
+    expected_leave_date: expectedLeaveDate || null,
+  }).then((res) => res.data);
+};
+
+export const confirmCheckout = (id: number) => {
+  return API.put(`/registration/${id}/confirm-checkout`).then((res) => res.data);
+};
+
+export const forceCheckout = (id: number, reason: string) => {
+  return API.put(`/registration/${id}/force-checkout`, { reason }).then((res) => res.data);
+};

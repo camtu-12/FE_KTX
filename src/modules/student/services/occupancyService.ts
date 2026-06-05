@@ -1,5 +1,6 @@
-import { myRoom, type LeaveRequest, type MyRoom, type MyRoomStatus } from "../../../mocks/myRoom";
+import { myRoom, type LeaveRequest, type MyRoom, type MyRoomBed, type MyRoomStatus } from "../../../mocks/myRoom";
 import { requestCheckoutByStudentCode } from "../../../mocks/occupancyStore";
+import { getMyRegistration, getRegistrations, getRooms } from "../../../api/registrationService";
 
 export type SubmitLeaveRequestPayload = {
   reason: string;
@@ -8,6 +9,160 @@ export type SubmitLeaveRequestPayload = {
 };
 
 let myOccupancy: MyRoom = structuredClone(myRoom);
+
+const toNumberOrNull = (value: unknown) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const normalizeText = (value: unknown) => String(value ?? "").trim();
+
+const resolveRoomGender = (value: unknown): MyRoom["roomGender"] => {
+  const normalized = normalizeText(value).toLowerCase();
+  return normalized === "male" || normalized === "nam" ? "Nam" : "Nữ";
+};
+
+const resolveMyRoomStatus = (value: unknown): MyRoomStatus => {
+  const normalized = normalizeText(value).toLowerCase();
+
+  if (normalized === "checkout_requested") {
+    return "LEAVE_REQUESTED";
+  }
+
+  if (normalized === "checked_out") {
+    return "LEFT";
+  }
+
+  if (normalized === "forced_checkout") {
+    return "FORCED_LEFT";
+  }
+
+  return "ACTIVE";
+};
+
+export async function getMyOccupancyFromBackend(email: string): Promise<MyRoom | null> {
+  const normalizedEmail = email.trim();
+
+  if (!normalizedEmail) {
+    return null;
+  }
+
+  const [myRegistration, registrations, rooms] = await Promise.all([
+    getMyRegistration(normalizedEmail),
+    getRegistrations(),
+    getRooms(),
+  ]);
+
+  if (
+    !myRegistration ||
+    myRegistration.status !== "approved" ||
+    !myRegistration.assigned_room_id ||
+    !myRegistration.bedId ||
+    myRegistration.bed_approval_status !== "approved"
+  ) {
+    return null;
+  }
+
+  const room = rooms.find((item) => item.id === myRegistration.assigned_room_id);
+
+  if (!room) {
+    return null;
+  }
+
+  const roomBeds = room.beds ?? [];
+  const occupantByBedNumber = new Map<number, { occupantName: string; studentCode: string }>();
+
+  const roomRegistrations = myRegistration
+    ? [
+        myRegistration,
+        ...registrations.filter((registration) => registration.id !== myRegistration.id),
+      ]
+    : registrations;
+
+  roomRegistrations.forEach((registration) => {
+    if (
+      registration.status !== "approved" ||
+      registration.assigned_room_id !== room.id ||
+      !registration.bedId ||
+      registration.bed_approval_status !== "approved"
+    ) {
+      return;
+    }
+
+    const bed = roomBeds.find((item) => item.id === registration.bedId);
+    const bedNumber = toNumberOrNull(bed?.bed_number);
+
+    if (!bedNumber) {
+      return;
+    }
+
+    occupantByBedNumber.set(bedNumber, {
+      occupantName: normalizeText(registration.formData.fullName) || "-",
+      studentCode: normalizeText(registration.formData.mssv) || "-",
+    });
+  });
+
+  const myBed = roomBeds.find((bed) => bed.id === myRegistration.bedId);
+  const myBedNumber = toNumberOrNull(myBed?.bed_number);
+
+  if (!myBedNumber) {
+    return null;
+  }
+
+  const beds = roomBeds
+    .map((bed) => {
+      const bedNumber = toNumberOrNull(bed.bed_number);
+
+      if (!bedNumber) {
+        return null;
+      }
+
+      const nextBed: MyRoomBed = {
+        bedNumber,
+        status: bed.status === "maintenance" ? "MAINTENANCE" : "ACTIVE",
+        ...occupantByBedNumber.get(bedNumber),
+      };
+
+      return nextBed;
+    })
+    .filter((bed): bed is MyRoomBed => bed !== null)
+    .sort((a, b) => a.bedNumber - b.bedNumber);
+
+  return {
+    roomCode: `${room.building_code}${room.room_number}`,
+    buildingCode: room.building_code,
+    floorNumber: room.floor_number ?? room.floor?.floor_number ?? 0,
+    bedNumber: myBedNumber,
+    startDate: myRegistration.formData.dormStartDate || myRegistration.submittedAt,
+    endDate: myRegistration.formData.dormEndDate || "-",
+    roomType: `${room.capacity} người`,
+    roomGender: resolveRoomGender(room.gender ?? room.floor?.gender),
+    status: resolveMyRoomStatus(myRegistration.occupancy_status),
+    leftDate: myRegistration.check_out_date || undefined,
+    leaveRequest: myRegistration.occupancy_status === "checkout_requested"
+      ? {
+          requestedAt: "",
+          expectedLeaveDate: myRegistration.check_out_date || "",
+          reason: myRegistration.occupancy_reason || "",
+        }
+      : undefined,
+    forcedLeave: myRegistration.occupancy_status === "forced_checkout"
+      ? {
+          reason: myRegistration.occupancy_reason || "",
+          decidedAt: myRegistration.check_out_date || "",
+        }
+      : undefined,
+    beds,
+    roommates: beds
+      .filter((bed) => bed.bedNumber !== myBedNumber && bed.occupantName && bed.studentCode)
+      .map((bed) => ({
+        id: bed.bedNumber,
+        fullName: bed.occupantName ?? "-",
+        studentCode: bed.studentCode ?? "-",
+        bedNumber: bed.bedNumber,
+      })),
+  };
+}
 
 export function getMyOccupancy() {
   return structuredClone(myOccupancy);

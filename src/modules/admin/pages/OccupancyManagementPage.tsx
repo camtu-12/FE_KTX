@@ -5,8 +5,15 @@ import { createPortal } from "react-dom";
 import { useOutletContext } from "react-router-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import { type Occupancy, type OccupancyStatus } from "../../../mocks/occupancies";
-import { getOccupancies, subscribeOccupancies, updateOccupancyById } from "../../../mocks/occupancyStore";
-import { students, type Student, type StudentGender } from "../../../mocks/students";
+import type { Student, StudentGender } from "../../../mocks/students";
+import {
+  confirmCheckoutForRegistration,
+  forceCheckoutForRegistration,
+  getRegistrations,
+  getRooms,
+} from "../../../api/registrationService";
+import type { RegistrationRequest } from "../data/registrationRequests";
+import type { DormRoom } from "../../../types/dormRoom";
 
 type OccupancyStatusFilter = OccupancyStatus | "ALL";
 
@@ -92,9 +99,102 @@ const getStudentText = (student: Student | undefined, field: keyof Student) => {
   return emptyValue;
 };
 
+const normalizeGender = (gender: string): StudentGender => {
+  const normalized = gender.trim().toLowerCase();
+  return normalized === "female" || normalized === "nữ" || normalized === "nu" ? "FEMALE" : "MALE";
+};
+
+const resolveRoomBedNumber = (room: DormRoom | undefined, bedId: number | null | undefined) => {
+  if (!room || !bedId) {
+    return "";
+  }
+
+  const bed = room.beds?.find((item) => item.id === bedId);
+  return bed?.bed_number ? String(bed.bed_number) : "";
+};
+
+const resolveOccupancyStatus = (value: string | null | undefined): OccupancyStatus => {
+  const normalized = String(value ?? "").trim().toLowerCase();
+
+  if (normalized === "checkout_requested") {
+    return "CHECKOUT_REQUESTED";
+  }
+
+  if (normalized === "checked_out") {
+    return "CHECKED_OUT";
+  }
+
+  if (normalized === "forced_checkout") {
+    return "FORCED_CHECKOUT";
+  }
+
+  return "ACTIVE";
+};
+
+const createOccupancyRowsFromApi = (
+  registrations: RegistrationRequest[],
+  rooms: DormRoom[],
+): { occupancies: Occupancy[]; students: Student[] } => {
+  const studentsById: Student[] = [];
+  const occupancies = registrations
+    .filter((registration) => {
+      return (
+        registration.status === "approved" &&
+        Boolean(registration.assigned_room_id) &&
+        Boolean(registration.bedId) &&
+        registration.bed_approval_status === "approved"
+      );
+    })
+    .map((registration) => {
+      const room = rooms.find((item) => item.id === registration.assigned_room_id);
+      const studentId = registration.id;
+      const formData = registration.formData;
+
+      studentsById.push({
+        id: studentId,
+        studentCode: formData.mssv,
+        fullName: formData.fullName,
+        gender: normalizeGender(formData.gender),
+        dateOfBirth: formData.birthDate,
+        className: formData.class,
+        faculty: formData.department,
+        phone: formData.phone,
+        email: registration.email,
+      });
+
+      const occupancyStatus = resolveOccupancyStatus(registration.occupancy_status);
+
+      return {
+        id: registration.id,
+        studentId,
+        roomId: registration.assigned_room_id ?? 0,
+        bedId: registration.bedId ?? 0,
+        buildingCode: room?.building_code ?? "",
+        floorNumber: room?.floor_number ?? room?.floor?.floor_number ?? 0,
+        roomNumber: String(room?.room_number ?? ""),
+        bedNumber: resolveRoomBedNumber(room, registration.bedId),
+        checkInDate: registration.check_in_date || formData.dormStartDate || registration.submittedAt,
+        status: occupancyStatus,
+        leaveRequest: occupancyStatus === "CHECKOUT_REQUESTED"
+          ? {
+              requestedAt: "",
+              expectedLeaveDate: registration.check_out_date || "",
+              reason: registration.occupancy_reason || "",
+            }
+          : undefined,
+        forcedCheckoutReason: occupancyStatus === "FORCED_CHECKOUT" ? registration.occupancy_reason || "" : undefined,
+      } satisfies Occupancy;
+    });
+
+  return { occupancies, students: studentsById };
+};
+
 export default function OccupancyManagementPage() {
   const { headerSearchValue } = useOutletContext<AdminLayoutOutletContext>();
-  const [occupancyRows, setOccupancyRows] = useState<Occupancy[]>(() => getOccupancies());
+  const [occupancyRows, setOccupancyRows] = useState<Occupancy[]>([]);
+  const [studentRows, setStudentRows] = useState<Student[]>([]);
+  const [isLoadingOccupancies, setIsLoadingOccupancies] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [buildingFilter, setBuildingFilter] = useState("ALL");
   const [floorFilter, setFloorFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState<OccupancyStatusFilter>("ALL");
@@ -107,7 +207,7 @@ export default function OccupancyManagementPage() {
   const [forceCheckoutReason, setForceCheckoutReason] = useState("");
   const [forceCheckoutReasonError, setForceCheckoutReasonError] = useState("");
 
-  const studentById = useMemo(() => new Map(students.map((student) => [student.id, student])), []);
+  const studentById = useMemo(() => new Map(studentRows.map((student) => [student.id, student])), [studentRows]);
   const buildingOptions = useMemo(() => uniqueSorted(occupancyRows.map((item) => item.buildingCode)), [occupancyRows]);
   const floorOptions = useMemo(() => uniqueSorted(occupancyRows.map((item) => item.floorNumber)), [occupancyRows]);
   const visibleOccupancies = useMemo(() => {
@@ -120,7 +220,7 @@ export default function OccupancyManagementPage() {
       const student = studentById.get(item.studentId);
       const matchesSearch =
         !normalizedSearch ||
-        [student?.studentCode, student?.fullName].filter(Boolean).join(" ").toLowerCase().includes(normalizedSearch);
+        [student?.studentCode, student?.fullName, student?.email].filter(Boolean).join(" ").toLowerCase().includes(normalizedSearch);
 
       return matchesBuilding && matchesFloor && matchesStatus && matchesSearch;
     });
@@ -159,7 +259,47 @@ export default function OccupancyManagementPage() {
   ];
 
   useEffect(() => {
-    return subscribeOccupancies(setOccupancyRows);
+    let isActive = true;
+
+    const loadOccupancies = async () => {
+      setIsLoadingOccupancies(true);
+      setLoadError("");
+
+      try {
+        const [registrations, rooms] = await Promise.all([getRegistrations(), getRooms()]);
+        const mapped = createOccupancyRowsFromApi(registrations, rooms);
+
+        if (isActive) {
+          setOccupancyRows(mapped.occupancies);
+          setStudentRows(mapped.students);
+        }
+      } catch (error) {
+        if (isActive) {
+          setOccupancyRows([]);
+          setStudentRows([]);
+          setLoadError(error instanceof Error ? error.message : "Không thể tải dữ liệu lưu trú.");
+        }
+      } finally {
+        if (isActive) {
+          setIsLoadingOccupancies(false);
+        }
+      }
+    };
+
+    void loadOccupancies();
+
+    const refreshOccupancies = () => {
+      void loadOccupancies();
+    };
+
+    window.addEventListener("ktx-registrations-updated", refreshOccupancies);
+    window.addEventListener("ktx-rooms-updated", refreshOccupancies);
+
+    return () => {
+      isActive = false;
+      window.removeEventListener("ktx-registrations-updated", refreshOccupancies);
+      window.removeEventListener("ktx-rooms-updated", refreshOccupancies);
+    };
   }, []);
 
   useEffect(() => {
@@ -206,7 +346,7 @@ export default function OccupancyManagementPage() {
     setIsStatusFilterOpen(false);
   };
 
-  const updateOccupancyStatus = (id: number, status: OccupancyStatus, forcedCheckoutReason?: string) => {
+  const updateOccupancyStatus = async (id: number, status: OccupancyStatus, forcedCheckoutReason?: string) => {
     const getUpdatedOccupancy = (item: Occupancy) => {
       if (item.id !== id) {
         return item;
@@ -219,7 +359,16 @@ export default function OccupancyManagementPage() {
       return { ...item, status, forcedCheckoutReason: undefined };
     };
 
-    const updatedOccupancy = updateOccupancyById(id, status, forcedCheckoutReason);
+    if (status === "FORCED_CHECKOUT") {
+      await forceCheckoutForRegistration(id, forcedCheckoutReason ?? "");
+    }
+
+    if (status === "CHECKED_OUT") {
+      await confirmCheckoutForRegistration(id);
+    }
+
+    const updatedOccupancy = occupancyRows.map(getUpdatedOccupancy).find((item) => item.id === id) ?? null;
+    setOccupancyRows((current) => current.map(getUpdatedOccupancy));
     setSelectedOccupancy((current) => {
       if (!current || current.id !== id) {
         return current;
@@ -250,7 +399,7 @@ export default function OccupancyManagementPage() {
     }
 
     if (forceCheckoutTarget) {
-      updateOccupancyStatus(forceCheckoutTarget.id, "FORCED_CHECKOUT", trimmedReason);
+      void updateOccupancyStatus(forceCheckoutTarget.id, "FORCED_CHECKOUT", trimmedReason);
     }
 
     handleCloseForceCheckoutModal();
@@ -389,7 +538,19 @@ export default function OccupancyManagementPage() {
               </tr>
             </thead>
             <tbody>
-              {visibleOccupancies.length > 0 ? (
+              {isLoadingOccupancies ? (
+                <tr>
+                  <td colSpan={6} className="border-t border-[#e8eef8] px-4 py-14 text-center text-sm font-semibold text-[#5c7094]">
+                    Đang tải dữ liệu lưu trú...
+                  </td>
+                </tr>
+              ) : loadError ? (
+                <tr>
+                  <td colSpan={6} className="border-t border-[#e8eef8] px-4 py-14 text-center text-sm font-semibold text-[#cc3c4f]">
+                    {loadError}
+                  </td>
+                </tr>
+              ) : visibleOccupancies.length > 0 ? (
                 visibleOccupancies.map((item, index) => {
                   const meta = getStatusMeta(item.status);
                   const StatusIcon = meta.Icon;
@@ -620,14 +781,6 @@ export default function OccupancyManagementPage() {
                         </h4>
                         <div className="mt-4 grid gap-x-6 gap-y-3 text-sm md:grid-cols-2">
                           <p className="text-amber-800">
-                            Ngày gửi yêu cầu:{" "}
-                            <span className="font-semibold">
-                              {selectedOccupancy.leaveRequest?.requestedAt
-                                ? formatDate(selectedOccupancy.leaveRequest.requestedAt)
-                                : emptyValue}
-                            </span>
-                          </p>
-                          <p className="text-amber-800">
                             Ngày dự kiến rời KTX:{" "}
                             <span className="font-semibold">
                               {selectedOccupancy.leaveRequest?.expectedLeaveDate
@@ -638,10 +791,6 @@ export default function OccupancyManagementPage() {
                           <p className="text-amber-800 md:col-span-2">
                             Lý do:{" "}
                             <span className="font-semibold">{selectedOccupancy.leaveRequest?.reason?.trim() || emptyValue}</span>
-                          </p>
-                          <p className="text-amber-800 md:col-span-2">
-                            Ghi chú:{" "}
-                            <span className="font-semibold">{selectedOccupancy.leaveRequest?.note?.trim() || emptyValue}</span>
                           </p>
                         </div>
                       </div>
@@ -663,7 +812,7 @@ export default function OccupancyManagementPage() {
                     {selectedOccupancy.status === "CHECKOUT_REQUESTED" ? (
                         <button
                           type="button"
-                          onClick={() => updateOccupancyStatus(selectedOccupancy.id, "CHECKED_OUT")}
+                          onClick={() => void updateOccupancyStatus(selectedOccupancy.id, "CHECKED_OUT")}
                           className="auth-btn-gloss rounded-2xl bg-[linear-gradient(135deg,#1f9a60_0%,#35bf7a_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_20px_rgba(31,154,96,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110"
                         >
                           <span className="auth-btn-gloss__content">Xác nhận thôi ở</span>

@@ -14,6 +14,7 @@ export type ForcedLeave = {
 
 export type MyRoomBed = {
   bedNumber: number;
+  status?: "ACTIVE" | "MAINTENANCE";
   occupantName?: string;
   studentCode?: string;
 };

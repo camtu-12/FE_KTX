@@ -9,10 +9,12 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { type MyRoom, type MyRoomBed, type MyRoomStatus } from "../../../mocks/myRoom";
-import { getMyOccupancy, submitLeaveRequest } from "../services/occupancyService";
+import { useAuthStore } from "../../auth/store";
+import { requestCheckoutForRegistration } from "../../../api/registrationService";
+import { getMyOccupancyFromBackend } from "../services/occupancyService";
 
 const formatDate = (iso: string) => {
   const date = new Date(iso);
@@ -60,22 +62,36 @@ const statusMeta: Record<
   },
 };
 
-const roomAisles = [
-  {
-    label: "Dãy trái",
-    bunkBeds: [
-      [1, 2],
-      [3, 4],
-    ],
-  },
-  {
-    label: "Dãy phải",
-    bunkBeds: [
-      [5, 6],
-      [7, 8],
-    ],
-  },
-];
+type RoomAisle = {
+  label: string;
+  bunkBeds: number[][];
+};
+
+function createRoomAisles(beds: MyRoomBed[]): RoomAisle[] {
+  const bedNumbers = beds
+    .map((bed) => bed.bedNumber)
+    .filter((bedNumber) => Number.isFinite(bedNumber))
+    .sort((a, b) => a - b);
+
+  const bunkBeds: number[][] = [];
+
+  for (let index = 0; index < bedNumbers.length; index += 2) {
+    bunkBeds.push(bedNumbers.slice(index, index + 2));
+  }
+
+  const midpoint = Math.ceil(bunkBeds.length / 2);
+
+  return [
+    {
+      label: "Dãy trái",
+      bunkBeds: bunkBeds.slice(0, midpoint),
+    },
+    {
+      label: "Dãy phải",
+      bunkBeds: bunkBeds.slice(midpoint),
+    },
+  ].filter((aisle) => aisle.bunkBeds.length > 0);
+}
 
 function getBedByNumber(beds: MyRoomBed[], bedNumber: number) {
   return beds.find((bed) => bed.bedNumber === bedNumber);
@@ -83,8 +99,9 @@ function getBedByNumber(beds: MyRoomBed[], bedNumber: number) {
 
 function BedCard({ bed, currentBedNumber }: { bed: MyRoomBed; currentBedNumber: number }) {
   const isMine = bed.bedNumber === currentBedNumber;
-  const isOccupied = Boolean(bed.occupantName);
-  const tooltipName = bed.occupantName ?? "Trống";
+  const isMaintenance = bed.status === "MAINTENANCE";
+  const isOccupied = !isMaintenance && Boolean(bed.occupantName);
+  const tooltipName = isMaintenance ? "Bảo trì" : bed.occupantName ?? "Trống";
   const tooltipCode = bed.studentCode ?? "-";
 
   return (
@@ -97,6 +114,8 @@ function BedCard({ bed, currentBedNumber }: { bed: MyRoomBed; currentBedNumber: 
           "shadow-[0_14px_28px_rgba(35,72,138,0.12)] hover:shadow-[0_26px_48px_rgba(36,76,184,0.24)]",
           isMine
             ? "border-[#75d8ff] bg-[linear-gradient(135deg,#225bd7_0%,#159bd2_100%)] text-white shadow-[0_0_36px_rgba(37,99,235,0.38)]"
+            : isMaintenance
+              ? "border-amber-200 bg-amber-50/90 text-[#8a5a00] backdrop-blur-xl"
             : isOccupied
               ? "border-emerald-200 bg-emerald-50/90 text-[#1a2d52] backdrop-blur-xl"
               : "border-[#d8e0ec] bg-[#f1f4f8]/90 text-[#6d7fa6] backdrop-blur-xl",
@@ -117,6 +136,8 @@ function BedCard({ bed, currentBedNumber }: { bed: MyRoomBed; currentBedNumber: 
               "flex h-11 w-11 items-center justify-center rounded-2xl border",
               isMine
                 ? "border-white/35 bg-white/18 text-white"
+                : isMaintenance
+                  ? "border-amber-200 bg-white text-amber-600"
                 : isOccupied
                   ? "border-emerald-200 bg-white text-emerald-700"
                   : "border-[#d8e0ec] bg-white/75 text-[#9aacca]",
@@ -132,12 +153,14 @@ function BedCard({ bed, currentBedNumber }: { bed: MyRoomBed; currentBedNumber: 
               "rounded-full border px-3 py-1 text-xs font-bold",
               isMine
                 ? "border-white/30 bg-white/16 text-white"
+                : isMaintenance
+                  ? "border-amber-200 bg-amber-50 text-amber-700"
                 : isOccupied
                   ? "border-emerald-200 bg-white text-emerald-700"
                   : "border-[#d8e0ec] bg-[#f8fbff] text-[#7c8fb5]",
             ].join(" ")}
           >
-            {isMine ? "Giường của bạn" : isOccupied ? "Có người ở" : "Trống"}
+            {isMine ? "Giường của bạn" : isMaintenance ? "Bảo trì" : isOccupied ? "Có người ở" : "Trống"}
           </span>
         </div>
       </motion.article>
@@ -169,13 +192,79 @@ function BunkBed({ pair, occupancy }: { pair: number[]; occupancy: MyRoom }) {
   );
 }
 
+function AccessNotice({ message }: { message: string }) {
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
+      className="space-y-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
+    >
+      <div className="rounded-[26px] border border-[#c4d7f3] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] p-5 text-[#1a2d52] shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="mt-1 h-5 w-5 text-amber-600" />
+          <div>
+            <h1 className="text-2xl font-bold text-[#1a2d52]">Phòng của tôi</h1>
+            <p className="mt-2 text-sm font-semibold text-[#5570a0]">{message}</p>
+          </div>
+        </div>
+      </div>
+    </motion.section>
+  );
+}
+
 export default function MyRoomPage() {
-  const [occupancy, setOccupancy] = useState(() => getMyOccupancy());
+  const studentEmail = useAuthStore((state) => state.user?.email ?? "");
+  const [occupancy, setOccupancy] = useState<MyRoom | null>(null);
+  const [isLoadingOccupancy, setIsLoadingOccupancy] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
   const [leaveReason, setLeaveReason] = useState("");
   const [expectedLeaveDate, setExpectedLeaveDate] = useState("");
-  const [leaveNote, setLeaveNote] = useState("");
   const [leaveErrors, setLeaveErrors] = useState<{ reason?: string; expectedLeaveDate?: string }>({});
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadOccupancy = async () => {
+      setIsLoadingOccupancy(true);
+      setLoadError("");
+
+      try {
+        const nextOccupancy = await getMyOccupancyFromBackend(studentEmail);
+
+        if (isActive) {
+          setOccupancy(nextOccupancy);
+        }
+      } catch (error) {
+        if (isActive) {
+          setOccupancy(null);
+          setLoadError(error instanceof Error ? error.message : "Không thể tải thông tin phòng.");
+        }
+      } finally {
+        if (isActive) {
+          setIsLoadingOccupancy(false);
+        }
+      }
+    };
+
+    void loadOccupancy();
+
+    return () => {
+      isActive = false;
+    };
+  }, [studentEmail]);
+
+  const roomAisles = useMemo(() => createRoomAisles(occupancy?.beds ?? []), [occupancy?.beds]);
+
+  if (isLoadingOccupancy) {
+    return <AccessNotice message="Đang tải thông tin phòng..." />;
+  }
+
+  if (!occupancy) {
+    return <AccessNotice message={loadError || "Bạn chưa đăng ký nội trú, xin mời hoàn thành đầy đủ"} />;
+  }
+
   const StatusIcon = statusMeta[occupancy.status].Icon;
   const myBed = getBedByNumber(occupancy.beds, occupancy.bedNumber);
   const isLiving = occupancy.status === "ACTIVE" || occupancy.status === "LEAVE_REQUESTED";
@@ -184,14 +273,12 @@ export default function MyRoomPage() {
     setIsLeaveModalOpen(false);
     setLeaveReason("");
     setExpectedLeaveDate("");
-    setLeaveNote("");
     setLeaveErrors({});
   };
 
-  const handleSubmitLeaveRequest = () => {
+  const handleSubmitLeaveRequest = async () => {
     const errors: { reason?: string; expectedLeaveDate?: string } = {};
     const trimmedReason = leaveReason.trim();
-    const trimmedNote = leaveNote.trim();
 
     if (!trimmedReason) {
       errors.reason = "Vui lòng nhập lý do thôi ở.";
@@ -206,14 +293,20 @@ export default function MyRoomPage() {
       return;
     }
 
-    setOccupancy(
-      submitLeaveRequest({
+    try {
+      await requestCheckoutForRegistration({
+        email: studentEmail,
         reason: trimmedReason,
         expectedLeaveDate,
-        note: trimmedNote || undefined,
-      }),
-    );
-    closeLeaveModal();
+      });
+      const nextOccupancy = await getMyOccupancyFromBackend(studentEmail);
+      setOccupancy(nextOccupancy);
+      closeLeaveModal();
+    } catch (error) {
+      setLeaveErrors({
+        reason: error instanceof Error ? error.message : "Không thể gửi yêu cầu thôi ở.",
+      });
+    }
   };
 
   return (
@@ -332,8 +425,8 @@ export default function MyRoomPage() {
             <div className="mx-auto max-w-5xl rounded-b-[26px] border-x border-b border-[#c8d8ef] bg-[linear-gradient(135deg,rgba(255,255,255,0.78)_0%,rgba(231,241,255,0.86)_100%)] px-4 py-6 shadow-[inset_0_18px_36px_rgba(36,76,184,0.08)] sm:px-6">
               <div className="grid gap-6 lg:grid-cols-2">
                 {roomAisles.map((aisle) => (
-                  <div key={aisle.label} className="rounded-[30px] border border-[#d2e0f2] bg-white/42 p-4 shadow-[0_16px_34px_rgba(36,76,184,0.10)]">
-                    <div className="space-y-5">
+                  <div key={aisle.label} className="flex h-full flex-col rounded-[30px] border border-[#d2e0f2] bg-white/42 p-4 shadow-[0_16px_34px_rgba(36,76,184,0.10)]">
+                    <div className="flex-1 space-y-5">
                       {aisle.bunkBeds.map((pair) => (
                         <BunkBed key={pair.join("-")} pair={pair} occupancy={occupancy} />
                       ))}
@@ -441,16 +534,6 @@ export default function MyRoomPage() {
                     {leaveErrors.expectedLeaveDate ? <p className="mt-1 text-sm font-semibold text-rose-600">{leaveErrors.expectedLeaveDate}</p> : null}
                   </label>
 
-                  <label className="block">
-                    <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Ghi chú</span>
-                    <textarea
-                      value={leaveNote}
-                      onChange={(event) => setLeaveNote(event.target.value)}
-                      rows={3}
-                      className="mt-2 w-full resize-none rounded-2xl border border-[#d3e0f2] bg-white/80 px-4 py-3 text-sm font-semibold text-[#1b3766] outline-none transition placeholder:text-[#9aabc9] focus:border-[#244cb8] focus:bg-white focus:ring-4 focus:ring-[#244cb8]/12"
-                      placeholder="Thông tin bổ sung nếu có..."
-                    />
-                  </label>
                 </div>
 
                 <div className="mt-6 flex flex-wrap justify-end gap-3">

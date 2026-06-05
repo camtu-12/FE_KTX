@@ -48,6 +48,10 @@ export type RegistrationRequest = {
   assigned_bed_id?: number | null;
   bedId?: number | null;
   bed_approval_status?: BedApprovalStatus | null;
+  occupancy_status?: string | null;
+  occupancy_reason?: string | null;
+  check_in_date?: string | null;
+  check_out_date?: string | null;
   student?: {
     account?: {
       student_code?: string;
