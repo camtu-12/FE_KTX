@@ -1,6 +1,8 @@
 import {
   BedSingle,
   Building2,
+  ChevronDown,
+  ChevronUp,
   ClipboardList,
   CreditCard,
   DoorOpen,
@@ -8,10 +10,12 @@ import {
   Hotel,
   LayoutDashboard,
   School,
+  ShieldAlert,
   UserCog,
   type LucideIcon,
 } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 
 export type SidebarRole = "admin" | "student";
 
@@ -21,8 +25,12 @@ type SidebarProps = {
 
 type MenuItem = {
   label: string;
-  to: string;
+  to?: string;
   icon: LucideIcon;
+  children?: Array<{
+    label: string;
+    to: string;
+  }>;
 };
 
 const adminMenu: MenuItem[] = [
@@ -50,6 +58,20 @@ const adminMenu: MenuItem[] = [
     label: "Quản lý lưu trú",
     to: "/admin/occupancies",
     icon: Hotel,
+  },
+  {
+    label: "Quản lý vi phạm",
+    icon: ShieldAlert,
+    children: [
+      {
+        label: "Danh sách vi phạm",
+        to: "/admin/violations",
+      },
+      {
+        label: "Loại vi phạm",
+        to: "/admin/violation-types",
+      },
+    ],
   },
   {
     label: "Quản lý phòng",
@@ -94,6 +116,16 @@ const studentMenu: MenuItem[] = [
 
 export default function Sidebar({ role }: SidebarProps) {
   const items = role === "admin" ? adminMenu : studentMenu;
+  const location = useLocation();
+  const isViolationGroupActive =
+    location.pathname === "/admin/violations" || location.pathname === "/admin/violation-types";
+  const [isViolationGroupOpen, setIsViolationGroupOpen] = useState(isViolationGroupActive);
+
+  useEffect(() => {
+    if (isViolationGroupActive) {
+      setIsViolationGroupOpen(true);
+    }
+  }, [isViolationGroupActive]);
 
   return (
     <aside className="relative flex w-[260px] flex-col overflow-hidden border-r border-[#173a82] bg-[linear-gradient(160deg,#173979_0%,#2450b0_46%,#12316f_100%)] p-4 text-white shadow-[16px_0_34px_rgba(17,40,97,0.32)]">
@@ -107,10 +139,85 @@ export default function Sidebar({ role }: SidebarProps) {
           {items.map((item) => {
             const Icon = item.icon;
 
+            if (item.children) {
+              const isOpen = item.label === "Quản lý vi phạm" ? isViolationGroupOpen : false;
+              const isGroupActive =
+                item.label === "Quản lý vi phạm" &&
+                item.children.some((child) => child.to === location.pathname);
+              const ChevronIcon = isOpen ? ChevronUp : ChevronDown;
+
+              return (
+                <div key={item.label} className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (item.label === "Quản lý vi phạm") {
+                        setIsViolationGroupOpen((current) => !current);
+                      }
+                    }}
+                    className={[
+                      "group relative flex w-full items-center gap-3 rounded-[22px] px-4 py-3 text-left text-sm font-semibold text-[#d6e7ff] transition-all duration-300",
+                      isGroupActive ? "bg-white/10 text-white" : "hover:bg-white/15 hover:text-white",
+                    ].join(" ")}
+                  >
+                    <span
+                      className={`absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded ${
+                        isGroupActive ? "bg-white/70" : "bg-transparent"
+                      }`}
+                    ></span>
+                    <Icon
+                      className={`h-5 w-5 flex-shrink-0 transition-colors duration-200 ${
+                        isGroupActive ? "text-white" : "text-[#b7d1f5] group-hover:text-white"
+                      }`}
+                    />
+                    <span className="min-w-0 flex-1">{item.label}</span>
+                    <ChevronIcon
+                      className={`h-4 w-4 flex-shrink-0 transition-colors duration-200 ${
+                        isGroupActive ? "text-white" : "text-[#b7d1f5] group-hover:text-white"
+                      }`}
+                    />
+                  </button>
+
+                  {isOpen ? (
+                    <div className="relative ml-5 space-y-2 pl-4">
+                      <span className="absolute bottom-3 left-0 top-3 w-px rounded-full bg-white/18" />
+                      {item.children.map((child) => {
+                        return (
+                          <NavLink
+                            key={child.to}
+                            to={child.to}
+                            className={({ isActive }) =>
+                              [
+                                "group relative flex w-full items-center gap-3 rounded-[18px] px-4 py-2.5 text-left text-sm font-semibold text-[#d6e7ff] transition-all duration-300",
+                                isActive
+                                  ? "bg-[linear-gradient(135deg,#5d83d8_0%,#7fe1d7_100%)] text-white shadow-[0_12px_24px_rgba(26,132,217,0.24)]"
+                                  : "hover:bg-white/15 hover:text-white",
+                              ].join(" ")
+                            }
+                          >
+                            {({ isActive }) => (
+                              <>
+                                <span
+                                  className={`absolute -left-[1.15rem] top-1/2 h-2 w-2 -translate-y-1/2 rounded-full ${
+                                    isActive ? "bg-white" : "bg-white/32"
+                                  }`}
+                                />
+                                <span>{child.label}</span>
+                              </>
+                            )}
+                          </NavLink>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }
+
             return (
               <NavLink
                 key={item.to}
-                to={item.to}
+                to={item.to ?? "#"}
                 className={({ isActive }) =>
                   [
                     "group relative flex w-full items-center gap-3 rounded-[22px] px-4 py-3 text-left text-sm font-semibold text-[#d6e7ff] transition-all duration-300",

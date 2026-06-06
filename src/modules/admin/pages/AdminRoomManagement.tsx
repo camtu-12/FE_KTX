@@ -949,7 +949,7 @@ export default function AdminRoomManagement() {
           </button>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto]">
           <SelectField
             value={filterBuilding}
             onChange={(event) => {
@@ -1025,6 +1025,14 @@ export default function AdminRoomManagement() {
             <option value="FULL">Đầy</option>
             <option value="MAINTENANCE">Bảo trì</option>
           </SelectField>
+
+          <button
+            type="button"
+            onClick={resetAllFilters}
+            className="h-11 rounded-2xl border border-[#c8d8ef] bg-white px-5 text-sm font-semibold text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.10)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-[#f5f9ff]"
+          >
+            Reset
+          </button>
         </div>
       </header>
 

@@ -230,7 +230,7 @@ Lưu trữ đơn đăng ký ở ký túc xá của sinh viên, trạng thái duy
 -	commitment_confirmed: BOOLEAN (true / false)
 7.	occupancy( Lưu trú)
 Lưu trữ thông tin lưu trú của sinh viên 
--	occupancy(id, registration_id, student_id, room_id, bed_id, check_in_date, check_out_date, status, created_at, updated_at )
+-	occupancy(id, registration_id, student_id, room_id, bed_id, status, reason, created_at, updated_at )
 -	status: ACTIVE, COMPLETED, TERMINATED
 8.	room_change_log (Lịch sử chuyển phòng)
 Lưu lịch sử chuyển phòng của từng sinh viên khi phòng có sự cố
@@ -255,8 +255,9 @@ Danh mục các loại vi phạm và mức độ (nhẹ, trung bình, nghiêm tr
 
 13.	Bảng violation (Vi phạm)
 Ghi nhận vi phạm cụ thể của sinh viên.
--	violation(id, occupancy_id,, type_id, violation_date, note)
-
+-	violation(id, occupancy_id,, type_id, violation_date, status, action_taken, note)
+-	status ENUM('PENDING','RESOLVED')
+-	action_taken ENUM('WARNING','FORCED_CHECKOUT')
 14.	Bảng account (Tài khoản)
 Quản lý tài khoản đăng nhập của sinh viên và admin.
 -	account(id, student_id , password, role, is_active, created_at,
@@ -272,6 +273,8 @@ Lưu thông báo đó là thông báo nào, được gửi cho ai, và đã đư
 17.	Bảng setting 
 Lưu các tham số cấu hình của hệ thống, có thể thay đổi mà không cần sửa code.
 -	settings(key, value, description)	
+
+
 
 
     

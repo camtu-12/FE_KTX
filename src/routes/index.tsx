@@ -13,6 +13,8 @@ import AssignRoomPage from "../modules/admin/pages/AssignRoomPage.tsx";
 import AssignRoomDetailPage from "../modules/admin/pages/AssignRoomDetailPage";
 import AdminStudentsPage from "../modules/admin/pages/AdminStudentsPage";
 import OccupancyManagementPage from "../modules/admin/pages/OccupancyManagementPage";
+import ViolationManagementPage from "../modules/admin/pages/ViolationManagementPage";
+import ViolationTypeManagementPage from "../modules/admin/pages/ViolationTypeManagementPage";
 import LoginPage from "../modules/auth/pages/LoginPage";
 import RegisterPage from "../modules/auth/pages/RegisterPage";
 import AboutPage from "../modules/public/pages/AboutPage";
@@ -53,6 +55,8 @@ export default function AppRoutes() {
           <Route path="assign-room/:requestId" element={<AssignRoomDetailPage />} />
           <Route path="bed-management" element={<BedManagementPage />} />
           <Route path="occupancies" element={<OccupancyManagementPage />} />
+          <Route path="violations" element={<ViolationManagementPage />} />
+          <Route path="violation-types" element={<ViolationTypeManagementPage />} />
           <Route path="students" element={<AdminStudentsPage />} />
           <Route path="rooms" element={<AdminRoomManagement />} />
           <Route path="buildings" element={<AdminBuildingManagement />} />
