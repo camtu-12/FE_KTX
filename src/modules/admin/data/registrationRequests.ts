@@ -44,6 +44,7 @@ export type RegistrationRequest = {
   cccdFrontUrl?: string;
   cccdBackUrl?: string;
   commitmentConfirmed?: boolean;
+  occupancy_id?: number | null;
   assigned_room_id?: number | null;
   assigned_bed_id?: number | null;
   bedId?: number | null;

@@ -1,6 +1,7 @@
 import { myRoom, type LeaveRequest, type MyRoom, type MyRoomBed, type MyRoomStatus } from "../../../mocks/myRoom";
 import { requestCheckoutByStudentCode } from "../../../mocks/occupancyStore";
 import { getMyRegistration, getRegistrations, getRooms } from "../../../api/registrationService";
+import { listViolationsByOccupancy } from "../../../api/violationApi";
 
 export type SubmitLeaveRequestPayload = {
   reason: string;
@@ -38,6 +39,15 @@ const resolveMyRoomStatus = (value: unknown): MyRoomStatus => {
   }
 
   return "ACTIVE";
+};
+
+const resolveViolationLevel = (value: unknown): "MINOR" | "MEDIUM" | "SERIOUS" | undefined => {
+  const normalized = normalizeText(value).toUpperCase();
+  if (normalized === "MINOR" || normalized === "MEDIUM" || normalized === "SERIOUS") {
+    return normalized;
+  }
+
+  return undefined;
 };
 
 export async function getMyOccupancyFromBackend(email: string): Promise<MyRoom | null> {
@@ -128,6 +138,12 @@ export async function getMyOccupancyFromBackend(email: string): Promise<MyRoom |
     .filter((bed): bed is MyRoomBed => bed !== null)
     .sort((a, b) => a.bedNumber - b.bedNumber);
 
+  const forcedViolation = myRegistration.occupancy_status === "forced_checkout" && myRegistration.occupancy_id
+    ? (await listViolationsByOccupancy(myRegistration.occupancy_id))
+        .filter((violation) => violation.actionTaken === "FORCED_CHECKOUT")
+        .sort((a, b) => b.id - a.id)[0]
+    : undefined;
+
   return {
     roomCode: `${room.building_code}${room.room_number}`,
     buildingCode: room.building_code,
@@ -150,6 +166,8 @@ export async function getMyOccupancyFromBackend(email: string): Promise<MyRoom |
       ? {
           reason: myRegistration.occupancy_reason || "",
           decidedAt: myRegistration.check_out_date || "",
+          violationTypeName: forcedViolation?.type?.name,
+          violationTypeLevel: resolveViolationLevel(forcedViolation?.type?.level),
         }
       : undefined,
     beds,

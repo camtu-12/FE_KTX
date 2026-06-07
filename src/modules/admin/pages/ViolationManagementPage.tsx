@@ -8,18 +8,16 @@ import {
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useOutletContext } from "react-router-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
-import { occupancies } from "../../../mocks/occupancies";
-import { students } from "../../../mocks/students";
-import type { ViolationAction, ViolationStatus } from "../../../mocks/violations";
-import { violations as violationSeeds } from "../../../mocks/violations";
-import type { ViolationLevel } from "../../../mocks/violationTypes";
-import { violationTypes } from "../../../mocks/violationTypes";
+import { listViolations, processViolation, type ViolationRecord } from "../../../api/violationApi";
+import type { ViolationLevel } from "../../../api/violationTypeApi";
 
 type LevelFilter = ViolationLevel | "ALL";
+type ViolationStatus = "PENDING" | "RESOLVED";
+type ViolationAction = "WARNING" | "FORCED_CHECKOUT";
 type StatusFilter = ViolationStatus | "ALL";
 type ActionFilter = ViolationAction | "ALL" | "NONE";
 
@@ -123,28 +121,23 @@ const formatDate = (iso: string) => {
   });
 };
 
-const createRows = (): ViolationRow[] => {
-  const typeById = new Map(violationTypes.map((item) => [item.id, item]));
-  const occupancyById = new Map(occupancies.map((item) => [item.id, item]));
-  const studentById = new Map(students.map((item) => [item.id, item]));
-
-  return violationSeeds.map((violation) => {
-    const violationType = typeById.get(violation.typeId);
-    const occupancy = occupancyById.get(violation.occupancyId);
-    const student = occupancy ? studentById.get(occupancy.studentId) : undefined;
-
-    return {
-      ...violation,
-      typeName: violationType?.name ?? emptyValue,
-      typeDescription: violationType?.description ?? emptyValue,
-      level: violationType?.level ?? "MINOR",
-      studentCode: student?.studentCode ?? emptyValue,
-      fullName: student?.fullName ?? emptyValue,
-      room: occupancy ? `${occupancy.buildingCode}${occupancy.roomNumber}` : emptyValue,
-      bed: occupancy?.bedNumber ? `#${occupancy.bedNumber}` : emptyValue,
-    };
-  });
-};
+const createRows = (records: ViolationRecord[]): ViolationRow[] =>
+  records.map((violation) => ({
+    id: violation.id,
+    occupancyId: violation.occupancyId,
+    typeId: violation.typeId,
+    violationDate: violation.violationDate,
+    status: violation.status,
+    actionTaken: violation.actionTaken,
+    note: violation.note,
+    typeName: violation.type?.name ?? emptyValue,
+    typeDescription: violation.type?.description ?? emptyValue,
+    level: violation.type?.level ?? "MINOR",
+    studentCode: violation.student?.studentCode || emptyValue,
+    fullName: violation.student?.fullName || emptyValue,
+    room: violation.room.displayName || emptyValue,
+    bed: violation.bed.displayName || emptyValue,
+  }));
 
 function Badge({
   children,
@@ -173,7 +166,7 @@ function InfoLine({ label, value }: { label: string; value: string }) {
 
 export default function ViolationManagementPage() {
   const { headerSearchValue } = useOutletContext<AdminLayoutOutletContext>();
-  const [rows, setRows] = useState<ViolationRow[]>(() => createRows());
+  const [rows, setRows] = useState<ViolationRow[]>([]);
   const [levelFilter, setLevelFilter] = useState<LevelFilter>("ALL");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [actionFilter, setActionFilter] = useState<ActionFilter>("ALL");
@@ -183,6 +176,38 @@ export default function ViolationManagementPage() {
   const [processNote, setProcessNote] = useState("");
   const [forcedCheckoutReason, setForcedCheckoutReason] = useState("");
   const [processError, setProcessError] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadViolations = async () => {
+      try {
+        const data = await listViolations();
+        if (mounted) {
+          setRows(createRows(data));
+        }
+      } catch {
+        if (mounted) {
+          setRows([]);
+        }
+      }
+    };
+
+    void loadViolations();
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("ktx-violations-updated", loadViolations);
+      window.addEventListener("focus", loadViolations);
+    }
+
+    return () => {
+      mounted = false;
+      if (typeof window !== "undefined") {
+        window.removeEventListener("ktx-violations-updated", loadViolations);
+        window.removeEventListener("focus", loadViolations);
+      }
+    };
+  }, []);
 
   const activeSearchValue = headerSearchValue.trim();
   const visibleRows = useMemo(() => {
@@ -252,7 +277,7 @@ export default function ViolationManagementPage() {
     setActionFilter("ALL");
   };
 
-  const handleConfirmProcess = () => {
+  const handleConfirmProcess = async () => {
     if (!processingViolation) {
       return;
     }
@@ -265,16 +290,25 @@ export default function ViolationManagementPage() {
       return;
     }
 
-    const nextViolation: ViolationRow = {
-      ...processingViolation,
-      status: "RESOLVED",
-      actionTaken: selectedAction,
-      note: trimmedProcessNote || processingViolation.note,
-    };
+    try {
+      const updated = await processViolation(processingViolation.id, {
+        action_taken: selectedAction,
+        note: trimmedProcessNote || processingViolation.note,
+      });
+      const [nextViolation] = createRows([updated]);
 
-    setRows((current) => current.map((item) => (item.id === nextViolation.id ? nextViolation : item)));
-    setSelectedViolation((current) => (current?.id === nextViolation.id ? nextViolation : current));
-    closeProcessModal();
+      setRows((current) => current.map((item) => (item.id === nextViolation.id ? nextViolation : item)));
+      setSelectedViolation((current) => (current?.id === nextViolation.id ? nextViolation : current));
+      closeProcessModal();
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("ktx-violations-updated"));
+        window.dispatchEvent(new Event("ktx-registrations-updated"));
+        window.dispatchEvent(new Event("ktx-rooms-updated"));
+      }
+    } catch {
+      setProcessError("Không thể cập nhật xử lý vi phạm. Vui lòng thử lại.");
+    }
   };
 
   return (

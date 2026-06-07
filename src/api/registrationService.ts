@@ -301,6 +301,7 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
     cccdFrontUrl: cccdFrontPhotoUrl,
     cccdBackUrl: cccdBackPhotoUrl,
     commitmentConfirmed,
+    occupancy_id: toNumberOrNull(registration.occupancy_id) ?? null,
     assigned_room_id: toNumberOrNull(registration.assigned_room_id) ?? null,
     bedId: toNumberOrNull(registration.bedId ?? registration.assigned_bed_id) ?? null,
     bed_approval_status: normalizeBedApprovalStatus(registration.bed_approval_status),

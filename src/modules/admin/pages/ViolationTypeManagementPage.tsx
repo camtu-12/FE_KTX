@@ -1,23 +1,26 @@
 import { motion } from "framer-motion";
-import { Pencil, Plus, Power, X } from "lucide-react";
+import { Pencil, Plus, Trash2, X } from "lucide-react";
 import type { FormEvent, InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { violationTypes as violationTypeSeeds } from "../../../mocks/violationTypes";
-import type { ViolationLevel, ViolationType } from "../../../mocks/violationTypes";
+import {
+  createViolationType,
+  deleteViolationType,
+  listViolationTypes,
+  updateViolationType,
+} from "../../../api/violationTypeApi";
+import type { ViolationLevel, ViolationType } from "../../../api/violationTypeApi";
 
 type ViolationTypeForm = {
   name: string;
   level: ViolationLevel;
   description: string;
-  isActive: boolean;
 };
 
 const initialFormState: ViolationTypeForm = {
   name: "",
   level: "MINOR",
   description: "",
-  isActive: true,
 };
 
 const levelOptions: Array<{ value: ViolationLevel; label: string }> = [
@@ -77,11 +80,44 @@ function TextareaField(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
 }
 
 export default function ViolationTypeManagementPage() {
-  const [items, setItems] = useState<ViolationType[]>(() => violationTypeSeeds);
+  const [items, setItems] = useState<ViolationType[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingType, setEditingType] = useState<ViolationType | null>(null);
   const [form, setForm] = useState<ViolationTypeForm>(initialFormState);
   const [formError, setFormError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadViolationTypes = async () => {
+      try {
+        const data = await listViolationTypes();
+        if (mounted) {
+          setItems(data);
+        }
+      } catch {
+        if (mounted) {
+          setItems([]);
+        }
+      }
+    };
+
+    void loadViolationTypes();
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("ktx-violation-types-updated", loadViolationTypes);
+      window.addEventListener("focus", loadViolationTypes);
+    }
+
+    return () => {
+      mounted = false;
+      if (typeof window !== "undefined") {
+        window.removeEventListener("ktx-violation-types-updated", loadViolationTypes);
+        window.removeEventListener("focus", loadViolationTypes);
+      }
+    };
+  }, []);
 
   const sortedItems = useMemo(() => [...items].sort((a, b) => a.id - b.id), [items]);
 
@@ -98,7 +134,6 @@ export default function ViolationTypeManagementPage() {
       name: item.name,
       level: item.level,
       description: item.description,
-      isActive: item.isActive,
     });
     setFormError("");
     setIsModalOpen(true);
@@ -111,7 +146,7 @@ export default function ViolationTypeManagementPage() {
     setFormError("");
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     const trimmedName = form.name.trim();
@@ -122,41 +157,47 @@ export default function ViolationTypeManagementPage() {
       return;
     }
 
-    if (editingType) {
-      setItems((current) =>
-        current.map((item) =>
-          item.id === editingType.id
-            ? {
-                ...item,
-                name: trimmedName,
-                level: form.level,
-                description: trimmedDescription,
-                isActive: form.isActive,
-              }
-            : item,
-        ),
-      );
-    } else {
-      const nextId = Math.max(0, ...items.map((item) => item.id)) + 1;
-      setItems((current) => [
-        ...current,
-        {
-          id: nextId,
-          name: trimmedName,
-          level: form.level,
-          description: trimmedDescription,
-          isActive: form.isActive,
-        },
-      ]);
-    }
+    setIsSubmitting(true);
+    setFormError("");
 
-    closeModal();
+    try {
+      const payload = {
+        name: trimmedName,
+        level: form.level,
+        description: trimmedDescription,
+      } as const;
+
+      if (editingType) {
+        const updatedType = await updateViolationType(editingType.id, payload);
+        setItems((current) => current.map((item) => (item.id === updatedType.id ? updatedType : item)));
+      } else {
+        const createdType = await createViolationType(payload);
+        setItems((current) => [...current, createdType]);
+      }
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("ktx-violation-types-updated"));
+      }
+
+      closeModal();
+    } catch {
+      setFormError("KhÃ´ng thá»ƒ lÆ°u loáº¡i vi pháº¡m. Vui lÃ²ng thá»­ láº¡i.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const deactivateType = (item: ViolationType) => {
-    setItems((current) =>
-      current.map((type) => (type.id === item.id ? { ...type, isActive: false } : type)),
-    );
+  const removeType = async (item: ViolationType) => {
+    try {
+      await deleteViolationType(item.id);
+      setItems((current) => current.filter((type) => type.id !== item.id));
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("ktx-violation-types-updated"));
+      }
+    } catch {
+      setFormError("Không thể xóa loại vi phạm. Loại này có thể đã được sử dụng.");
+    }
   };
 
   return (
@@ -171,7 +212,7 @@ export default function ViolationTypeManagementPage() {
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">Loại vi phạm</h1>
-              <p className="mt-1 text-sm text-[#62789f]">Quản lý danh mục loại vi phạm, mức độ và trạng thái sử dụng.</p>
+              <p className="mt-1 text-sm text-[#62789f]">Quản lý danh mục loại vi phạm và mức độ.</p>
             </div>
 
             <button
@@ -189,15 +230,14 @@ export default function ViolationTypeManagementPage() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[920px] border-separate border-spacing-0">
               <colgroup>
-                <col className="w-[20%]" />
-                <col className="w-[41%]" />
-                <col className="w-[13%]" />
-                <col className="w-[12%]" />
+                <col className="w-[22%]" />
+                <col className="w-[48%]" />
+                <col className="w-[14%]" />
                 <col className="w-[14%]" />
               </colgroup>
               <thead>
                 <tr className="bg-[linear-gradient(180deg,#f7faff_0%,#eef4ff_100%)]">
-                  {["Tên loại", "Mô tả", "Mức độ", "Trạng thái", "Hành động"].map((heading) => (
+                  {["Tên loại", "Mô tả", "Mức độ", "Hành động"].map((heading) => (
                     <th key={heading} className="px-4 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
                       {heading}
                     </th>
@@ -217,17 +257,6 @@ export default function ViolationTypeManagementPage() {
                       <Badge className={levelMeta[item.level].badgeClassName}>{levelMeta[item.level].label}</Badge>
                     </td>
                     <td className="border-t border-[#e8eef8] px-4 py-4">
-                      <Badge
-                        className={
-                          item.isActive
-                            ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
-                            : "border border-slate-200 bg-slate-50 text-slate-600"
-                        }
-                      >
-                        {item.isActive ? "Hoạt động" : "Ngừng sử dụng"}
-                      </Badge>
-                    </td>
-                    <td className="border-t border-[#e8eef8] px-4 py-4">
                       <div className="flex flex-nowrap items-center gap-2">
                         <button
                           type="button"
@@ -240,17 +269,12 @@ export default function ViolationTypeManagementPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => deactivateType(item)}
-                          disabled={!item.isActive}
-                          className={`inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border shadow-[0_8px_18px_rgba(190,24,93,0.10)] transition ${
-                            item.isActive
-                              ? "border-rose-200 bg-rose-50 text-rose-600 hover:-translate-y-0.5 hover:border-rose-300 hover:bg-white"
-                              : "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400 shadow-none"
-                          }`}
-                          aria-label="Ngừng sử dụng"
-                          title="Ngừng sử dụng"
+                          onClick={() => removeType(item)}
+                          className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-600 shadow-[0_8px_18px_rgba(190,24,93,0.10)] transition hover:-translate-y-0.5 hover:border-rose-300 hover:bg-white"
+                          aria-label="Xóa"
+                          title="Xóa"
                         >
-                          <Power className="h-4 w-4" />
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     </td>
@@ -306,7 +330,7 @@ export default function ViolationTypeManagementPage() {
                   </label>
 
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="block">
+                    <label className="block sm:col-span-2">
                       <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Mức độ *</span>
                       <SelectField
                         value={form.level}
@@ -318,18 +342,6 @@ export default function ViolationTypeManagementPage() {
                             {option.label}
                           </option>
                         ))}
-                      </SelectField>
-                    </label>
-
-                    <label className="block">
-                      <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Trạng thái</span>
-                      <SelectField
-                        value={form.isActive ? "active" : "inactive"}
-                        onChange={(event) => setForm((current) => ({ ...current, isActive: event.target.value === "active" }))}
-                        className="mt-2"
-                      >
-                        <option value="active">Hoạt động</option>
-                        <option value="inactive">Ngừng sử dụng</option>
                       </SelectField>
                     </label>
                   </div>
@@ -357,6 +369,7 @@ export default function ViolationTypeManagementPage() {
                     </button>
                     <button
                       type="submit"
+                      disabled={isSubmitting}
                       className="auth-btn-gloss rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(36,76,184,0.24)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110"
                     >
                       <span className="auth-btn-gloss__content">Lưu</span>

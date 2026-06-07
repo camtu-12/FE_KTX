@@ -10,6 +10,8 @@ export type LeaveRequest = {
 export type ForcedLeave = {
   reason: string;
   decidedAt: string;
+  violationTypeName?: string;
+  violationTypeLevel?: "MINOR" | "MEDIUM" | "SERIOUS";
 };
 
 export type MyRoomBed = {

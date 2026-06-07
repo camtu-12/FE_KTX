@@ -13,6 +13,7 @@ export type OccupancyLeaveRequest = {
 
 export type Occupancy = {
   id: number;
+  occupancyId?: number | null;
   studentId: number;
   roomId: number;
   bedId: number;
@@ -21,6 +22,7 @@ export type Occupancy = {
   roomNumber: string;
   bedNumber: string;
   checkInDate: string;
+  checkOutDate?: string;
   status: OccupancyStatus;
   leaveRequest?: OccupancyLeaveRequest;
   forcedCheckoutReason?: string;

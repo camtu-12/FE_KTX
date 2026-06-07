@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { CheckCircle2, CircleAlert, Clock3, Funnel, X } from "lucide-react";
+import { CheckCircle2, CircleAlert, Clock3, Funnel, ShieldAlert, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useOutletContext } from "react-router-dom";
@@ -14,6 +14,8 @@ import {
 } from "../../../api/registrationService";
 import type { RegistrationRequest } from "../data/registrationRequests";
 import type { DormRoom } from "../../../types/dormRoom";
+import { listViolationTypes, type ViolationType } from "../../../api/violationTypeApi";
+import { createViolation } from "../../../api/violationApi";
 
 type OccupancyStatusFilter = OccupancyStatus | "ALL";
 
@@ -76,6 +78,23 @@ const uniqueSorted = <T extends string | number>(items: T[]) => {
 };
 
 const emptyValue = "-";
+
+const levelMeta = {
+  MINOR: {
+    label: "Nhẹ",
+    badgeClassName: "border border-yellow-200 bg-yellow-50 text-yellow-700",
+  },
+  MEDIUM: {
+    label: "Trung bình",
+    badgeClassName: "border border-orange-200 bg-orange-50 text-orange-700",
+  },
+  SERIOUS: {
+    label: "Nghiêm trọng",
+    badgeClassName: "border border-red-200 bg-red-50 text-red-700",
+  },
+};
+
+const getTodayValue = () => new Date().toISOString().slice(0, 10);
 
 const getGenderLabel = (gender?: StudentGender) => {
   if (gender === "MALE") {
@@ -166,6 +185,7 @@ const createOccupancyRowsFromApi = (
 
       return {
         id: registration.id,
+        occupancyId: registration.occupancy_id ?? null,
         studentId,
         roomId: registration.assigned_room_id ?? 0,
         bedId: registration.bedId ?? 0,
@@ -174,6 +194,7 @@ const createOccupancyRowsFromApi = (
         roomNumber: String(room?.room_number ?? ""),
         bedNumber: resolveRoomBedNumber(room, registration.bedId),
         checkInDate: registration.check_in_date || formData.dormStartDate || registration.submittedAt,
+        checkOutDate: registration.check_out_date || undefined,
         status: occupancyStatus,
         leaveRequest: occupancyStatus === "CHECKOUT_REQUESTED"
           ? {
@@ -206,6 +227,13 @@ export default function OccupancyManagementPage() {
   const [forceCheckoutTarget, setForceCheckoutTarget] = useState<Occupancy | null>(null);
   const [forceCheckoutReason, setForceCheckoutReason] = useState("");
   const [forceCheckoutReasonError, setForceCheckoutReasonError] = useState("");
+  const [violationTarget, setViolationTarget] = useState<Occupancy | null>(null);
+  const [violationTypes, setViolationTypes] = useState<ViolationType[]>([]);
+  const [violationTypeId, setViolationTypeId] = useState("");
+  const [violationDate, setViolationDate] = useState(getTodayValue);
+  const [violationNote, setViolationNote] = useState("");
+  const [violationFormError, setViolationFormError] = useState("");
+  const [isSavingViolation, setIsSavingViolation] = useState(false);
 
   const studentById = useMemo(() => new Map(studentRows.map((student) => [student.id, student])), [studentRows]);
   const buildingOptions = useMemo(() => uniqueSorted(occupancyRows.map((item) => item.buildingCode)), [occupancyRows]);
@@ -230,6 +258,11 @@ export default function OccupancyManagementPage() {
   const checkoutRequestedCount = occupancyRows.filter((item) => item.status === "CHECKOUT_REQUESTED").length;
   const checkedOutCount = occupancyRows.filter((item) => item.status === "CHECKED_OUT").length;
   const selectedStudent = selectedOccupancy ? studentById.get(selectedOccupancy.studentId) : undefined;
+  const violationStudent = violationTarget ? studentById.get(violationTarget.studentId) : undefined;
+  const selectedViolationType = useMemo(
+    () => violationTypes.find((item) => item.id === Number(violationTypeId)) ?? null,
+    [violationTypeId, violationTypes],
+  );
 
   const summaryCards = [
     {
@@ -299,6 +332,29 @@ export default function OccupancyManagementPage() {
       isActive = false;
       window.removeEventListener("ktx-registrations-updated", refreshOccupancies);
       window.removeEventListener("ktx-rooms-updated", refreshOccupancies);
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadTypes = async () => {
+      try {
+        const data = await listViolationTypes();
+        if (mounted) {
+          setViolationTypes(data);
+        }
+      } catch {
+        if (mounted) {
+          setViolationTypes([]);
+        }
+      }
+    };
+
+    void loadTypes();
+
+    return () => {
+      mounted = false;
     };
   }, []);
 
@@ -378,12 +434,6 @@ export default function OccupancyManagementPage() {
     });
   };
 
-  const handleForceCheckout = (item: Occupancy) => {
-    setForceCheckoutTarget(item);
-    setForceCheckoutReason("");
-    setForceCheckoutReasonError("");
-  };
-
   const handleCloseForceCheckoutModal = () => {
     setForceCheckoutTarget(null);
     setForceCheckoutReason("");
@@ -408,6 +458,67 @@ export default function OccupancyManagementPage() {
   const handleOpenDetail = (item: Occupancy) => {
     setSelectedOccupancy(item);
     setIsStatusFilterOpen(false);
+  };
+
+  const resetViolationForm = () => {
+    setViolationTypeId("");
+    setViolationDate(getTodayValue());
+    setViolationNote("");
+    setViolationFormError("");
+  };
+
+  const handleOpenViolations = (item: Occupancy) => {
+    setViolationTarget(item);
+    setSelectedOccupancy(null);
+    setIsStatusFilterOpen(false);
+    resetViolationForm();
+  };
+
+  const handleCloseViolations = () => {
+    setViolationTarget(null);
+    resetViolationForm();
+  };
+
+  const handleSubmitViolation = async () => {
+    const occupancyId = violationTarget?.occupancyId;
+    const typeId = Number(violationTypeId);
+
+    if (!occupancyId) {
+      setViolationFormError("Không tìm thấy mã lưu trú để ghi nhận vi phạm.");
+      return;
+    }
+
+    if (!typeId) {
+      setViolationFormError("Vui lòng chọn loại vi phạm.");
+      return;
+    }
+
+    if (!violationDate) {
+      setViolationFormError("Vui lòng chọn ngày vi phạm.");
+      return;
+    }
+
+    setIsSavingViolation(true);
+    setViolationFormError("");
+
+    const payload = {
+      occupancy_id: occupancyId,
+      type_id: typeId,
+      violation_date: violationDate,
+      note: violationNote.trim(),
+    };
+
+    try {
+      await createViolation(payload);
+      resetViolationForm();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("ktx-violations-updated"));
+      }
+    } catch {
+      setViolationFormError("Không thể lưu vi phạm. Vui lòng thử lại.");
+    } finally {
+      setIsSavingViolation(false);
+    }
   };
 
   return (
@@ -492,14 +603,14 @@ export default function OccupancyManagementPage() {
           transition={{ duration: 0.46, delay: 0.16, ease: "easeOut" }}
           className="relative mt-1 min-h-[420px] overflow-hidden rounded-[14px] border border-[#d6e2f1] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.10)]"
         >
-          <table className="min-w-[860px] w-full table-fixed border-separate border-spacing-0">
+          <table className="min-w-[980px] w-full table-fixed border-separate border-spacing-0">
             <colgroup>
               <col className="w-[14%]" />
-              <col className="w-[24%]" />
+              <col className="w-[22%]" />
               <col className="w-[12%]" />
               <col className="w-[10%]" />
+              <col className="w-[20%]" />
               <col className="w-[22%]" />
-              <col className="w-[18%]" />
             </colgroup>
             <thead>
               <tr className="bg-[linear-gradient(180deg,#f7faff_0%,#eef4ff_100%)]">
@@ -593,6 +704,14 @@ export default function OccupancyManagementPage() {
                             className="auth-btn-gloss inline-flex min-w-[92px] items-center justify-center whitespace-nowrap rounded-xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-2.5 py-2 text-[12px] font-semibold text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.12)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white"
                           >
                             <span className="auth-btn-gloss__content">Xem chi tiết</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenViolations(item)}
+                            className="auth-btn-gloss inline-flex min-w-[76px] items-center justify-center gap-1 whitespace-nowrap rounded-xl border border-rose-200 bg-rose-50 px-2.5 py-2 text-[12px] font-semibold text-rose-700 shadow-[0_8px_18px_rgba(190,24,93,0.10)] transition duration-200 hover:-translate-y-0.5 hover:border-rose-300 hover:bg-white"
+                          >
+                            <ShieldAlert className="h-3.5 w-3.5" />
+                            <span className="auth-btn-gloss__content">Vi phạm</span>
                           </button>
                         </div>
                       </td>
@@ -763,6 +882,14 @@ export default function OccupancyManagementPage() {
                             {getStatusMeta(selectedOccupancy.status).label}
                           </span>
                         </div>
+                        {selectedOccupancy.status === "CHECKED_OUT" || selectedOccupancy.status === "FORCED_CHECKOUT" ? (
+                          <p className="text-[#5570a0]">
+                            Ngày thôi ở:{" "}
+                            <span className="font-semibold text-[#1b3766]">
+                              {selectedOccupancy.checkOutDate ? formatDate(selectedOccupancy.checkOutDate) : emptyValue}
+                            </span>
+                          </p>
+                        ) : null}
                         {selectedOccupancy.status === "FORCED_CHECKOUT" ? (
                           <p className="text-[#5570a0] md:col-span-2">
                             Lý do buộc thôi ở:{" "}
@@ -799,16 +926,6 @@ export default function OccupancyManagementPage() {
 
                   <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
                     <div className="flex flex-wrap justify-end gap-3">
-                    {selectedOccupancy.status === "ACTIVE" ? (
-                      <button
-                        type="button"
-                        onClick={() => handleForceCheckout(selectedOccupancy)}
-                        className="auth-btn-gloss rounded-2xl bg-[linear-gradient(135deg,#e25569_0%,#cc3c4f_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_20px_rgba(204,60,79,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-105"
-                      >
-                        <span className="auth-btn-gloss__content">Buộc thôi ở</span>
-                      </button>
-                    ) : null}
-
                     {selectedOccupancy.status === "CHECKOUT_REQUESTED" ? (
                         <button
                           type="button"
@@ -833,6 +950,141 @@ export default function OccupancyManagementPage() {
               document.body,
             )
           : null}
+
+      {violationTarget
+        ? createPortal(
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              className="fixed inset-0 z-[82] flex items-center justify-center bg-[rgba(14,25,48,0.52)] px-4 backdrop-blur-sm"
+            >
+              <motion.div
+                initial={{ opacity: 0, y: 20, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 16, scale: 0.98 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+                className="relative flex max-h-[88vh] w-full max-w-[960px] flex-col overflow-hidden rounded-[28px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f9fcff_0%,#eef5ff_72%,#e7f0ff_100%)] shadow-[0_28px_70px_rgba(27,56,122,0.28)]"
+              >
+                <div className="flex items-start justify-between gap-4 border-b border-[#d3e0f2] px-6 py-5">
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7d90b5]">
+                      QUẢN LÝ VI PHẠM
+                    </p>
+                    <h2 className="mt-2 text-2xl font-bold text-[#173a78]">
+                      {violationStudent?.fullName ?? emptyValue}
+                    </h2>
+                    <p className="mt-1 text-sm font-semibold text-[#62789f]">
+                      {violationStudent?.studentCode ?? emptyValue} - Phòng {violationTarget.buildingCode}
+                      {violationTarget.roomNumber} - Giường #{violationTarget.bedNumber}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCloseViolations}
+                    className="rounded-xl border border-[#bfd2ee] bg-[linear-gradient(180deg,#ffffff_0%,#edf4ff_100%)] p-2 text-[#6681b1] transition hover:border-[#97b8e8] hover:text-[#244cb8]"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                  <div className="mx-auto w-full max-w-[860px]">
+                    <div className="rounded-2xl border border-[#d3e0f2] bg-white/75 p-4">
+                      <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                        Thêm vi phạm
+                      </h3>
+
+                      <div className="mt-4 grid gap-4 md:grid-cols-2">
+                        <label className="block md:col-span-2">
+                          <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Loại vi phạm *</span>
+                          <select
+                            value={violationTypeId}
+                            onChange={(event) => {
+                              setViolationTypeId(event.target.value);
+                              setViolationFormError("");
+                            }}
+                            className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none transition focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10"
+                          >
+                            <option value="">Chọn loại vi phạm</option>
+                            {violationTypes.map((type) => (
+                              <option key={type.id} value={type.id}>
+                                {type.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <div className="rounded-2xl border border-[#d3e0f2] bg-[#f8fbff] p-3">
+                          <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Mức độ</p>
+                          <div className="mt-2">
+                            {selectedViolationType ? (
+                              <span
+                                className={`inline-flex items-center rounded-full px-3 py-1.5 text-xs font-bold ${
+                                  levelMeta[selectedViolationType.level].badgeClassName
+                                }`}
+                              >
+                                {levelMeta[selectedViolationType.level].label}
+                              </span>
+                            ) : (
+                              <span className="text-sm font-semibold text-[#8a9abb]">{emptyValue}</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-[#d3e0f2] bg-[#f8fbff] p-3">
+                          <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Mô tả loại vi phạm</p>
+                          <p className="mt-2 text-sm font-semibold leading-6 text-[#5570a0]">
+                            {selectedViolationType?.description || emptyValue}
+                          </p>
+                        </div>
+
+                        <label className="block">
+                          <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Ngày vi phạm *</span>
+                          <input
+                            type="date"
+                            value={violationDate}
+                            onChange={(event) => {
+                              setViolationDate(event.target.value);
+                              setViolationFormError("");
+                            }}
+                            className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none transition focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10"
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Mô tả</span>
+                          <textarea
+                            value={violationNote}
+                            onChange={(event) => setViolationNote(event.target.value)}
+                            rows={3}
+                            className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10"
+                            placeholder="Nhập mô tả vi phạm"
+                          />
+                        </label>
+
+                        {violationFormError ? <p className="text-sm font-semibold text-[#cc3c4f] md:col-span-2">{violationFormError}</p> : null}
+
+                        <div className="flex flex-wrap justify-end gap-3 pt-1 md:col-span-2">
+                          <button
+                            type="button"
+                            onClick={() => void handleSubmitViolation()}
+                            disabled={isSavingViolation}
+                            className="auth-btn-gloss rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(36,76,184,0.24)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:brightness-100"
+                          >
+                            <span className="auth-btn-gloss__content">Lưu</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>,
+            document.body,
+          )
+        : null}
 
       {forceCheckoutTarget
         ? createPortal(

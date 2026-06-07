@@ -67,6 +67,12 @@ type RoomAisle = {
   bunkBeds: number[][];
 };
 
+const violationLevelLabel: Record<"MINOR" | "MEDIUM" | "SERIOUS", string> = {
+  MINOR: "Nhẹ",
+  MEDIUM: "Trung bình",
+  SERIOUS: "Nghiêm trọng",
+};
+
 function createRoomAisles(beds: MyRoomBed[]): RoomAisle[] {
   const bedNumbers = beds
     .map((bed) => bed.bedNumber)
@@ -250,8 +256,19 @@ export default function MyRoomPage() {
 
     void loadOccupancy();
 
+    if (typeof window !== "undefined") {
+      window.addEventListener("ktx-registrations-updated", loadOccupancy);
+      window.addEventListener("ktx-rooms-updated", loadOccupancy);
+      window.addEventListener("focus", loadOccupancy);
+    }
+
     return () => {
       isActive = false;
+      if (typeof window !== "undefined") {
+        window.removeEventListener("ktx-registrations-updated", loadOccupancy);
+        window.removeEventListener("ktx-rooms-updated", loadOccupancy);
+        window.removeEventListener("focus", loadOccupancy);
+      }
     };
   }, [studentEmail]);
 
@@ -398,6 +415,13 @@ export default function MyRoomPage() {
           className="rounded-[24px] border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-semibold text-rose-700 shadow-[0_14px_30px_rgba(190,52,85,0.10)]"
         >
           <h3 className="text-lg font-bold text-rose-800">Bạn đã bị buộc thôi ở.</h3>
+          <p className="mt-2">Loại vi phạm: {occupancy.forcedLeave?.violationTypeName || "-"}</p>
+          <p className="mt-2">
+            Mức độ:{" "}
+            {occupancy.forcedLeave?.violationTypeLevel
+              ? violationLevelLabel[occupancy.forcedLeave.violationTypeLevel]
+              : "-"}
+          </p>
           <p className="mt-2">Lý do: {occupancy.forcedLeave?.reason || "-"}</p>
           <p className="mt-2">Ngày quyết định: {occupancy.forcedLeave?.decidedAt ? formatDate(occupancy.forcedLeave.decidedAt) : "-"}</p>
         </motion.div>

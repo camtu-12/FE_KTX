@@ -1,0 +1,63 @@
+import axios from "axios";
+
+const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
+const API_ROOT = API_BASE.endsWith("/api") ? API_BASE : `${API_BASE}/api`;
+
+const http = axios.create({
+  baseURL: API_ROOT,
+});
+
+export type ViolationLevel = "MINOR" | "MEDIUM" | "SERIOUS";
+
+export type ViolationType = {
+  id: number;
+  name: string;
+  level: ViolationLevel;
+  description: string;
+};
+
+export type ViolationTypePayload = {
+  name: string;
+  level: ViolationLevel;
+  description: string;
+};
+
+type ApiViolationType = {
+  id: number;
+  name?: string | null;
+  level?: string | null;
+  description?: string | null;
+};
+
+const normalizeLevel = (level: string | null | undefined): ViolationLevel => {
+  const value = (level ?? "MINOR").trim().toUpperCase();
+  if (value === "MEDIUM") return "MEDIUM";
+  if (value === "SERIOUS") return "SERIOUS";
+  return "MINOR";
+};
+
+const normalizeViolationType = (item: ApiViolationType): ViolationType => ({
+  id: Number(item.id),
+  name: item.name ?? "",
+  level: normalizeLevel(item.level),
+  description: item.description ?? "",
+});
+
+export const listViolationTypes = async (): Promise<ViolationType[]> => {
+  const response = await http.get<ApiViolationType[]>("/violation-types");
+  return Array.isArray(response.data) ? response.data.map(normalizeViolationType) : [];
+};
+
+export const createViolationType = async (payload: ViolationTypePayload): Promise<ViolationType> => {
+  const response = await http.post<ApiViolationType>("/violation-types", payload);
+  return normalizeViolationType(response.data);
+};
+
+export const updateViolationType = async (id: number, payload: ViolationTypePayload): Promise<ViolationType> => {
+  const response = await http.put<ApiViolationType>(`/violation-types/${id}`, payload);
+  return normalizeViolationType(response.data);
+};
+
+export const deleteViolationType = async (id: number): Promise<void> => {
+  await http.delete(`/violation-types/${id}`);
+};
