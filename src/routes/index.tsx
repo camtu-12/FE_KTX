@@ -15,6 +15,7 @@ import AdminStudentsPage from "../modules/admin/pages/AdminStudentsPage";
 import OccupancyManagementPage from "../modules/admin/pages/OccupancyManagementPage";
 import ViolationManagementPage from "../modules/admin/pages/ViolationManagementPage";
 import ViolationTypeManagementPage from "../modules/admin/pages/ViolationTypeManagementPage";
+import PaymentManagementPage from "../modules/admin/pages/PaymentManagementPage";
 import LoginPage from "../modules/auth/pages/LoginPage";
 import RegisterPage from "../modules/auth/pages/RegisterPage";
 import AboutPage from "../modules/public/pages/AboutPage";
@@ -24,6 +25,7 @@ import RegistrationPage from "../modules/registration/pages/RegistrationPage";
 import StudentDashboardPage from "../modules/student/pages/StudentDashboardPage";
 import SelectBedPage from "../modules/student/pages/SelectBedPage";
 import MyRoomPage from "../modules/student/pages/MyRoomPage";
+import PaymentPage from "../modules/student/pages/PaymentPage";
 import ProtectedRoute from "./ProtectedRoute";
 import ForgotPassword from "../modules/auth/pages/ForgotPassword";
 
@@ -57,6 +59,7 @@ export default function AppRoutes() {
           <Route path="occupancies" element={<OccupancyManagementPage />} />
           <Route path="violations" element={<ViolationManagementPage />} />
           <Route path="violation-types" element={<ViolationTypeManagementPage />} />
+          <Route path="payments" element={<PaymentManagementPage />} />
           <Route path="students" element={<AdminStudentsPage />} />
           <Route path="rooms" element={<AdminRoomManagement />} />
           <Route path="buildings" element={<AdminBuildingManagement />} />
@@ -74,6 +77,7 @@ export default function AppRoutes() {
           <Route path="dashboard" element={<StudentDashboardPage />} />
           <Route path="registration" element={<RegistrationPage />} />
           <Route path="room" element={<MyRoomPage />} />
+          <Route path="payment" element={<PaymentPage />} />
           <Route path="select-bed" element={<SelectBedPage />} />
         </Route>
 

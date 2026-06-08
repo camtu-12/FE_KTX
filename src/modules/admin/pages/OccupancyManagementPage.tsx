@@ -510,10 +510,10 @@ export default function OccupancyManagementPage() {
 
     try {
       await createViolation(payload);
-      resetViolationForm();
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("ktx-violations-updated"));
       }
+      handleCloseViolations();
     } catch {
       setViolationFormError("Không thể lưu vi phạm. Vui lòng thử lại.");
     } finally {
@@ -1016,9 +1016,9 @@ export default function OccupancyManagementPage() {
                           </select>
                         </label>
 
-                        <div className="rounded-2xl border border-[#d3e0f2] bg-[#f8fbff] p-3">
-                          <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Mức độ</p>
-                          <div className="mt-2">
+                        <label className="block">
+                          <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Mức độ</span>
+                          <div className="mt-2 flex h-11 w-full items-center rounded-xl border border-slate-200 bg-white px-3.5 shadow-sm">
                             {selectedViolationType ? (
                               <span
                                 className={`inline-flex items-center rounded-full px-3 py-1.5 text-xs font-bold ${
@@ -1028,17 +1028,10 @@ export default function OccupancyManagementPage() {
                                 {levelMeta[selectedViolationType.level].label}
                               </span>
                             ) : (
-                              <span className="text-sm font-semibold text-[#8a9abb]">{emptyValue}</span>
+                              <span className="text-sm font-semibold text-[#8a9abb]" />
                             )}
                           </div>
-                        </div>
-
-                        <div className="rounded-2xl border border-[#d3e0f2] bg-[#f8fbff] p-3">
-                          <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Mô tả loại vi phạm</p>
-                          <p className="mt-2 text-sm font-semibold leading-6 text-[#5570a0]">
-                            {selectedViolationType?.description || emptyValue}
-                          </p>
-                        </div>
+                        </label>
 
                         <label className="block">
                           <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Ngày vi phạm *</span>

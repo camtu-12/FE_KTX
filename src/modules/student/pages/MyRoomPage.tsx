@@ -407,6 +407,26 @@ export default function MyRoomPage() {
         </motion.div>
       ) : null}
 
+      {occupancy.warningNotice && occupancy.status !== "FORCED_LEFT" ? (
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.34, ease: "easeOut" }}
+          className="rounded-[24px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-semibold text-amber-700 shadow-[0_14px_30px_rgba(180,116,0,0.10)]"
+        >
+          <h3 className="text-lg font-bold text-amber-800">Bạn đã bị nhắc nhở.</h3>
+          <p className="mt-2">Loại vi phạm: {occupancy.warningNotice.violationTypeName || "-"}</p>
+          <p className="mt-2">
+            Mức độ:{" "}
+            {occupancy.warningNotice.violationTypeLevel
+              ? violationLevelLabel[occupancy.warningNotice.violationTypeLevel]
+              : "-"}
+          </p>
+          <p className="mt-2">Lý do: {occupancy.warningNotice.reason || "-"}</p>
+          <p className="mt-2">Ngày xử lý: {occupancy.warningNotice.decidedAt ? formatDate(occupancy.warningNotice.decidedAt) : "-"}</p>
+        </motion.div>
+      ) : null}
+
       {occupancy.status === "FORCED_LEFT" ? (
         <motion.div
           initial={{ opacity: 0, y: 14 }}

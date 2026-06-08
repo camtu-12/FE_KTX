@@ -138,11 +138,19 @@ export async function getMyOccupancyFromBackend(email: string): Promise<MyRoom |
     .filter((bed): bed is MyRoomBed => bed !== null)
     .sort((a, b) => a.bedNumber - b.bedNumber);
 
-  const forcedViolation = myRegistration.occupancy_status === "forced_checkout" && myRegistration.occupancy_id
-    ? (await listViolationsByOccupancy(myRegistration.occupancy_id))
+  const occupancyViolations = myRegistration.occupancy_id
+    ? await listViolationsByOccupancy(myRegistration.occupancy_id)
+    : [];
+
+  const forcedViolation = myRegistration.occupancy_status === "forced_checkout"
+    ? occupancyViolations
         .filter((violation) => violation.actionTaken === "FORCED_CHECKOUT")
         .sort((a, b) => b.id - a.id)[0]
     : undefined;
+
+  const warningViolation = occupancyViolations
+    .filter((violation) => violation.actionTaken === "WARNING")
+    .sort((a, b) => b.id - a.id)[0];
 
   return {
     roomCode: `${room.building_code}${room.room_number}`,
@@ -168,6 +176,14 @@ export async function getMyOccupancyFromBackend(email: string): Promise<MyRoom |
           decidedAt: myRegistration.check_out_date || "",
           violationTypeName: forcedViolation?.type?.name,
           violationTypeLevel: resolveViolationLevel(forcedViolation?.type?.level),
+        }
+      : undefined,
+    warningNotice: warningViolation
+      ? {
+          reason: warningViolation.note || "",
+          decidedAt: warningViolation.violationDate || "",
+          violationTypeName: warningViolation.type?.name,
+          violationTypeLevel: resolveViolationLevel(warningViolation.type?.level),
         }
       : undefined,
     beds,

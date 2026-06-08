@@ -8,6 +8,7 @@ import {
   deleteViolationType,
   listViolationTypes,
   updateViolationType,
+  ViolationTypeApiError,
 } from "../../../api/violationTypeApi";
 import type { ViolationLevel, ViolationType } from "../../../api/violationTypeApi";
 
@@ -85,6 +86,7 @@ export default function ViolationTypeManagementPage() {
   const [editingType, setEditingType] = useState<ViolationType | null>(null);
   const [form, setForm] = useState<ViolationTypeForm>(initialFormState);
   const [formError, setFormError] = useState("");
+  const [pageMessage, setPageMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -125,6 +127,7 @@ export default function ViolationTypeManagementPage() {
     setEditingType(null);
     setForm(initialFormState);
     setFormError("");
+    setPageMessage("");
     setIsModalOpen(true);
   };
 
@@ -136,6 +139,7 @@ export default function ViolationTypeManagementPage() {
       description: item.description,
     });
     setFormError("");
+    setPageMessage("");
     setIsModalOpen(true);
   };
 
@@ -179,6 +183,7 @@ export default function ViolationTypeManagementPage() {
         window.dispatchEvent(new Event("ktx-violation-types-updated"));
       }
 
+      setPageMessage("");
       closeModal();
     } catch {
       setFormError("KhÃ´ng thá»ƒ lÆ°u loáº¡i vi pháº¡m. Vui lÃ²ng thá»­ láº¡i.");
@@ -188,15 +193,50 @@ export default function ViolationTypeManagementPage() {
   };
 
   const removeType = async (item: ViolationType) => {
+    setPageMessage("");
+
     try {
       await deleteViolationType(item.id);
       setItems((current) => current.filter((type) => type.id !== item.id));
+      setPageMessage(`Đã xóa loại vi phạm "${item.name}".`);
 
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("ktx-violation-types-updated"));
       }
-    } catch {
-      setFormError("Không thể xóa loại vi phạm. Loại này có thể đã được sử dụng.");
+    } catch (error) {
+      if (error instanceof ViolationTypeApiError && error.status === 404) {
+        setItems((current) => current.filter((type) => type.id !== item.id));
+        setPageMessage(`Đã xóa loại vi phạm "${item.name}".`);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("ktx-violation-types-updated"));
+        }
+        return;
+      }
+
+      try {
+        const latestItems = await listViolationTypes();
+        setItems(latestItems);
+
+        if (!latestItems.some((type) => type.id === item.id)) {
+          setPageMessage(`Đã xóa loại vi phạm "${item.name}".`);
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new Event("ktx-violation-types-updated"));
+          }
+          return;
+        }
+
+        if (!(error instanceof ViolationTypeApiError && error.status === 422)) {
+          setPageMessage(`Không thể xóa "${item.name}". Vui lòng thử lại.`);
+          return;
+        }
+      } catch {
+        if (!(error instanceof ViolationTypeApiError && error.status === 422)) {
+          setPageMessage(`Không thể kiểm tra kết quả xóa "${item.name}". Vui lòng tải lại trang.`);
+          return;
+        }
+      }
+
+      setPageMessage(`Không thể xóa "${item.name}" vì đã có sinh viên vi phạm loại này.`);
     }
   };
 
@@ -225,6 +265,12 @@ export default function ViolationTypeManagementPage() {
             </button>
           </div>
         </header>
+
+        {pageMessage ? (
+          <div className="rounded-2xl border border-[#d3e0f2] bg-white/75 px-4 py-3 text-sm font-semibold text-[#1b3766] shadow-[0_10px_22px_rgba(36,76,184,0.08)]">
+            {pageMessage}
+          </div>
+        ) : null}
 
         <div className="overflow-hidden rounded-[22px] border border-[#d6e2f1] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
           <div className="overflow-x-auto">

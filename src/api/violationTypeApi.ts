@@ -22,6 +22,16 @@ export type ViolationTypePayload = {
   description: string;
 };
 
+export class ViolationTypeApiError extends Error {
+  status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = "ViolationTypeApiError";
+    this.status = status;
+  }
+}
+
 type ApiViolationType = {
   id: number;
   name?: string | null;
@@ -59,5 +69,14 @@ export const updateViolationType = async (id: number, payload: ViolationTypePayl
 };
 
 export const deleteViolationType = async (id: number): Promise<void> => {
-  await http.delete(`/violation-types/${id}`);
+  try {
+    await http.delete(`/violation-types/${id}`);
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const responseData = error.response?.data as { message?: string } | undefined;
+      throw new ViolationTypeApiError(responseData?.message ?? "Khong the xoa loai vi pham.", error.response?.status);
+    }
+
+    throw error;
+  }
 };

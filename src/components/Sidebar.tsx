@@ -88,6 +88,11 @@ const adminMenu: MenuItem[] = [
     to: "/admin/students",
     icon: UserCog ,
   },
+  {
+    label: "Thanh toán",
+    to: "/admin/payments",
+    icon: CreditCard,
+  },
   
 ];
 

@@ -14,6 +14,13 @@ export type ForcedLeave = {
   violationTypeLevel?: "MINOR" | "MEDIUM" | "SERIOUS";
 };
 
+export type WarningNotice = {
+  reason: string;
+  decidedAt: string;
+  violationTypeName?: string;
+  violationTypeLevel?: "MINOR" | "MEDIUM" | "SERIOUS";
+};
+
 export type MyRoomBed = {
   bedNumber: number;
   status?: "ACTIVE" | "MAINTENANCE";
@@ -41,6 +48,7 @@ export type MyRoom = {
   leftDate?: string;
   leaveRequest?: LeaveRequest;
   forcedLeave?: ForcedLeave;
+  warningNotice?: WarningNotice;
   beds: MyRoomBed[];
   roommates: MyRoomMate[];
 };
