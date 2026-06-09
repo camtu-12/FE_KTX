@@ -58,6 +58,7 @@ const statusOptions: Array<{ value: OccupancyStatusFilter; label: string }> = [
 ];
 
 const getStatusMeta = (status: Occupancy["status"]) => statusMeta[status] ?? statusMeta.ACTIVE;
+const canAddViolation = (occupancy: Occupancy | null | undefined) => occupancy?.status !== "FORCED_CHECKOUT";
 
 const formatDate = (iso: string) => {
   const date = new Date(iso);
@@ -468,6 +469,10 @@ export default function OccupancyManagementPage() {
   };
 
   const handleOpenViolations = (item: Occupancy) => {
+    if (!canAddViolation(item)) {
+      return;
+    }
+
     setViolationTarget(item);
     setSelectedOccupancy(null);
     setIsStatusFilterOpen(false);
@@ -482,6 +487,11 @@ export default function OccupancyManagementPage() {
   const handleSubmitViolation = async () => {
     const occupancyId = violationTarget?.occupancyId;
     const typeId = Number(violationTypeId);
+
+    if (!canAddViolation(violationTarget)) {
+      setViolationFormError("Sinh viên đã bị buộc thôi ở, không thể thêm vi phạm mới.");
+      return;
+    }
 
     if (!occupancyId) {
       setViolationFormError("Không tìm thấy mã lưu trú để ghi nhận vi phạm.");
@@ -708,7 +718,9 @@ export default function OccupancyManagementPage() {
                           <button
                             type="button"
                             onClick={() => handleOpenViolations(item)}
-                            className="auth-btn-gloss inline-flex min-w-[76px] items-center justify-center gap-1 whitespace-nowrap rounded-xl border border-rose-200 bg-rose-50 px-2.5 py-2 text-[12px] font-semibold text-rose-700 shadow-[0_8px_18px_rgba(190,24,93,0.10)] transition duration-200 hover:-translate-y-0.5 hover:border-rose-300 hover:bg-white"
+                            disabled={!canAddViolation(item)}
+                            title={!canAddViolation(item) ? "Sinh viên đã bị buộc thôi ở, không thể thêm vi phạm mới." : undefined}
+                            className="auth-btn-gloss inline-flex min-w-[76px] items-center justify-center gap-1 whitespace-nowrap rounded-xl border border-rose-200 bg-rose-50 px-2.5 py-2 text-[12px] font-semibold text-rose-700 shadow-[0_8px_18px_rgba(190,24,93,0.10)] transition duration-200 hover:-translate-y-0.5 hover:border-rose-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:border-rose-200 disabled:hover:bg-rose-50"
                           >
                             <ShieldAlert className="h-3.5 w-3.5" />
                             <span className="auth-btn-gloss__content">Vi phạm</span>
