@@ -14,7 +14,7 @@ import {
   UserCog,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 
 export type SidebarRole = "admin" | "student";
@@ -60,16 +60,30 @@ const adminMenu: MenuItem[] = [
     icon: Hotel,
   },
   {
+    label: "Quản lý thanh toán",
+    icon: CreditCard,
+    children: [
+      {
+        label: "Tiền phòng",
+        to: "/admin/payments/room-fees",
+      },
+      {
+        label: "Tiền điện",
+        to: "/admin/payments/electricity",
+      },
+    ],
+  },
+  {
     label: "Quản lý vi phạm",
     icon: ShieldAlert,
     children: [
       {
-        label: "Danh sách vi phạm",
-        to: "/admin/violations",
-      },
-      {
         label: "Loại vi phạm",
         to: "/admin/violation-types",
+      },
+      {
+        label: "Danh sách vi phạm",
+        to: "/admin/violations",
       },
     ],
   },
@@ -88,11 +102,7 @@ const adminMenu: MenuItem[] = [
     to: "/admin/students",
     icon: UserCog ,
   },
-  {
-    label: "Thanh toán",
-    to: "/admin/payments",
-    icon: CreditCard,
-  },
+  
   
 ];
 
@@ -124,13 +134,9 @@ export default function Sidebar({ role }: SidebarProps) {
   const location = useLocation();
   const isViolationGroupActive =
     location.pathname === "/admin/violations" || location.pathname === "/admin/violation-types";
+  const isPaymentGroupActive = location.pathname.startsWith("/admin/payments");
   const [isViolationGroupOpen, setIsViolationGroupOpen] = useState(isViolationGroupActive);
-
-  useEffect(() => {
-    if (isViolationGroupActive) {
-      setIsViolationGroupOpen(true);
-    }
-  }, [isViolationGroupActive]);
+  const [isPaymentGroupOpen, setIsPaymentGroupOpen] = useState(isPaymentGroupActive);
 
   return (
     <aside className="relative flex w-[260px] flex-col overflow-hidden border-r border-[#173a82] bg-[linear-gradient(160deg,#173979_0%,#2450b0_46%,#12316f_100%)] p-4 text-white shadow-[16px_0_34px_rgba(17,40,97,0.32)]">
@@ -145,10 +151,14 @@ export default function Sidebar({ role }: SidebarProps) {
             const Icon = item.icon;
 
             if (item.children) {
-              const isOpen = item.label === "Quản lý vi phạm" ? isViolationGroupOpen : false;
-              const isGroupActive =
-                item.label === "Quản lý vi phạm" &&
-                item.children.some((child) => child.to === location.pathname);
+              const isPaymentGroup = item.label === "Quản lý thanh toán";
+              const isViolationGroup = item.label === "Quản lý vi phạm";
+              const isOpen = isViolationGroup
+                ? isViolationGroupOpen || isViolationGroupActive
+                : isPaymentGroup
+                  ? isPaymentGroupOpen || isPaymentGroupActive
+                  : false;
+              const isGroupActive = item.children.some((child) => child.to === location.pathname) || (isPaymentGroup && isPaymentGroupActive);
               const ChevronIcon = isOpen ? ChevronUp : ChevronDown;
 
               return (
@@ -156,8 +166,11 @@ export default function Sidebar({ role }: SidebarProps) {
                   <button
                     type="button"
                     onClick={() => {
-                      if (item.label === "Quản lý vi phạm") {
+                      if (isViolationGroup) {
                         setIsViolationGroupOpen((current) => !current);
+                      }
+                      if (isPaymentGroup) {
+                        setIsPaymentGroupOpen((current) => !current);
                       }
                     }}
                     className={[

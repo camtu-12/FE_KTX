@@ -1,0 +1,648 @@
+import { motion } from "framer-motion";
+import { CheckCircle2, Eye, Plus, X, Zap } from "lucide-react";
+import type { ReactNode } from "react";
+import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { useOutletContext } from "react-router-dom";
+import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
+import { electricityBills as mockElectricityBills, type ElectricityBill } from "../../../mocks/electricityBills";
+import { electricityRecords as mockElectricityRecords, type ElectricityRecord } from "../../../mocks/electricityRecords";
+import type { PaymentStatus } from "../../../mocks/roomFeeBills";
+
+type TabKey = "records" | "bills";
+
+type SummaryCard = {
+  label: string;
+  value: ReactNode;
+  valueClassName: string;
+  valueSizeClassName?: string;
+};
+
+type ElectricityForm = {
+  room: string;
+  month: string;
+  oldIndex: string;
+  newIndex: string;
+  unitPrice: string;
+};
+
+const roomOptions = ["A101", "A102", "B204", "B205", "C301", "C302"];
+const roomStudentCounts: Record<string, number> = {
+  A101: 4,
+  A102: 3,
+  B204: 4,
+  B205: 2,
+  C301: 4,
+  C302: 3,
+};
+const ELECTRICITY_PRICE_PER_KWH = 2900;
+const recordTableColumnWidths = ["10%", "12%", "10%", "10%", "13%", "13%", "15%", "18%"];
+const billTableColumnWidths = ["11%", "17%", "10%", "8%", "15%", "12%", "14%", "13%"];
+
+const moneyFormatter = new Intl.NumberFormat("vi-VN", {
+  style: "currency",
+  currency: "VND",
+  maximumFractionDigits: 0,
+});
+
+const statusMeta: Record<PaymentStatus, { label: string; className: string }> = {
+  unpaid: {
+    label: "Chưa thanh toán",
+    className: "border border-amber-200 bg-amber-50 text-amber-700",
+  },
+  paid: {
+    label: "Đã thanh toán",
+    className: "border border-emerald-200 bg-emerald-50 text-emerald-700",
+  },
+  overdue: {
+    label: "Quá hạn",
+    className: "border border-rose-200 bg-rose-50 text-rose-700",
+  },
+};
+
+const getCurrentMonthValue = () => new Date().toISOString().slice(0, 7);
+const getTodayValue = () => new Date().toISOString().slice(0, 10);
+
+const formatMonth = (value: string) => {
+  const [year, month] = value.split("-");
+
+  return month && year ? `${month}/${year}` : value;
+};
+
+const formatDate = (value: string) => {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value || "-";
+  }
+
+  return date.toLocaleDateString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+};
+
+const formatMoneyInput = (value: string) => {
+  const normalized = value.replace(/\D/g, "");
+
+  if (!normalized) {
+    return "";
+  }
+
+  return normalized.replace(/^0+(?=\d)/, "").replace(/\B(?=(\d{3})+(?!\d))/g, ".") || "0";
+};
+
+const parseMoneyValue = (value: string) => Number(value.replace(/\D/g, ""));
+const formatPlainMoney = (value: number) => `${new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(value)}đ`;
+
+function StatusBadge({ status }: { status: PaymentStatus }) {
+  return (
+    <span className={`inline-flex items-center whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold ${statusMeta[status].className}`}>
+      {statusMeta[status].label}
+    </span>
+  );
+}
+
+function InfoLine({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <p className="text-sm text-[#5570a0]">
+      {label}: <span className="font-semibold text-[#1b3766]">{value}</span>
+    </p>
+  );
+}
+
+export default function AdminElectricityPage() {
+  const { headerSearchValue } = useOutletContext<AdminLayoutOutletContext>();
+  const [activeTab, setActiveTab] = useState<TabKey>("records");
+  const [records, setRecords] = useState<ElectricityRecord[]>(mockElectricityRecords);
+  const [bills, setBills] = useState<ElectricityBill[]>(mockElectricityBills);
+  const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
+  const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
+  const [selectedBill, setSelectedBill] = useState<ElectricityBill | null>(null);
+  const [formError, setFormError] = useState("");
+  const [priceError, setPriceError] = useState("");
+  const [currentElectricityPrice, setCurrentElectricityPrice] = useState(ELECTRICITY_PRICE_PER_KWH);
+  const [priceFormValue, setPriceFormValue] = useState(String(ELECTRICITY_PRICE_PER_KWH));
+  const [form, setForm] = useState<ElectricityForm>({
+    room: roomOptions[0],
+    month: getCurrentMonthValue(),
+    oldIndex: "",
+    newIndex: "",
+    unitPrice: formatMoneyInput(String(ELECTRICITY_PRICE_PER_KWH)),
+  });
+
+  const usagePreview = Math.max(0, Number(form.newIndex || 0) - Number(form.oldIndex || 0));
+  const unitPricePreview = parseMoneyValue(form.unitPrice);
+  const totalPreview = usagePreview * unitPricePreview;
+
+  const visibleBills = useMemo(() => {
+    const normalizedHeaderSearch = headerSearchValue.trim().toLowerCase();
+
+    return bills.filter((bill) => {
+      const searchableText = [bill.studentCode, bill.fullName].join(" ").toLowerCase();
+      const matchesHeaderSearch = !normalizedHeaderSearch || searchableText.includes(normalizedHeaderSearch);
+
+      return matchesHeaderSearch;
+    });
+  }, [bills, headerSearchValue]);
+
+  const recordSummaryCards = useMemo<SummaryCard[]>(() => {
+    const roomStudentCountMap = records.reduce<Map<string, number>>((roomMap, record) => {
+      roomMap.set(record.room, record.studentCount);
+      return roomMap;
+    }, new Map());
+    const totalStudents = Array.from(roomStudentCountMap.values()).reduce((total, studentCount) => total + studentCount, 0);
+    const totalUsageKwh = records.reduce((total, record) => total + record.usageKwh, 0);
+    const totalAmount = records.reduce((total, record) => total + record.totalAmount, 0);
+
+    return [
+      { label: "Tổng phòng", value: roomStudentCountMap.size, valueClassName: "text-[#244cb8]" },
+      { label: "Tổng sinh viên", value: totalStudents, valueClassName: "text-[#16784b]" },
+      { label: "Tổng số điện", value: `${totalUsageKwh} kWh`, valueClassName: "text-[#9b6b00]", valueSizeClassName: "text-[1.65rem]" },
+      { label: "Tổng tiền điện", value: moneyFormatter.format(totalAmount), valueClassName: "text-[#c4364f]", valueSizeClassName: "text-[1.65rem]" },
+    ];
+  }, [records]);
+
+  const billSummaryCards = useMemo<SummaryCard[]>(
+    () => [
+      { label: "Tổng hóa đơn", value: bills.length, valueClassName: "text-[#244cb8]" },
+      { label: "Chưa thanh toán", value: bills.filter((bill) => bill.status === "unpaid").length, valueClassName: "text-[#9b6b00]" },
+      { label: "Đã thanh toán", value: bills.filter((bill) => bill.status === "paid").length, valueClassName: "text-[#16784b]" },
+      { label: "Quá hạn", value: bills.filter((bill) => bill.status === "overdue").length, valueClassName: "text-[#c4364f]" },
+    ],
+    [bills],
+  );
+
+  const summaryCards = activeTab === "records" ? recordSummaryCards : billSummaryCards;
+
+  const selectedBillRecord = useMemo(
+    () => (selectedBill ? records.find((record) => record.room === selectedBill.room && record.month === selectedBill.month) : undefined),
+    [records, selectedBill],
+  );
+
+  const closeRecordModal = () => {
+    setIsRecordModalOpen(false);
+    setFormError("");
+  };
+
+  const openRecordModal = () => {
+    setForm((current) => ({
+      ...current,
+      unitPrice: formatMoneyInput(String(currentElectricityPrice)),
+    }));
+    setFormError("");
+    setIsRecordModalOpen(true);
+  };
+
+  const openPriceModal = () => {
+    setPriceFormValue(String(currentElectricityPrice));
+    setPriceError("");
+    setIsPriceModalOpen(true);
+  };
+
+  const closePriceModal = () => {
+    setIsPriceModalOpen(false);
+    setPriceError("");
+  };
+
+  const handleSavePrice = () => {
+    const nextPrice = Number(priceFormValue);
+
+    if (!Number.isInteger(nextPrice) || nextPrice <= 0) {
+      setPriceError("Vui lòng nhập đơn giá điện là số nguyên dương.");
+      return;
+    }
+
+    setCurrentElectricityPrice(nextPrice);
+    setForm((current) => ({ ...current, unitPrice: formatMoneyInput(String(nextPrice)) }));
+    closePriceModal();
+  };
+
+  const handleCreateRecord = () => {
+    const oldIndex = Number(form.oldIndex);
+    const newIndex = Number(form.newIndex);
+    const unitPrice = parseMoneyValue(form.unitPrice);
+
+    if (!form.room) {
+      setFormError("Vui lòng chọn phòng.");
+      return;
+    }
+
+    if (!form.month) {
+      setFormError("Vui lòng chọn tháng.");
+      return;
+    }
+
+    if (!Number.isInteger(oldIndex) || oldIndex < 0) {
+      setFormError("Chỉ số cũ phải là số nguyên không âm.");
+      return;
+    }
+
+    if (!Number.isInteger(newIndex) || newIndex < oldIndex) {
+      setFormError("Chỉ số mới phải lớn hơn hoặc bằng chỉ số cũ.");
+      return;
+    }
+
+    if (!Number.isInteger(unitPrice) || unitPrice <= 0) {
+      setFormError("Đơn giá phải là số nguyên dương.");
+      return;
+    }
+
+    const usageKwh = newIndex - oldIndex;
+    const maxId = records.reduce((max, record) => Math.max(max, record.id), 0);
+    const newRecord: ElectricityRecord = {
+      id: maxId + 1,
+      room: form.room,
+      studentCount: roomStudentCounts[form.room] ?? 0,
+      month: form.month,
+      oldIndex,
+      newIndex,
+      usageKwh,
+      unitPrice,
+      totalAmount: usageKwh * unitPrice,
+    };
+
+    setRecords((current) => [newRecord, ...current]);
+    closeRecordModal();
+  };
+
+  const confirmPayment = (billId: number) => {
+    setBills((current) =>
+      current.map((bill) =>
+        bill.id === billId
+          ? {
+              ...bill,
+              status: "paid",
+              paidAt: getTodayValue(),
+            }
+          : bill,
+      ),
+    );
+    setSelectedBill((current) => (current?.id === billId ? { ...current, status: "paid", paidAt: getTodayValue() } : current));
+  };
+
+  return (
+    <>
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="flex min-h-[calc(100vh-8rem)] flex-col space-y-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
+      >
+        <div className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)] sm:px-8">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+              <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">Tiền điện</h1>
+              <p className="mt-3 max-w-3xl text-[13px] leading-6 text-[#62789f] sm:text-sm">
+                Quản lý chỉ số điện phòng và hóa đơn điện phân bổ cho từng sinh viên.
+              </p>
+            </div>
+            {activeTab === "records" ? (
+              <div className="flex flex-col items-start gap-2 xl:items-end">
+                <button
+                  type="button"
+                  onClick={openRecordModal}
+                  className="auth-btn-gloss inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_100%)] px-5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(36,76,184,0.24)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110"
+                >
+                  <Plus className="auth-btn-gloss__content h-4 w-4" />
+                  <span className="auth-btn-gloss__content">Ghi nhận chỉ số điện</span>
+                </button>
+                <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+                  <span className="inline-flex h-9 items-center gap-2 rounded-full border border-[#c8daf4] bg-[#eef6ff] px-3.5 text-sm font-semibold text-[#244cb8]">
+                    <Zap className="h-4 w-4" />
+                    Đơn giá hiện tại: {formatPlainMoney(currentElectricityPrice)}/kWh
+                  </span>
+                  <button
+                    type="button"
+                    onClick={openPriceModal}
+                    className="inline-flex h-9 items-center rounded-full border border-[#c8daf4] bg-white px-3.5 text-sm font-semibold text-[#244cb8] transition duration-200 hover:border-[#aac7ef] hover:bg-[#e4f0ff]"
+                  >
+                    Cập nhật đơn giá
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {summaryCards.map((card, index) => (
+            <motion.article
+              key={card.label}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              whileHover={{ y: -4, scale: 1.02 }}
+              transition={{ duration: 0.32, delay: 0.08 + index * 0.04, ease: "easeOut" }}
+              className="relative overflow-hidden rounded-[26px] border border-[#d8e4f5] bg-white px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.09)] transition-shadow duration-300 hover:shadow-[0_22px_44px_rgba(36,76,184,0.16)]"
+            >
+              <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7c8fb5]">{card.label}</p>
+              <p className={`mt-3 ${card.valueSizeClassName ?? "text-[2rem]"} font-extrabold leading-none ${card.valueClassName}`}>{card.value}</p>
+            </motion.article>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => setActiveTab("records")}
+            className={`inline-flex items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-bold shadow-[0_10px_22px_rgba(36,76,184,0.12)] transition ${
+              activeTab === "records" ? "bg-[#244cb8] text-white" : "border border-[#c8d8ef] bg-white text-[#24407f]"
+            }`}
+          >
+            <Zap className="h-4 w-4" />
+            Chỉ số điện
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("bills")}
+            className={`inline-flex items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-bold shadow-[0_10px_22px_rgba(36,76,184,0.12)] transition ${
+              activeTab === "bills" ? "bg-[#244cb8] text-white" : "border border-[#c8d8ef] bg-white text-[#24407f]"
+            }`}
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            Hóa đơn điện
+          </button>
+        </div>
+
+        {activeTab === "records" ? (
+          <PaymentTable
+            headings={["Phòng", "Số sinh viên", "Tháng", "Năm", "Chỉ số cũ", "Chỉ số mới", "Số điện", "Tổng tiền"]}
+            columnWidths={recordTableColumnWidths}
+            emptyMessage="Không có chỉ số điện phù hợp với bộ lọc."
+            rows={records.map((record) => ({
+              key: record.id,
+              cells: [
+                <span className="font-bold text-[#1f3152]">{record.room}</span>,
+                record.studentCount,
+                record.month.split("-")[1] ?? record.month,
+                record.month.split("-")[0] ?? "",
+                record.oldIndex,
+                record.newIndex,
+                `${record.usageKwh} kWh`,
+                moneyFormatter.format(record.totalAmount),
+              ],
+            }))}
+          />
+        ) : (
+          <PaymentTable
+            headings={["MSSV", "Họ tên", "Phòng", "Tháng", "Tiền điện", "Hạn thanh toán", "Trạng thái", "Hành động"]}
+            columnWidths={billTableColumnWidths}
+            emptyMessage="Không có hóa đơn điện phù hợp với bộ lọc."
+            rows={visibleBills.map((bill) => ({
+              key: bill.id,
+              cells: [
+                <span className="text-[15px] font-semibold text-[#24407f]">{bill.studentCode}</span>,
+                <span className="line-clamp-2 text-sm font-semibold text-[#1f3152]">{bill.fullName}</span>,
+                <span className="text-sm font-semibold text-[#6d7fa6]">{bill.room}</span>,
+                formatMonth(bill.month),
+                moneyFormatter.format(bill.amount),
+                formatDate(bill.dueDate),
+                <StatusBadge status={bill.status} />,
+                <div className="flex flex-wrap justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedBill(bill)}
+                    className="inline-flex items-center justify-center gap-1 rounded-xl border border-[#bfd2ec] bg-white px-2.5 py-2 text-xs font-semibold text-[#2a4f8f] transition duration-200 hover:-translate-y-0.5 hover:border-[#9ebce5] hover:bg-[#f3f8ff]"
+                  >
+                    <Eye className="h-4 w-4" />
+                    Xem chi tiết
+                  </button>
+                </div>,
+              ],
+            }))}
+          />
+        )}
+      </motion.section>
+
+      {isPriceModalOpen
+        ? createPortal(
+            <div className="fixed inset-0 z-[82] flex items-center justify-center bg-[rgba(14,25,48,0.52)] px-4 backdrop-blur-sm">
+              <motion.div
+                initial={{ opacity: 0, y: 18, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.26, ease: "easeOut" }}
+                className="w-full max-w-[460px] rounded-[26px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f9fcff_0%,#eef5ff_100%)] p-6 shadow-[0_24px_62px_rgba(27,56,122,0.26)]"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xl font-bold uppercase text-[#7d90b5]">Cập nhật đơn giá điện</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closePriceModal}
+                    className="rounded-xl border border-[#bfd2ee] bg-[linear-gradient(180deg,#ffffff_0%,#edf4ff_100%)] p-2 text-[#6681b1] transition hover:border-[#97b8e8] hover:text-[#244cb8]"
+                    aria-label="Đóng"
+                    title="Đóng"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <label className="mt-5 block">
+                  <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Đơn giá (đ/kWh)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={priceFormValue}
+                    onChange={(event) => setPriceFormValue(event.target.value)}
+                    className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10"
+                  />
+                </label>
+                {priceError ? <p className="mt-4 text-sm font-semibold text-[#cc3c4f]">{priceError}</p> : null}
+                <div className="mt-6 flex flex-wrap justify-end gap-3">
+                  <button type="button" onClick={closePriceModal} className="rounded-2xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-5 py-2.5 text-sm font-semibold text-[#24407f] shadow-[0_8px_18px_rgba(36,76,184,0.10)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white">
+                    Hủy
+                  </button>
+                  <button type="button" onClick={handleSavePrice} className="auth-btn-gloss rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(36,76,184,0.24)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110">
+                    <span className="auth-btn-gloss__content">Lưu</span>
+                  </button>
+                </div>
+              </motion.div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {isRecordModalOpen
+        ? createPortal(
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[rgba(14,25,48,0.52)] px-4 backdrop-blur-sm">
+              <motion.div
+                initial={{ opacity: 0, y: 18, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.26, ease: "easeOut" }}
+                className="w-full max-w-[620px] rounded-[26px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f9fcff_0%,#eef5ff_100%)] p-6 shadow-[0_24px_62px_rgba(27,56,122,0.26)]"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7d90b5]">Nhập chỉ số điện</p>
+                    <h2 className="mt-2 text-2xl font-bold text-[#173a78]">Chỉ số phòng</h2>
+                  </div>
+                  <button type="button" onClick={closeRecordModal} className="rounded-xl border border-[#bfd2ee] bg-[linear-gradient(180deg,#ffffff_0%,#edf4ff_100%)] p-2 text-[#6681b1] transition hover:border-[#97b8e8] hover:text-[#244cb8]" aria-label="Đóng" title="Đóng">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Phòng</span>
+                    <select value={form.room} onChange={(event) => setForm((current) => ({ ...current, room: event.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10">
+                      {roomOptions.map((room) => (
+                        <option key={room} value={room}>
+                          {room}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Tháng</span>
+                    <input type="month" value={form.month} onChange={(event) => setForm((current) => ({ ...current, month: event.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10" />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Chỉ số cũ</span>
+                    <input type="number" min="0" step="1" value={form.oldIndex} onChange={(event) => setForm((current) => ({ ...current, oldIndex: event.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10" />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Chỉ số mới</span>
+                    <input type="number" min="0" step="1" value={form.newIndex} onChange={(event) => setForm((current) => ({ ...current, newIndex: event.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10" />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Đơn giá</span>
+                    <input disabled value={form.unitPrice} inputMode="decimal" className="mt-2 h-11 w-full cursor-not-allowed rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm font-semibold text-[#1b3766] shadow-sm outline-none" />
+                  </label>
+                  <div className="rounded-2xl border border-[#d3e0f2] bg-white/70 p-4">
+                    <p className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Hệ thống tự tính</p>
+                    <p className="mt-3 text-sm font-semibold text-[#5570a0]">Số điện tiêu thụ: <span className="text-[#1b3766]">{usagePreview} kWh</span></p>
+                    <p className="mt-2 text-sm font-semibold text-[#5570a0]">Tổng tiền điện phòng: <span className="text-[#1b3766]">{moneyFormatter.format(totalPreview)}</span></p>
+                  </div>
+                </div>
+                {formError ? <p className="mt-4 text-sm font-semibold text-[#cc3c4f]">{formError}</p> : null}
+                <div className="mt-6 flex flex-wrap justify-end gap-3">
+                  <button type="button" onClick={closeRecordModal} className="rounded-2xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-5 py-2.5 text-sm font-semibold text-[#24407f] shadow-[0_8px_18px_rgba(36,76,184,0.10)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white">
+                    Hủy
+                  </button>
+                  <button type="button" onClick={handleCreateRecord} className="auth-btn-gloss rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(36,76,184,0.24)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110">
+                    <span className="auth-btn-gloss__content">Lưu chỉ số</span>
+                  </button>
+                </div>
+              </motion.div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {selectedBill
+        ? createPortal(
+            <div className="fixed inset-0 z-[78] flex items-center justify-center bg-[rgba(14,25,48,0.52)] px-4 backdrop-blur-sm">
+              <motion.div
+                initial={{ opacity: 0, y: 18, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.26, ease: "easeOut" }}
+                className="w-full max-w-[680px] rounded-[26px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f9fcff_0%,#eef5ff_100%)] p-6 shadow-[0_24px_62px_rgba(27,56,122,0.26)]"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7d90b5]">Chi tiết hóa đơn điện</p>
+                    <h2 className="mt-2 text-2xl font-bold text-[#173a78]">{selectedBill.fullName}</h2>
+                  </div>
+                  <button type="button" onClick={() => setSelectedBill(null)} className="rounded-xl border border-[#bfd2ee] bg-[linear-gradient(180deg,#ffffff_0%,#edf4ff_100%)] p-2 text-[#6681b1] transition hover:border-[#97b8e8] hover:text-[#244cb8]" aria-label="Đóng" title="Đóng">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="mt-5 rounded-2xl border border-[#d3e0f2] bg-white/65 p-4">
+                  <div className="grid gap-x-6 gap-y-3 md:grid-cols-2">
+                    <div className="space-y-3">
+                      <InfoLine label="MSSV" value={selectedBill.studentCode} />
+                      <InfoLine label="Họ tên" value={selectedBill.fullName} />
+                      <InfoLine label="Ngày tạo hóa đơn" value={formatDate(selectedBill.createdAt)} />
+                      <InfoLine label="Hạn thanh toán" value={formatDate(selectedBill.dueDate)} />
+                      {selectedBill.status === "paid" && selectedBill.paidAt ? (
+                        <InfoLine label="Ngày thanh toán" value={formatDate(selectedBill.paidAt)} />
+                      ) : null}
+                      <InfoLine label="Trạng thái" value={<StatusBadge status={selectedBill.status} />} />
+                    </div>
+                    <div className="space-y-3">
+                      <InfoLine label="Phòng" value={selectedBill.room} />
+                      <InfoLine label="Kỳ" value={formatMonth(selectedBill.month)} />
+                      <InfoLine label="Tiền điện phòng" value={selectedBillRecord ? moneyFormatter.format(selectedBillRecord.totalAmount) : "-"} />
+                      <InfoLine label="Số sinh viên phòng" value={selectedBillRecord?.studentCount ?? "-"} />
+                      <InfoLine label="Tiền điện" value={moneyFormatter.format(selectedBill.amount)} />
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-6 flex flex-wrap justify-end gap-3">
+                  {selectedBill.status === "unpaid" ? (
+                    <button
+                      type="button"
+                      onClick={() => confirmPayment(selectedBill.id)}
+                      className="auth-btn-gloss rounded-2xl bg-[linear-gradient(135deg,#1f9a60_0%,#35bf7a_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_20px_rgba(31,154,96,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110"
+                    >
+                      <span className="auth-btn-gloss__content">Xác nhận thanh toán</span>
+                    </button>
+                  ) : null}
+                  <button type="button" onClick={() => setSelectedBill(null)} className="rounded-2xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-5 py-2.5 text-sm font-semibold text-[#24407f] shadow-[0_8px_18px_rgba(36,76,184,0.10)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white">
+                    Đóng
+                  </button>
+                </div>
+              </motion.div>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
+
+function PaymentTable({
+  headings,
+  columnWidths,
+  rows,
+  emptyMessage,
+}: {
+  headings: string[];
+  columnWidths?: string[];
+  rows: Array<{ key: number; cells: ReactNode[] }>;
+  emptyMessage: string;
+}) {
+  return (
+    <div className="overflow-hidden rounded-[22px] border border-[#d6e2f1] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[980px] table-fixed border-separate border-spacing-0">
+          {columnWidths ? (
+            <colgroup>
+              {headings.map((heading, index) => (
+                <col key={heading} style={{ width: columnWidths[index] }} />
+              ))}
+            </colgroup>
+          ) : null}
+          <thead>
+            <tr className="bg-[linear-gradient(180deg,#f7faff_0%,#eef4ff_100%)]">
+              {headings.map((heading) => (
+                <th key={heading} className="px-3 py-3.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                  {heading}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length ? (
+              rows.map((row) => (
+                <tr key={row.key} className="transition hover:bg-[#f8fbff]">
+                  {row.cells.map((cell, index) => (
+                    <td key={index} className="border-t border-[#e8eef8] px-3 py-3.5 text-center align-middle text-sm font-semibold text-[#5570a0]">
+                      {cell}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={headings.length} className="px-4 py-8 text-center text-sm font-semibold text-[#6f84ad]">
+                  {emptyMessage}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

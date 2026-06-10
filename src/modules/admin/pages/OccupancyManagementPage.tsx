@@ -58,7 +58,8 @@ const statusOptions: Array<{ value: OccupancyStatusFilter; label: string }> = [
 ];
 
 const getStatusMeta = (status: Occupancy["status"]) => statusMeta[status] ?? statusMeta.ACTIVE;
-const canAddViolation = (occupancy: Occupancy | null | undefined) => occupancy?.status !== "FORCED_CHECKOUT";
+const canAddViolation = (occupancy: Occupancy | null | undefined) =>
+  occupancy?.status === "ACTIVE" || occupancy?.status === "CHECKOUT_REQUESTED";
 
 const formatDate = (iso: string) => {
   const date = new Date(iso);
@@ -719,11 +720,11 @@ export default function OccupancyManagementPage() {
                             type="button"
                             onClick={() => handleOpenViolations(item)}
                             disabled={!canAddViolation(item)}
-                            title={!canAddViolation(item) ? "Sinh viên đã bị buộc thôi ở, không thể thêm vi phạm mới." : undefined}
+                            title={!canAddViolation(item) ? "Sinh viên không còn lưu trú tại KTX, không thể thêm vi phạm mới." : undefined}
                             className="auth-btn-gloss inline-flex min-w-[76px] items-center justify-center gap-1 whitespace-nowrap rounded-xl border border-rose-200 bg-rose-50 px-2.5 py-2 text-[12px] font-semibold text-rose-700 shadow-[0_8px_18px_rgba(190,24,93,0.10)] transition duration-200 hover:-translate-y-0.5 hover:border-rose-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:border-rose-200 disabled:hover:bg-rose-50"
                           >
                             <ShieldAlert className="h-3.5 w-3.5" />
-                            <span className="auth-btn-gloss__content">Vi phạm</span>
+                            <span className="auth-btn-gloss__content">Ghi nhận vi phạm</span>
                           </button>
                         </div>
                       </td>
@@ -981,7 +982,7 @@ export default function OccupancyManagementPage() {
               >
                 <div className="flex items-start justify-between gap-4 border-b border-[#d3e0f2] px-6 py-5">
                   <div>
-                    <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7d90b5]">
+                    <p className="text-xl font-bold uppercase  text-[#7d90b5]">
                       QUẢN LÝ VI PHẠM
                     </p>
                     <h2 className="mt-2 text-2xl font-bold text-[#173a78]">
@@ -1059,7 +1060,7 @@ export default function OccupancyManagementPage() {
                         </label>
 
                         <label className="block">
-                          <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Mô tả</span>
+                          <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Chi tiết vi phạm </span>
                           <textarea
                             value={violationNote}
                             onChange={(event) => setViolationNote(event.target.value)}

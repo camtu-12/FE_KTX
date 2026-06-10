@@ -1,13 +1,19 @@
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
+  CalendarDays,
   CheckCircle2,
   ClipboardCheck,
+  DoorOpen,
   Eye,
   Gavel,
+  MapPin,
+  NotebookText,
+  ShieldAlert,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useOutletContext } from "react-router-dom";
@@ -160,6 +166,26 @@ function InfoLine({ label, value }: { label: string; value: string }) {
   return (
     <p className="text-sm text-[#5570a0]">
       {label}: <span className="font-semibold text-[#1b3766]">{value || emptyValue}</span>
+    </p>
+  );
+}
+
+function CardInfoLine({
+  Icon,
+  label,
+  children,
+  alignTop = false,
+}: {
+  Icon: LucideIcon;
+  label: string;
+  children: ReactNode;
+  alignTop?: boolean;
+}) {
+  return (
+    <p className={`flex min-w-0 gap-2 text-sm text-slate-600 ${alignTop ? "items-start" : "items-center"}`}>
+      <Icon className={`h-4 w-4 shrink-0 text-slate-400 ${alignTop ? "mt-0.5" : ""}`} />
+      <span className={alignTop ? "w-[48px] shrink-0" : "shrink-0"}>{label}:</span>
+      <span className="min-w-0 flex-1 font-semibold text-slate-700">{children}</span>
     </p>
   );
 }
@@ -327,7 +353,7 @@ export default function ViolationManagementPage() {
         >
           <div className="flex flex-col gap-2">
             <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">
-              Quản lý vi phạm
+              Quản lý vi phạm 
             </h1>
             <p className="max-w-3xl text-[13px] leading-6 text-[#62789f] sm:text-sm">
               Theo dõi vi phạm nội trú, trạng thái xử lý và các trường hợp cần buộc thôi ở.
@@ -408,7 +434,7 @@ export default function ViolationManagementPage() {
           className="mt-1"
         >
           {visibleRows.length > 0 ? (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3">
               {visibleRows.map((item, index) => {
                 const CardStatusIcon = statusMeta[item.status].Icon;
 
@@ -419,12 +445,12 @@ export default function ViolationManagementPage() {
                     animate={{ opacity: 1, y: 0 }}
                     whileHover={{ y: -4 }}
                     transition={{ duration: 0.2, delay: index * 0.03, ease: "easeOut" }}
-                    className="group flex flex-col rounded-[20px] border border-[#cfdbef] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] p-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)] transition-shadow duration-200 hover:shadow-[0_20px_38px_rgba(36,76,184,0.16)]"
+                    className="group flex min-h-[300px] flex-col rounded-3xl border border-[#cfdbef] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] p-5 shadow-[0_12px_28px_rgba(15,23,42,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_20px_38px_rgba(36,76,184,0.16)]"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <h2 className="truncate text-base font-bold text-[#1a2d52]">{item.fullName}</h2>
-                        <p className="mt-1 truncate text-sm font-semibold text-[#61779d]">{item.studentCode}</p>
+                        <h2 className="truncate text-xl font-bold text-[#1a2d52]">{item.fullName}</h2>
+                        <p className="mt-1 truncate text-sm text-[#61779d]">{item.studentCode}</p>
                       </div>
 
                       <Badge Icon={CardStatusIcon} className={statusMeta[item.status].badgeClassName}>
@@ -432,28 +458,38 @@ export default function ViolationManagementPage() {
                       </Badge>
                     </div>
 
-                    <div className="mt-4">
-                      <h3 className="line-clamp-2 text-base font-bold leading-snug text-[#1f3152]">
-                        {item.typeName}
-                      </h3>
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <Badge className={levelMeta[item.level].badgeClassName}>
-                        {levelMeta[item.level].label}
-                      </Badge>
-                      <span className="text-[#9aacca]">•</span>
-                      <span className="text-sm font-semibold text-[#5a6f98]">
+                    <div className="mt-5 space-y-2.5">
+                      
+                      <CardInfoLine Icon={MapPin} label="Vị trí">
+                        <span className="block truncate">
+                          {item.room} - {item.bed}
+                        </span>
+                      </CardInfoLine>
+                      <CardInfoLine Icon={ShieldAlert} label="Loại">
+                        <span className="block truncate">{item.typeName}</span>
+                      </CardInfoLine>
+                      <CardInfoLine Icon={AlertTriangle} label="Mức độ">
+                        <span className={levelMeta[item.level].badgeClassName}>
+                          {levelMeta[item.level].label}
+                        </span>
+                      </CardInfoLine>
+                      <CardInfoLine Icon={NotebookText} label="Chi tiết" alignTop>
+                        <span className="block whitespace-normal break-all">{item.note || emptyValue}</span>
+                      </CardInfoLine>
+                      <CardInfoLine Icon={CalendarDays} label="Ngày">
                         {formatDate(item.violationDate)}
-                      </span>
+                      </CardInfoLine>
+                      <CardInfoLine Icon={DoorOpen} label="Kết quả">
+                        {item.actionTaken ? actionMeta[item.actionTaken].label : "Chưa xử lý"}
+                      </CardInfoLine>
                     </div>
 
-                    <div className="mt-auto flex flex-wrap justify-end gap-2 pt-4">
+                    <div className="mt-auto grid gap-2 pt-5 sm:grid-cols-2">
                       {item.status === "PENDING" ? (
                         <button
                           type="button"
                           onClick={() => openProcessModal(item)}
-                          className="auth-btn-gloss inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_100%)] px-3 text-xs font-semibold text-white shadow-[0_10px_20px_rgba(36,76,184,0.20)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110"
+                          className="auth-btn-gloss inline-flex h-10 items-center justify-center gap-1 rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_100%)] px-3 text-xs font-semibold text-white shadow-[0_10px_20px_rgba(36,76,184,0.20)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110"
                         >
                           <ClipboardCheck className="auth-btn-gloss__content h-4 w-4" />
                           <span className="auth-btn-gloss__content">Xử lý</span>
@@ -462,7 +498,9 @@ export default function ViolationManagementPage() {
                       <button
                         type="button"
                         onClick={() => setSelectedViolation(item)}
-                        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#bfd2ec] bg-white px-3 text-xs font-semibold text-[#2a4f8f] transition duration-200 hover:-translate-y-0.5 hover:border-[#9ebce5] hover:bg-[#f3f8ff]"
+                        className={`inline-flex h-10 items-center justify-center gap-1 rounded-xl border border-[#bfd2ec] bg-white px-3 text-xs font-semibold text-[#2a4f8f] transition duration-200 hover:-translate-y-0.5 hover:border-[#9ebce5] hover:bg-[#f3f8ff] ${
+                          item.status === "PENDING" ? "" : "sm:col-span-2"
+                        }`}
                       >
                         <Eye className="h-4 w-4" />
                         Xem
@@ -498,10 +536,9 @@ export default function ViolationManagementPage() {
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7d90b5]">
+                    <p className="text-2xl font-semibold uppercase  ">
                       CHI TIẾT VI PHẠM
                     </p>
-                    <h2 className="mt-2 text-2xl font-bold text-[#173a78]">{selectedViolation.fullName}</h2>
                   </div>
                   <button
                     type="button"
@@ -521,8 +558,8 @@ export default function ViolationManagementPage() {
                     </h3>
                     <div className="mt-4 grid gap-x-6 gap-y-3 md:grid-cols-2">
                       <InfoLine label="MSSV" value={selectedViolation.studentCode} />
-                      <InfoLine label="Họ tên" value={selectedViolation.fullName} />
                       <InfoLine label="Phòng" value={selectedViolation.room} />
+                      <InfoLine label="Họ tên" value={selectedViolation.fullName} />
                       <InfoLine label="Giường" value={selectedViolation.bed} />
                     </div>
                   </div>
@@ -535,14 +572,14 @@ export default function ViolationManagementPage() {
                       <InfoLine label="Loại vi phạm" value={selectedViolation.typeName} />
                       <div className="flex flex-wrap items-center gap-2 text-sm text-[#5570a0]">
                         <span>Mức độ:</span>
-                        <Badge className={levelMeta[selectedViolation.level].badgeClassName}>
+                        <span className={`font-semibold ${levelMeta[selectedViolation.level].badgeClassName}`}>
                           {levelMeta[selectedViolation.level].label}
-                        </Badge>
+                        </span>
                       </div>
                       <InfoLine label="Ngày vi phạm" value={formatDate(selectedViolation.violationDate)} />
-                      <InfoLine label="Mô tả loại vi phạm" value={selectedViolation.typeDescription} />
-                      <p className="text-sm text-[#5570a0] md:col-span-2">
-                        Mô tả: <span className="font-semibold text-[#1b3766]">{selectedViolation.note || emptyValue}</span>
+                      <p className="text-sm text-[#5570a0]">
+                        Chi tiết vi phạm:{" "}
+                        <span className="font-semibold break-all text-[#1b3766]">{selectedViolation.note || emptyValue}</span>
                       </p>
                     </div>
                   </div>

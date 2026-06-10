@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { CreditCard, Zap } from "lucide-react";
+import { CalendarDays, CreditCard, Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { createVnpayPayment, getStudentPayments, verifyVnpayPayment, type PaymentStatus, type StudentPaymentItem, type StudentPayments } from "../../../api/paymentApi";
@@ -26,12 +26,21 @@ const statusMeta: Record<PaymentStatus, { label: string; className: string }> = 
   },
 };
 
+type PaymentTab = "room_fee" | "electricity";
+
 const formatDate = (value: string) => {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
 };
+
+const formatPeriodMonth = (value: string) => {
+  const [year, month] = value.split("-");
+  return month && year ? `${month}/${year}` : value;
+};
+
+const getRoomLabel = (room: StudentPaymentItem["room"]) => (room ? `${room.buildingCode}${room.roomNumber}` : "-");
 
 function StatusBadge({ status }: { status: PaymentStatus }) {
   return (
@@ -59,6 +68,7 @@ export default function PaymentPage() {
   const [loadError, setLoadError] = useState("");
   const [paymentMessage, setPaymentMessage] = useState("");
   const [payingKey, setPayingKey] = useState("");
+  const [activeTab, setActiveTab] = useState<PaymentTab>("room_fee");
 
   useEffect(() => {
     let isActive = true;
@@ -101,9 +111,15 @@ export default function PaymentPage() {
   }, [studentEmail]);
 
   useEffect(() => {
+    const messageTimers: number[] = [];
+    const setPaymentMessageLater = (message: string) => {
+      const timerId = window.setTimeout(() => setPaymentMessage(message), 0);
+      messageTimers.push(timerId);
+    };
+
     if (vnpayTxnRef) {
       const payload = Object.fromEntries(searchParams.entries());
-      setPaymentMessage("Đang xác minh thanh toán VNPay...");
+      setPaymentMessageLater("Đang xác minh thanh toán VNPay...");
 
       verifyVnpayPayment(payload)
         .then((result) => {
@@ -116,19 +132,26 @@ export default function PaymentPage() {
         .finally(() => {
           setSearchParams({}, { replace: true });
         });
-      return;
+      return () => {
+        messageTimers.forEach((timerId) => window.clearTimeout(timerId));
+      };
     }
 
-    if (!vnpayStatus) return;
+    if (!vnpayStatus) {
+      return undefined;
+    }
 
     if (vnpayStatus === "success") {
-      setPaymentMessage("Thanh toán VNPay thành công.");
+      setPaymentMessageLater("Thanh toán VNPay thành công.");
       window.dispatchEvent(new Event("ktx-payments-updated"));
     } else {
-      setPaymentMessage("Thanh toán VNPay không thành công hoặc đã bị hủy.");
+      setPaymentMessageLater("Thanh toán VNPay không thành công hoặc đã bị hủy.");
     }
 
     setSearchParams({}, { replace: true });
+    return () => {
+      messageTimers.forEach((timerId) => window.clearTimeout(timerId));
+    };
   }, [searchParams, setSearchParams, vnpayStatus, vnpayTxnRef]);
 
   const roomFeeItems = useMemo(() => payments?.items.filter((item) => item.source === "room_fee") ?? [], [payments?.items]);
@@ -137,9 +160,27 @@ export default function PaymentPage() {
   const unpaidElectricityItems = useMemo(() => electricityItems.filter((item) => item.status !== "paid"), [electricityItems]);
   const paidRoomFeeItems = useMemo(() => roomFeeItems.filter((item) => item.status === "paid"), [roomFeeItems]);
   const paidElectricityItems = useMemo(() => electricityItems.filter((item) => item.status === "paid"), [electricityItems]);
-  const unpaidRoomFeeTotal = unpaidRoomFeeItems.reduce((sum, item) => sum + item.amount, 0);
-  const unpaidElectricityTotal = unpaidElectricityItems.reduce((sum, item) => sum + item.amount, 0);
-  const overdueTotal = payments?.items.filter((item) => item.status === "overdue").reduce((sum, item) => sum + item.amount, 0) ?? 0;
+  const activeTabData =
+    activeTab === "room_fee"
+      ? {
+          allItems: roomFeeItems,
+          unpaidItems: unpaidRoomFeeItems,
+          paidItems: paidRoomFeeItems,
+          unpaidEmptyText: "Không có hóa đơn tiền phòng cần thanh toán.",
+          paidEmptyText: "Chưa có lịch sử thanh toán tiền phòng.",
+        }
+      : {
+          allItems: electricityItems,
+          unpaidItems: unpaidElectricityItems,
+          paidItems: paidElectricityItems,
+          unpaidEmptyText: "Không có hóa đơn tiền điện cần thanh toán.",
+          paidEmptyText: "Chưa có lịch sử thanh toán tiền điện.",
+        };
+  const statusSummaryCards = [
+    { label: "Đã thanh toán", value: activeTabData.paidItems.length, className: "text-[#16784b]" },
+    { label: "Chưa thanh toán", value: activeTabData.allItems.filter((item) => item.status === "unpaid").length, className: "text-[#9b6b00]" },
+    { label: "Quá hạn", value: activeTabData.allItems.filter((item) => item.status === "overdue").length, className: "text-[#cf2448]" },
+  ];
 
   const handleVnpayPayment = async (item: StudentPaymentItem) => {
     if (!studentEmail) {
@@ -190,7 +231,7 @@ export default function PaymentPage() {
       className="space-y-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
     >
       <header className="rounded-[28px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-5 text-[#1a2d52] shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
-        <h1 className="text-[32px] font-bold tracking-tight">Thanh toán của tôi</h1>
+        <h1 className="text-[32px] font-bold tracking-tight">Thanh toán hóa đơn</h1>
         <p className="mt-2 text-sm font-semibold text-[#62789f]">Theo dõi tiền phòng, tiền điện và lịch sử thanh toán.</p>
       </header>
 
@@ -199,51 +240,52 @@ export default function PaymentPage() {
         <div className="rounded-2xl border border-[#d3e0f2] bg-white/80 px-4 py-3 text-sm font-semibold text-[#1b3766]">{paymentMessage}</div>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <SummaryCard label="Tiền phòng cần thanh toán" value={moneyFormatter.format(unpaidRoomFeeTotal)} className="text-[#244cb8]" />
-        <SummaryCard label="Tiền điện cần thanh toán" value={moneyFormatter.format(unpaidElectricityTotal)} className="text-[#b77900]" />
-        <SummaryCard label="Quá hạn" value={moneyFormatter.format(overdueTotal)} className="text-[#cf2448]" />
+      <div className="flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={() => setActiveTab("room_fee")}
+          className={`inline-flex items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-bold shadow-[0_10px_22px_rgba(36,76,184,0.12)] transition ${
+            activeTab === "room_fee" ? "bg-[#244cb8] text-white" : "border border-[#c8d8ef] bg-white text-[#24407f]"
+          }`}
+        >
+          <CreditCard className="h-4 w-4" />
+          Tiền phòng
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("electricity")}
+          className={`inline-flex items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-bold shadow-[0_10px_22px_rgba(36,76,184,0.12)] transition ${
+            activeTab === "electricity" ? "bg-[#244cb8] text-white" : "border border-[#c8d8ef] bg-white text-[#24407f]"
+          }`}
+        >
+          <Zap className="h-4 w-4" />
+          Tiền điện
+        </button>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        {statusSummaryCards.map((card) => (
+          <div key={card.label} className="rounded-[24px] border border-[#d3e0f2] bg-white p-5 text-center shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#6f84ad]">{card.label}</p>
+            <p className={`mt-2 text-2xl font-bold ${card.className}`}>{card.value}</p>
+          </div>
+        ))}
       </div>
 
       <PaymentSection
-        title="Tiền phòng cần thanh toán"
-        description="Các hóa đơn tiền phòng theo quý."
-        items={unpaidRoomFeeItems}
-        emptyText="Không có hóa đơn tiền phòng cần thanh toán."
+        title="HÓA ĐƠN CẦN THANH TOÁN"
+        items={activeTabData.unpaidItems}
+        emptyText={activeTabData.unpaidEmptyText}
         payingKey={payingKey}
         onPayOnline={handleVnpayPayment}
       />
 
       <PaymentSection
-        title="Tiền điện cần thanh toán"
-        description="Các hóa đơn tiền điện theo tháng."
-        items={unpaidElectricityItems}
-        emptyText="Không có hóa đơn tiền điện cần thanh toán."
-        payingKey={payingKey}
-        onPayOnline={handleVnpayPayment}
-      />
-
-      <PaymentSection
-        title="Lịch sử thanh toán tiền phòng"
-        items={paidRoomFeeItems}
-        emptyText="Chưa có lịch sử thanh toán tiền phòng."
-      />
-
-      <PaymentSection
-        title="Lịch sử thanh toán tiền điện"
-        items={paidElectricityItems}
-        emptyText="Chưa có lịch sử thanh toán tiền điện."
+        title="LỊCH SỬ THANH TOÁN"
+        items={activeTabData.paidItems}
+        emptyText={activeTabData.paidEmptyText}
       />
     </motion.section>
-  );
-}
-
-function SummaryCard({ label, value, className }: { label: string; value: string; className: string }) {
-  return (
-    <div className="rounded-[24px] border border-[#d3e0f2] bg-white p-5 text-center shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
-      <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#6f84ad]">{label}</p>
-      <p className={`mt-2 text-2xl font-bold ${className}`}>{value}</p>
-    </div>
   );
 }
 
@@ -268,9 +310,6 @@ function PaymentSection({
         <div>
           <h2 className="text-2xl font-bold text-[#1a2d52]">{title}</h2>
           {description ? <p className="mt-1 text-sm font-semibold text-[#62789f]">{description}</p> : null}
-        </div>
-        <div className="inline-flex items-center rounded-2xl border border-[#d3e0f2] bg-white px-4 py-2 text-sm font-bold text-[#24407f]">
-          {moneyFormatter.format(items.reduce((sum, item) => sum + item.amount, 0))}
         </div>
       </div>
 
@@ -303,6 +342,10 @@ function PaymentItemCard({
   isPaying?: boolean;
   onPayOnline?: (item: StudentPaymentItem) => void;
 }) {
+  if (item.source === "electricity") {
+    return <ElectricityPaymentItemCard item={item} isPaying={isPaying} onPayOnline={onPayOnline} />;
+  }
+
   return (
     <article className="rounded-[22px] border border-[#d6e2f1] bg-white p-4 shadow-[0_14px_30px_rgba(36,76,184,0.10)]">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -311,13 +354,8 @@ function PaymentItemCard({
           <div>
             <h3 className="text-lg font-bold text-[#1f3152]">{item.title}</h3>
             <p className="mt-1 text-sm font-semibold text-[#6f84ad]">
-              Phòng {item.room ? `${item.room.buildingCode}${item.room.roomNumber}` : "-"} · Hạn đóng {formatDate(item.dueDate)}
+              Phòng {item.room ? `${item.room.buildingCode}${item.room.roomNumber}` : "-"} · Hạn thanh toán {formatDate(item.dueDate)}
             </p>
-            {item.source === "electricity" ? (
-              <p className="mt-1 text-sm font-semibold text-[#6f84ad]">
-                {item.usageKwh ?? 0} kWh · {moneyFormatter.format(item.unitPrice ?? 0)}/kWh
-              </p>
-            ) : null}
             {item.status === "paid" ? (
               <p className="mt-1 text-sm font-semibold text-[#6f84ad]">
                 Đã thanh toán: {item.paidAt ? formatDate(item.paidAt) : "-"} · {item.paymentMethod || "-"} {item.transactionCode ? `· ${item.transactionCode}` : ""}
@@ -334,6 +372,73 @@ function PaymentItemCard({
               onClick={() => onPayOnline(item)}
               disabled={isPaying}
               className="inline-flex items-center gap-2 rounded-2xl bg-[#244cb8] px-4 py-2 text-sm font-bold text-white shadow-[0_12px_24px_rgba(36,76,184,0.22)] transition hover:bg-[#1d3f9e] disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              <CreditCard className="h-4 w-4" />
+              {isPaying ? "Đang tạo..." : "Thanh toán VNPay"}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ElectricityPaymentItemCard({
+  item,
+  isPaying = false,
+  onPayOnline,
+}: {
+  item: StudentPaymentItem;
+  isPaying?: boolean;
+  onPayOnline?: (item: StudentPaymentItem) => void;
+}) {
+  const usageKwh = item.usageKwh ?? 0;
+  const unitPrice = item.unitPrice ?? 0;
+  const roomElectricityAmount = usageKwh * unitPrice;
+  const studentCount = roomElectricityAmount > 0 && item.amount > 0 ? Math.max(1, Math.round(roomElectricityAmount / item.amount)) : 0;
+
+  return (
+    <article className="rounded-[22px] border border-[#d6e2f1] bg-white p-4 shadow-[0_14px_30px_rgba(36,76,184,0.10)]">
+      <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
+        <div className="min-w-0 space-y-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <BillIcon source={item.source} />
+            <div className="min-w-0">
+              <h3 className="text-lg font-bold text-[#1f3152]">Tiền điện tháng {formatPeriodMonth(item.period)}</h3>
+              <p className="mt-1 text-sm font-semibold text-[#6f84ad]">Phòng: {getRoomLabel(item.room)}</p>
+            </div>
+          </div>
+
+          <div className="grid gap-x-6 gap-y-2 text-sm font-semibold text-[#6f84ad] sm:grid-cols-2">
+            <p>Số điện tiêu thụ: <span className="text-[#48628f]">{usageKwh} kWh</span></p>
+            <p>Đơn giá: <span className="text-[#48628f]">{moneyFormatter.format(unitPrice)}/kWh</span></p>
+            <p>Số sinh viên trong phòng: <span className="text-[#48628f]">{studentCount || "-"}</span></p>
+            <p>Tiền điện phòng: <span className="text-[#48628f]">{moneyFormatter.format(roomElectricityAmount)}</span></p>
+            <p className="inline-flex items-center gap-2 sm:col-span-2">
+              <CalendarDays className="h-4 w-4" />
+              Hạn thanh toán: <span className="text-[#48628f]">{formatDate(item.dueDate)}</span>
+            </p>
+          </div>
+
+          {item.status === "paid" ? (
+            <p className="text-sm font-semibold text-[#6f84ad]">
+              Đã thanh toán: {item.paidAt ? formatDate(item.paidAt) : "-"} · {item.paymentMethod || "-"} {item.transactionCode ? `· ${item.transactionCode}` : ""}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex flex-col justify-between lg:items-end lg:text-right">
+          <div className="space-y-2">
+            <p className="text-sm font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Tiền điện của bạn</p>
+            <p className="text-2xl font-extrabold text-[#173a78]">{moneyFormatter.format(item.amount)}</p>
+          </div>
+
+          {item.status !== "paid" && onPayOnline ? (
+            <button
+              type="button"
+              onClick={() => onPayOnline(item)}
+              disabled={isPaying}
+              className="mt-4 inline-flex items-center justify-center gap-2 rounded-2xl bg-[#244cb8] px-4 py-2 text-sm font-bold text-white shadow-[0_12px_24px_rgba(36,76,184,0.22)] transition hover:bg-[#1d3f9e] disabled:cursor-not-allowed disabled:opacity-70"
             >
               <CreditCard className="h-4 w-4" />
               {isPaying ? "Đang tạo..." : "Thanh toán VNPay"}

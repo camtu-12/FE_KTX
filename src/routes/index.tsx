@@ -15,7 +15,8 @@ import AdminStudentsPage from "../modules/admin/pages/AdminStudentsPage";
 import OccupancyManagementPage from "../modules/admin/pages/OccupancyManagementPage";
 import ViolationManagementPage from "../modules/admin/pages/ViolationManagementPage";
 import ViolationTypeManagementPage from "../modules/admin/pages/ViolationTypeManagementPage";
-import PaymentManagementPage from "../modules/admin/pages/PaymentManagementPage";
+import AdminElectricityPage from "../modules/admin/pages/AdminElectricityPage";
+import AdminRoomFeePage from "../modules/admin/pages/AdminRoomFeePage";
 import LoginPage from "../modules/auth/pages/LoginPage";
 import RegisterPage from "../modules/auth/pages/RegisterPage";
 import AboutPage from "../modules/public/pages/AboutPage";
@@ -59,7 +60,9 @@ export default function AppRoutes() {
           <Route path="occupancies" element={<OccupancyManagementPage />} />
           <Route path="violations" element={<ViolationManagementPage />} />
           <Route path="violation-types" element={<ViolationTypeManagementPage />} />
-          <Route path="payments" element={<PaymentManagementPage />} />
+          <Route path="payments" element={<Navigate to="/admin/payments/room-fees" replace />} />
+          <Route path="payments/room-fees" element={<AdminRoomFeePage />} />
+          <Route path="payments/electricity" element={<AdminElectricityPage />} />
           <Route path="students" element={<AdminStudentsPage />} />
           <Route path="rooms" element={<AdminRoomManagement />} />
           <Route path="buildings" element={<AdminBuildingManagement />} />

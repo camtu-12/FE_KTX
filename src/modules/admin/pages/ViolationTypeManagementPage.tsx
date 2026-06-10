@@ -1,8 +1,9 @@
 import { motion } from "framer-motion";
-import { Pencil, Plus, Trash2, X } from "lucide-react";
+import { Funnel, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { FormEvent, InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { listViolations } from "../../../api/violationApi";
 import {
   createViolationType,
   deleteViolationType,
@@ -17,6 +18,8 @@ type ViolationTypeForm = {
   level: ViolationLevel;
   description: string;
 };
+
+type LevelFilter = ViolationLevel | "all";
 
 const initialFormState: ViolationTypeForm = {
   name: "",
@@ -88,6 +91,15 @@ export default function ViolationTypeManagementPage() {
   const [formError, setFormError] = useState("");
   const [pageMessage, setPageMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [confirmMessage, setConfirmMessage] = useState("");
+  const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
+  const [successMessage, setSuccessMessage] = useState("");
+  const [levelFilter, setLevelFilter] = useState<LevelFilter>("all");
+  const [draftLevelFilter, setDraftLevelFilter] = useState<LevelFilter>("all");
+  const [isLevelFilterOpen, setIsLevelFilterOpen] = useState(false);
+  const [levelFilterMenuPosition, setLevelFilterMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const levelFilterButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -121,7 +133,43 @@ export default function ViolationTypeManagementPage() {
     };
   }, []);
 
-  const sortedItems = useMemo(() => [...items].sort((a, b) => a.id - b.id), [items]);
+  useEffect(() => {
+    if (!isLevelFilterOpen) return;
+
+    const updateMenuPosition = () => {
+      const buttonRect = levelFilterButtonRef.current?.getBoundingClientRect();
+      if (!buttonRect) return;
+
+      setLevelFilterMenuPosition({
+        top: buttonRect.bottom + 10,
+        left: buttonRect.left + buttonRect.width / 2,
+      });
+    };
+
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [isLevelFilterOpen]);
+
+  useEffect(() => {
+    if (!successMessage) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setSuccessMessage("");
+    }, 2200);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [successMessage]);
+
+  const sortedItems = useMemo(
+    () => items.filter((item) => levelFilter === "all" || item.level === levelFilter).sort((a, b) => a.id - b.id),
+    [items, levelFilter],
+  );
 
   const openAddModal = () => {
     setEditingType(null);
@@ -150,6 +198,44 @@ export default function ViolationTypeManagementPage() {
     setFormError("");
   };
 
+  const showSuccessMessage = (message: string) => {
+    setSuccessMessage("");
+    window.setTimeout(() => setSuccessMessage(message), 0);
+  };
+
+  const showConfirm = (message: string, action: () => void) => {
+    setConfirmMessage(message);
+    setConfirmAction(() => action);
+    setIsConfirmOpen(true);
+  };
+
+  const closeConfirm = () => {
+    setIsConfirmOpen(false);
+    setConfirmMessage("");
+    setConfirmAction(null);
+  };
+
+  const confirmNow = () => {
+    if (confirmAction) confirmAction();
+    closeConfirm();
+  };
+
+  const openLevelFilter = () => {
+    setDraftLevelFilter(levelFilter);
+    setIsLevelFilterOpen(true);
+  };
+
+  const resetLevelFilter = () => {
+    setDraftLevelFilter("all");
+    setLevelFilter("all");
+    setIsLevelFilterOpen(false);
+  };
+
+  const applyLevelFilter = () => {
+    setLevelFilter(draftLevelFilter);
+    setIsLevelFilterOpen(false);
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -170,8 +256,9 @@ export default function ViolationTypeManagementPage() {
         level: form.level,
         description: trimmedDescription,
       } as const;
+      const isEditing = !!editingType;
 
-      if (editingType) {
+      if (isEditing && editingType) {
         const updatedType = await updateViolationType(editingType.id, payload);
         setItems((current) => current.map((item) => (item.id === updatedType.id ? updatedType : item)));
       } else {
@@ -184,6 +271,7 @@ export default function ViolationTypeManagementPage() {
       }
 
       setPageMessage("");
+      showSuccessMessage(isEditing ? "Cập nhật loại vi phạm thành công." : "Thêm loại vi phạm thành công.");
       closeModal();
     } catch {
       setFormError("KhÃ´ng thá»ƒ lÆ°u loáº¡i vi pháº¡m. Vui lÃ²ng thá»­ láº¡i.");
@@ -192,13 +280,13 @@ export default function ViolationTypeManagementPage() {
     }
   };
 
-  const removeType = async (item: ViolationType) => {
+  const deleteType = async (item: ViolationType) => {
     setPageMessage("");
 
     try {
       await deleteViolationType(item.id);
       setItems((current) => current.filter((type) => type.id !== item.id));
-      setPageMessage(`Đã xóa loại vi phạm "${item.name}".`);
+      showSuccessMessage("Xóa loại vi phạm thành công.");
 
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("ktx-violation-types-updated"));
@@ -206,7 +294,7 @@ export default function ViolationTypeManagementPage() {
     } catch (error) {
       if (error instanceof ViolationTypeApiError && error.status === 404) {
         setItems((current) => current.filter((type) => type.id !== item.id));
-        setPageMessage(`Đã xóa loại vi phạm "${item.name}".`);
+        showSuccessMessage("Xóa loại vi phạm thành công.");
         if (typeof window !== "undefined") {
           window.dispatchEvent(new Event("ktx-violation-types-updated"));
         }
@@ -218,7 +306,7 @@ export default function ViolationTypeManagementPage() {
         setItems(latestItems);
 
         if (!latestItems.some((type) => type.id === item.id)) {
-          setPageMessage(`Đã xóa loại vi phạm "${item.name}".`);
+          showSuccessMessage("Xóa loại vi phạm thành công.");
           if (typeof window !== "undefined") {
             window.dispatchEvent(new Event("ktx-violation-types-updated"));
           }
@@ -238,6 +326,25 @@ export default function ViolationTypeManagementPage() {
 
       setPageMessage(`Không thể xóa "${item.name}" vì đã có sinh viên vi phạm loại này.`);
     }
+  };
+
+  const removeType = async (item: ViolationType) => {
+    setPageMessage("");
+
+    try {
+      const currentViolations = await listViolations();
+      if (currentViolations.some((violation) => violation.typeId === item.id)) {
+        showConfirm(`Không thể xóa loại vi phạm ${item.name} vì đang có sinh viên vi phạm loại này.`, () => {});
+        return;
+      }
+    } catch {
+      showConfirm(`Không thể kiểm tra loại vi phạm ${item.name}. Vui lòng thử lại.`, () => {});
+      return;
+    }
+
+    showConfirm(`Bạn có chắc muốn xóa loại vi phạm ${item.name} không?`, () => {
+      void deleteType(item);
+    });
   };
 
   return (
@@ -283,9 +390,25 @@ export default function ViolationTypeManagementPage() {
               </colgroup>
               <thead>
                 <tr className="bg-[linear-gradient(180deg,#f7faff_0%,#eef4ff_100%)]">
-                  {["Tên loại", "Mô tả", "Mức độ", "Hành động"].map((heading) => (
+                  {["Tên loại", "Mô tả", "Mức độ", "Hành động"].map((heading, headingIndex) => (
                     <th key={heading} className="px-4 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
-                      {heading}
+                      {headingIndex === 2 ? (
+                        <div className="inline-flex items-center justify-center gap-2">
+                          <span>{heading}</span>
+                          <button
+                            ref={levelFilterButtonRef}
+                            type="button"
+                            onClick={isLevelFilterOpen ? () => setIsLevelFilterOpen(false) : openLevelFilter}
+                            className={`flex items-center justify-center transition ${levelFilter !== "all" ? "text-[#244cb8]" : "text-[#6f84ad] hover:text-[#244cb8]"}`}
+                            aria-label="Bộ lọc mức độ"
+                            title="Bộ lọc mức độ"
+                          >
+                            <Funnel className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        heading
+                      )}
                     </th>
                   ))}
                 </tr>
@@ -293,17 +416,17 @@ export default function ViolationTypeManagementPage() {
               <tbody>
                 {sortedItems.map((item) => (
                   <tr key={item.id} className="transition duration-200 hover:bg-[#f8fbff]">
-                    <td className="border-t border-[#e8eef8] py-4 pl-10 pr-4 text-sm font-bold text-[#1f3152]">
+                    <td className="border-t border-[#e8eef8] px-4 py-4 text-center text-sm font-bold text-[#1f3152]">
                       {item.name}
                     </td>
-                    <td className="border-t border-[#e8eef8] px-4 py-4 text-sm font-medium leading-6 text-[#5d7299]">
+                    <td className="border-t border-[#e8eef8] px-4 py-4 text-center text-sm font-medium leading-6 text-[#5d7299]">
                       <span className="line-clamp-2">{item.description || "-"}</span>
                     </td>
-                    <td className="border-t border-[#e8eef8] px-4 py-4">
+                    <td className="border-t border-[#e8eef8] px-4 py-4 text-center">
                       <Badge className={levelMeta[item.level].badgeClassName}>{levelMeta[item.level].label}</Badge>
                     </td>
-                    <td className="border-t border-[#e8eef8] px-4 py-4">
-                      <div className="flex flex-nowrap items-center gap-2">
+                    <td className="border-t border-[#e8eef8] px-4 py-4 text-center">
+                      <div className="flex flex-nowrap items-center justify-center gap-2">
                         <button
                           type="button"
                           onClick={() => openEditModal(item)}
@@ -343,12 +466,16 @@ export default function ViolationTypeManagementPage() {
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7d90b5]">
+                    {editingType ? (
+                    <p className="text-xl font-bold uppercase ">
                       {editingType ? "Cập nhật loại vi phạm" : "Thêm loại vi phạm"}
                     </p>
-                    <h2 className="mt-2 text-2xl font-bold text-[#173a78]">
+                    ) : null}
+                    <div className={editingType ? "hidden" : undefined}>
+                    <h2 className="mt-1 text-2xl uppercase font-bold ">
                       {editingType ? editingType.name : "Loại vi phạm mới"}
                     </h2>
+                    </div>
                   </div>
                   <button
                     type="button"
@@ -361,8 +488,8 @@ export default function ViolationTypeManagementPage() {
                   </button>
                 </div>
 
-                <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-                  <label className="block">
+                <form onSubmit={handleSubmit} className="mt-2 space-y-4">
+                    <label className="block">
                     <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Tên loại vi phạm *</span>
                     <InputField
                       value={form.name}
@@ -423,6 +550,94 @@ export default function ViolationTypeManagementPage() {
                   </div>
                 </form>
               </motion.div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {successMessage
+        ? createPortal(
+            <div className="fixed inset-0 z-[90] flex items-start justify-center p-4 sm:items-center">
+              <div className="absolute inset-0 bg-black/30" />
+              <div className="relative w-full max-w-md rounded-xl bg-white p-5 shadow-lg">
+                <p className="text-sm text-slate-700">{successMessage}</p>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {isLevelFilterOpen && levelFilterMenuPosition
+        ? createPortal(
+            <div className="fixed inset-0 z-[68]" onClick={() => setIsLevelFilterOpen(false)}>
+              <div
+                className="absolute w-[210px] -translate-x-1/2 overflow-hidden rounded-[22px] border border-[#d7e2f2] bg-white text-left shadow-[0_18px_38px_rgba(15,23,42,0.18)]"
+                style={{ top: levelFilterMenuPosition.top, left: levelFilterMenuPosition.left }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="space-y-0.5 p-2.5">
+                  {[
+                    { value: "all", label: "Tất cả" },
+                    { value: "MINOR", label: levelMeta.MINOR.label },
+                    { value: "MEDIUM", label: levelMeta.MEDIUM.label },
+                    { value: "SERIOUS", label: levelMeta.SERIOUS.label },
+                  ].map((option) => {
+                    const selected = draftLevelFilter === option.value;
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setDraftLevelFilter(option.value as LevelFilter)}
+                        className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-[10px] font-medium tracking-normal text-[#1f4a8d] transition hover:bg-[#f5f9ff]"
+                      >
+                        <span
+                          className={`flex h-4 w-4 items-center justify-center rounded-full border ${selected ? "border-[#244cb8] bg-[#244cb8]/10" : "border-[#cfd9e8] bg-white"}`}
+                        >
+                          <span className={`h-2 w-2 rounded-full ${selected ? "bg-[#244cb8]" : "bg-transparent"}`} />
+                        </span>
+                        <span>{option.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center justify-between border-t border-[#dbe5f3] px-2.5 py-2">
+                  <button type="button" onClick={resetLevelFilter} className="text-[10px] font-medium tracking-normal text-[#b2b8c3] transition hover:text-[#7c8799]">
+                    Reset
+                  </button>
+                  <button type="button" onClick={applyLevelFilter} className="rounded-xl bg-[#0c4f97] px-3 py-1.5 text-[10px] font-semibold tracking-normal text-white shadow-[0_8px_16px_rgba(12,79,151,0.22)] transition hover:brightness-110">
+                    OK
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {isConfirmOpen
+        ? createPortal(
+            <div className="fixed inset-0 z-[80] flex items-start justify-center p-4 sm:items-center">
+              <div className="absolute inset-0 bg-black/30" onClick={closeConfirm} />
+              <div className="relative w-full max-w-md rounded-xl bg-white p-5 shadow-lg">
+                <p className="text-sm text-slate-700">{confirmMessage}</p>
+                <div className="mt-4 flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={closeConfirm}
+                    className="rounded-xl border px-3 py-2 text-sm"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmNow}
+                    className="rounded-xl bg-red-600 px-3 py-2 text-sm text-white"
+                  >
+                    OK
+                  </button>
+                </div>
+              </div>
             </div>,
             document.body,
           )
