@@ -27,7 +27,7 @@ export type RoomApi = {
   room_number: string;
   floor_number: number;
   capacity: number;
-  price_per_quarter: number;
+  price_per_month: number;
   status: RoomStatus;
   beds: BedApi[];
   occupied_beds: number;
@@ -47,7 +47,7 @@ export type RoomPayload = {
   room_number: string;
   capacity: number;
   status?: "active" | "maintenance";
-  price_per_quarter?: number;
+  price_per_month?: number;
   maintenance_beds?: number[];
 };
 
@@ -71,7 +71,7 @@ type ApiRoom = {
   room_number: number | string;
   floor_number?: number;
   capacity: number;
-  price_per_quarter?: number | string | null;
+  price_per_month?: number | string | null;
   status?: string | null;
   beds?: ApiBed[];
   occupied_beds?: number;
@@ -107,7 +107,7 @@ const normalizeRoom = (room: ApiRoom): RoomApi => ({
   room_number: String(room.room_number),
   floor_number: room.floor_number ?? room.floor?.floor_number ?? 0,
   capacity: Number(room.capacity) || 0,
-  price_per_quarter: Number(room.price_per_quarter ?? 0) || 0,
+  price_per_month: Number(room.price_per_month ?? 0) || 0,
   status: normalizeRoomStatus(room.status),
   beds: Array.isArray(room.beds) ? room.beds.map(normalizeBed) : [],
   occupied_beds: Number(room.occupied_beds ?? 0) || 0,

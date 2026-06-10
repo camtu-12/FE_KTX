@@ -1,13 +1,23 @@
 import { motion } from "framer-motion";
 import { CheckCircle2, Eye, Plus, X, Zap } from "lucide-react";
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useOutletContext } from "react-router-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
-import { electricityBills as mockElectricityBills, type ElectricityBill } from "../../../mocks/electricityBills";
-import { electricityRecords as mockElectricityRecords, type ElectricityRecord } from "../../../mocks/electricityRecords";
-import type { PaymentStatus } from "../../../mocks/roomFeeBills";
+import {
+  confirmElectricityPayment,
+  generateElectricityBills,
+  getPaymentSettings,
+  listElectricityBills,
+  listElectricityRecords,
+  type ElectricityBill as ApiElectricityBill,
+  type ElectricityRecord as ApiElectricityRecord,
+  type PaymentStatus,
+  updatePaymentSettings,
+} from "../../../api/paymentApi";
+import { getRooms } from "../../../api/registrationService";
+import type { DormRoom } from "../../../types/dormRoom";
 
 type TabKey = "records" | "bills";
 
@@ -26,14 +36,29 @@ type ElectricityForm = {
   unitPrice: string;
 };
 
-const roomOptions = ["A101", "A102", "B204", "B205", "C301", "C302"];
-const roomStudentCounts: Record<string, number> = {
-  A101: 4,
-  A102: 3,
-  B204: 4,
-  B205: 2,
-  C301: 4,
-  C302: 3,
+type ElectricityBill = {
+  id: number;
+  studentCode: string;
+  fullName: string;
+  room: string;
+  month: string;
+  amount: number;
+  createdAt: string;
+  dueDate: string;
+  status: PaymentStatus;
+  paidAt?: string;
+};
+
+type ElectricityRecord = {
+  id: number;
+  room: string;
+  studentCount: number;
+  month: string;
+  oldIndex: number;
+  newIndex: number;
+  usageKwh: number;
+  unitPrice: number;
+  totalAmount: number;
 };
 const ELECTRICITY_PRICE_PER_KWH = 2900;
 const recordTableColumnWidths = ["10%", "12%", "10%", "10%", "13%", "13%", "15%", "18%"];
@@ -96,6 +121,84 @@ const formatMoneyInput = (value: string) => {
 const parseMoneyValue = (value: string) => Number(value.replace(/\D/g, ""));
 const formatPlainMoney = (value: number) => `${new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(value)}đ`;
 
+const formatApiRoomName = (room: ApiElectricityBill["room"] | ApiElectricityRecord["room"]) =>
+  room ? `${room.buildingCode}${room.roomNumber}` : "-";
+
+const formatDormRoomName = (room: DormRoom) => `${room.building_code}${room.room_number}`;
+
+const mapElectricityBill = (bill: ApiElectricityBill): ElectricityBill => ({
+  id: bill.id,
+  studentCode: bill.student?.studentCode || "-",
+  fullName: bill.student?.fullName || "-",
+  room: formatApiRoomName(bill.room),
+  month: bill.monthYear,
+  amount: bill.amount,
+  createdAt: bill.createdAt,
+  dueDate: bill.dueDate,
+  status: bill.status,
+  paidAt: bill.paidAt || undefined,
+});
+
+const mapElectricityRecord = (record: ApiElectricityRecord, bills: ElectricityBill[]): ElectricityRecord => {
+  const room = formatApiRoomName(record.room);
+  const studentCount = bills.filter((bill) => bill.room === room && bill.month === record.monthYear).length;
+
+  return {
+    id: record.id,
+    room,
+    studentCount,
+    month: record.monthYear,
+    oldIndex: record.oldIndex,
+    newIndex: record.newIndex,
+    usageKwh: record.usageKwh,
+    unitPrice: record.unitPrice,
+    totalAmount: record.totalAmount,
+  };
+};
+
+const getPreviousElectricityIndex = (records: ElectricityRecord[], room: string, month: string): number | null => {
+  if (!room || !month) {
+    return null;
+  }
+
+  const [latestRecord] = records
+    .filter((record) => record.room === room && record.month < month)
+    .sort((a, b) => b.month.localeCompare(a.month) || b.id - a.id);
+
+  return latestRecord?.newIndex ?? null;
+};
+
+const getLatestElectricityMonth = (records: ElectricityRecord[], room: string): string | null => {
+  if (!room) {
+    return null;
+  }
+
+  const [latestRecord] = records
+    .filter((record) => record.room === room)
+    .sort((a, b) => b.month.localeCompare(a.month) || b.id - a.id);
+
+  return latestRecord?.month ?? null;
+};
+
+const getNextMonthValue = (month: string | null): string | undefined => {
+  if (!month) {
+    return undefined;
+  }
+
+  const [yearText, monthText] = month.split("-");
+  const year = Number(yearText);
+  const monthNumber = Number(monthText);
+
+  if (!Number.isInteger(year) || !Number.isInteger(monthNumber) || monthNumber < 1 || monthNumber > 12) {
+    return undefined;
+  }
+
+  const nextYear = monthNumber === 12 ? year + 1 : year;
+  const nextMonth = monthNumber === 12 ? 1 : monthNumber + 1;
+
+  return `${nextYear}-${String(nextMonth).padStart(2, "0")}`;
+};
+
 function StatusBadge({ status }: { status: PaymentStatus }) {
   return (
     <span className={`inline-flex items-center whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold ${statusMeta[status].className}`}>
@@ -115,8 +218,9 @@ function InfoLine({ label, value }: { label: string; value: ReactNode }) {
 export default function AdminElectricityPage() {
   const { headerSearchValue } = useOutletContext<AdminLayoutOutletContext>();
   const [activeTab, setActiveTab] = useState<TabKey>("records");
-  const [records, setRecords] = useState<ElectricityRecord[]>(mockElectricityRecords);
-  const [bills, setBills] = useState<ElectricityBill[]>(mockElectricityBills);
+  const [records, setRecords] = useState<ElectricityRecord[]>([]);
+  const [bills, setBills] = useState<ElectricityBill[]>([]);
+  const [rooms, setRooms] = useState<DormRoom[]>([]);
   const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
   const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
   const [selectedBill, setSelectedBill] = useState<ElectricityBill | null>(null);
@@ -125,12 +229,74 @@ export default function AdminElectricityPage() {
   const [currentElectricityPrice, setCurrentElectricityPrice] = useState(ELECTRICITY_PRICE_PER_KWH);
   const [priceFormValue, setPriceFormValue] = useState(String(ELECTRICITY_PRICE_PER_KWH));
   const [form, setForm] = useState<ElectricityForm>({
-    room: roomOptions[0],
+    room: "",
     month: getCurrentMonthValue(),
     oldIndex: "",
     newIndex: "",
     unitPrice: formatMoneyInput(String(ELECTRICITY_PRICE_PER_KWH)),
   });
+
+  const roomOptions = useMemo(() => rooms.map((room) => ({ id: room.id, name: formatDormRoomName(room) })), [rooms]);
+  const autoOldIndex = useMemo(() => getPreviousElectricityIndex(records, form.room, form.month), [form.month, form.room, records]);
+  const latestElectricityMonth = useMemo(() => getLatestElectricityMonth(records, form.room), [form.room, records]);
+  const nextAvailableElectricityMonth = useMemo(() => getNextMonthValue(latestElectricityMonth), [latestElectricityMonth]);
+
+  const loadData = async () => {
+    const [nextBills, nextRecords, nextRooms, settings] = await Promise.all([
+      listElectricityBills(),
+      listElectricityRecords(),
+      getRooms(),
+      getPaymentSettings(),
+    ]);
+    const mappedBills = nextBills.map(mapElectricityBill);
+    setBills(mappedBills);
+    setRecords(nextRecords.map((record) => mapElectricityRecord(record, mappedBills)));
+    setRooms(nextRooms);
+    setCurrentElectricityPrice(settings.electricityUnitPrice);
+    setPriceFormValue(String(settings.electricityUnitPrice));
+    setForm((current) => ({
+      ...current,
+      unitPrice: formatMoneyInput(String(settings.electricityUnitPrice)),
+      room: current.room || (nextRooms[0] ? formatDormRoomName(nextRooms[0]) : ""),
+    }));
+  };
+
+  useEffect(() => {
+    void loadData();
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("ktx-payments-updated", loadData);
+      window.addEventListener("ktx-rooms-updated", loadData);
+      window.addEventListener("focus", loadData);
+    }
+
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("ktx-payments-updated", loadData);
+        window.removeEventListener("ktx-rooms-updated", loadData);
+        window.removeEventListener("focus", loadData);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (autoOldIndex === null) {
+      setForm((current) => (current.oldIndex === "" ? current : { ...current, oldIndex: "" }));
+      return;
+    }
+
+    setForm((current) => (current.oldIndex === String(autoOldIndex) ? current : { ...current, oldIndex: String(autoOldIndex) }));
+    setFormError("");
+  }, [autoOldIndex]);
+
+  useEffect(() => {
+    if (!latestElectricityMonth || !nextAvailableElectricityMonth || form.month > latestElectricityMonth) {
+      return;
+    }
+
+    setForm((current) => ({ ...current, month: nextAvailableElectricityMonth }));
+    setFormError("");
+  }, [form.month, latestElectricityMonth, nextAvailableElectricityMonth]);
 
   const usagePreview = Math.max(0, Number(form.newIndex || 0) - Number(form.oldIndex || 0));
   const unitPricePreview = parseMoneyValue(form.unitPrice);
@@ -206,7 +372,7 @@ export default function AdminElectricityPage() {
     setPriceError("");
   };
 
-  const handleSavePrice = () => {
+  const handleSavePrice = async () => {
     const nextPrice = Number(priceFormValue);
 
     if (!Number.isInteger(nextPrice) || nextPrice <= 0) {
@@ -214,23 +380,40 @@ export default function AdminElectricityPage() {
       return;
     }
 
-    setCurrentElectricityPrice(nextPrice);
-    setForm((current) => ({ ...current, unitPrice: formatMoneyInput(String(nextPrice)) }));
-    closePriceModal();
+    try {
+      const settings = await updatePaymentSettings({ electricity_unit_price: nextPrice });
+      setCurrentElectricityPrice(settings.electricityUnitPrice);
+      setPriceFormValue(String(settings.electricityUnitPrice));
+      setForm((current) => ({ ...current, unitPrice: formatMoneyInput(String(settings.electricityUnitPrice)) }));
+      closePriceModal();
+    } catch {
+      setPriceError("Không thể cập nhật đơn giá điện. Vui lòng thử lại.");
+    }
   };
 
-  const handleCreateRecord = () => {
+  const handleCreateRecord = async () => {
     const oldIndex = Number(form.oldIndex);
     const newIndex = Number(form.newIndex);
     const unitPrice = parseMoneyValue(form.unitPrice);
+    const selectedRoom = roomOptions.find((room) => room.name === form.room);
 
     if (!form.room) {
       setFormError("Vui lòng chọn phòng.");
       return;
     }
 
+    if (!selectedRoom) {
+      setFormError("Không tìm thấy phòng đã chọn.");
+      return;
+    }
+
     if (!form.month) {
       setFormError("Vui lòng chọn tháng.");
+      return;
+    }
+
+    if (latestElectricityMonth && form.month <= latestElectricityMonth) {
+      setFormError(`Tháng ghi nhận mới phải sau ${formatMonth(latestElectricityMonth)}.`);
       return;
     }
 
@@ -249,37 +432,40 @@ export default function AdminElectricityPage() {
       return;
     }
 
-    const usageKwh = newIndex - oldIndex;
-    const maxId = records.reduce((max, record) => Math.max(max, record.id), 0);
-    const newRecord: ElectricityRecord = {
-      id: maxId + 1,
-      room: form.room,
-      studentCount: roomStudentCounts[form.room] ?? 0,
-      month: form.month,
-      oldIndex,
-      newIndex,
-      usageKwh,
-      unitPrice,
-      totalAmount: usageKwh * unitPrice,
-    };
-
-    setRecords((current) => [newRecord, ...current]);
-    closeRecordModal();
+    try {
+      await generateElectricityBills({
+        room_id: selectedRoom.id,
+        month_year: form.month,
+        old_index: oldIndex,
+        new_index: newIndex,
+        unit_price: unitPrice,
+        due_date: getTodayValue(),
+      });
+      await loadData();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("ktx-payments-updated"));
+      }
+      closeRecordModal();
+    } catch {
+      setFormError("Không thể ghi nhận chỉ số điện. Vui lòng thử lại.");
+    }
   };
 
-  const confirmPayment = (billId: number) => {
-    setBills((current) =>
-      current.map((bill) =>
-        bill.id === billId
-          ? {
-              ...bill,
-              status: "paid",
-              paidAt: getTodayValue(),
-            }
-          : bill,
-      ),
-    );
-    setSelectedBill((current) => (current?.id === billId ? { ...current, status: "paid", paidAt: getTodayValue() } : current));
+  const confirmPayment = async (billId: number) => {
+    try {
+      const updated = mapElectricityBill(await confirmElectricityPayment(billId, {
+        payment_method: "Thủ công",
+        paid_at: getTodayValue(),
+      }));
+
+      setBills((current) => current.map((bill) => (bill.id === billId ? updated : bill)));
+      setSelectedBill((current) => (current?.id === billId ? updated : current));
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("ktx-payments-updated"));
+      }
+    } catch {
+      setFormError("Không thể xác nhận thanh toán. Vui lòng thử lại.");
+    }
   };
 
   return (
@@ -486,19 +672,19 @@ export default function AdminElectricityPage() {
                     <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Phòng</span>
                     <select value={form.room} onChange={(event) => setForm((current) => ({ ...current, room: event.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10">
                       {roomOptions.map((room) => (
-                        <option key={room} value={room}>
-                          {room}
+                        <option key={room.id} value={room.name}>
+                          {room.name}
                         </option>
                       ))}
                     </select>
                   </label>
                   <label className="block">
                     <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Tháng</span>
-                    <input type="month" value={form.month} onChange={(event) => setForm((current) => ({ ...current, month: event.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10" />
+                    <input type="month" value={form.month} min={nextAvailableElectricityMonth} onChange={(event) => setForm((current) => ({ ...current, month: event.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10" />
                   </label>
                   <label className="block">
                     <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Chỉ số cũ</span>
-                    <input type="number" min="0" step="1" value={form.oldIndex} onChange={(event) => setForm((current) => ({ ...current, oldIndex: event.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10" />
+                    <input type="number" min="0" step="1" value={form.oldIndex} readOnly={autoOldIndex !== null} onChange={(event) => setForm((current) => ({ ...current, oldIndex: event.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10" />
                   </label>
                   <label className="block">
                     <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Chỉ số mới</span>

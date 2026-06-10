@@ -27,9 +27,10 @@ export type RoomFeeBill = {
   id: number;
   studentId: number;
   registrationId: number;
-  quarter: number;
+  month: number;
   year: number;
   amount: number;
+  createdAt: string;
   dueDate: string;
   paymentMethod: string;
   transactionCode: string;
@@ -47,6 +48,7 @@ export type ElectricityBill = {
   usageKwh: number;
   unitPrice: number;
   amount: number;
+  createdAt: string;
   dueDate: string;
   paymentMethod: string;
   transactionCode: string;
@@ -65,6 +67,7 @@ export type ElectricityRecord = {
   usageKwh: number;
   unitPrice: number;
   totalAmount: number;
+  createdAt: string;
   room: PaymentRoom | null;
 };
 
@@ -108,6 +111,16 @@ export type VnpayPaymentLink = {
   transactionCode: string;
 };
 
+export type PaymentSettings = {
+  roomFeePerMonth: number;
+  electricityUnitPrice: number;
+};
+
+type ApiPaymentSettings = {
+  room_fee_per_month?: number | string | null;
+  electricity_unit_price?: number | string | null;
+};
+
 type ApiStudent = {
   id?: number;
   student_code?: string | null;
@@ -126,9 +139,10 @@ type ApiRoomFeeBill = {
   id: number;
   student_id?: number | string | null;
   registration_id?: number | string | null;
-  quarter?: number | string | null;
+  month?: number | string | null;
   year?: number | string | null;
   amount?: number | string | null;
+  created_at?: string | null;
   due_date?: string | null;
   payment_method?: string | null;
   transaction_code?: string | null;
@@ -153,6 +167,7 @@ type ApiElectricityRecord = {
   usage_kwh?: number | string | null;
   unit_price?: number | string | null;
   total_amount?: number | string | null;
+  created_at?: string | null;
   room?: ApiRoom;
 };
 
@@ -222,9 +237,10 @@ const normalizeRoomFeeBill = (item: ApiRoomFeeBill): RoomFeeBill => ({
   id: toNumber(item.id),
   studentId: toNumber(item.student_id),
   registrationId: toNumber(item.registration_id),
-  quarter: toNumber(item.quarter),
+  month: toNumber(item.month),
   year: toNumber(item.year),
   amount: toNumber(item.amount),
+  createdAt: item.created_at ?? "",
   dueDate: item.due_date ?? "",
   paymentMethod: item.payment_method ?? "",
   transactionCode: item.transaction_code ?? "",
@@ -242,6 +258,7 @@ const normalizeElectricityBill = (item: ApiElectricityBill): ElectricityBill => 
   usageKwh: toNumber(item.usage_kwh),
   unitPrice: toNumber(item.unit_price),
   amount: toNumber(item.amount),
+  createdAt: item.created_at ?? "",
   dueDate: item.due_date ?? "",
   paymentMethod: item.payment_method ?? "",
   transactionCode: item.transaction_code ?? "",
@@ -260,8 +277,27 @@ const normalizeElectricityRecord = (item: ApiElectricityRecord): ElectricityReco
   usageKwh: toNumber(item.usage_kwh),
   unitPrice: toNumber(item.unit_price),
   totalAmount: toNumber(item.total_amount),
+  createdAt: item.created_at ?? "",
   room: normalizeRoom(item.room ?? null),
 });
+
+const normalizePaymentSettings = (item: ApiPaymentSettings): PaymentSettings => ({
+  roomFeePerMonth: toNumber(item.room_fee_per_month) || 350000,
+  electricityUnitPrice: toNumber(item.electricity_unit_price) || 2900,
+});
+
+export const getPaymentSettings = async (): Promise<PaymentSettings> => {
+  const response = await http.get<ApiPaymentSettings>("/payment-settings");
+  return normalizePaymentSettings(response.data);
+};
+
+export const updatePaymentSettings = async (payload: {
+  room_fee_per_month?: number;
+  electricity_unit_price?: number;
+}): Promise<PaymentSettings> => {
+  const response = await http.put<ApiPaymentSettings>("/payment-settings", payload);
+  return normalizePaymentSettings(response.data);
+};
 
 export const listRoomFeeBills = async (): Promise<RoomFeeBill[]> => {
   const response = await http.get<ApiRoomFeeBill[]>("/room-fee-bills");
@@ -269,7 +305,7 @@ export const listRoomFeeBills = async (): Promise<RoomFeeBill[]> => {
 };
 
 export const generateRoomFeeBills = async (payload: {
-  quarter: number;
+  month: number;
   year: number;
   amount: number;
   due_date: string;

@@ -5,7 +5,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useOutletContext } from "react-router-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
-import { roomFeeBills as mockRoomFeeBills, type PaymentStatus, type RoomFeeBill } from "../../../mocks/roomFeeBills";
+import {
+  confirmRoomFeePayment,
+  generateRoomFeeBills,
+  getPaymentSettings,
+  listRoomFeeBills,
+  type PaymentStatus,
+  type RoomFeeBill as ApiRoomFeeBill,
+  updatePaymentSettings,
+} from "../../../api/paymentApi";
 
 type StatusFilter = PaymentStatus | "all";
 type FilterMenuType = "month" | "year" | "status";
@@ -16,14 +24,19 @@ type RoomFeeForm = {
   dueDate: string;
 };
 
-const roomFeeStudents = [
-  { studentCode: "DH52300004", fullName: "Nguyễn Minh Anh", room: "A101", occupancyStatus: "DANG_LUU_TRU" },
-  { studentCode: "SV230018", fullName: "Trần Gia Huy", room: "A102", occupancyStatus: "DANG_LUU_TRU" },
-  { studentCode: "SV230024", fullName: "Lê Hoàng Phúc", room: "B204", occupancyStatus: "DANG_LUU_TRU" },
-  { studentCode: "SV230039", fullName: "Phạm Thảo Vy", room: "B205", occupancyStatus: "DANG_LUU_TRU" },
-  { studentCode: "SV230052", fullName: "Võ Nhật Nam", room: "C301", occupancyStatus: "DANG_LUU_TRU" },
-  { studentCode: "SV230066", fullName: "Đặng Ngọc Mai", room: "C302", occupancyStatus: "DANG_LUU_TRU" },
-];
+type RoomFeeBill = {
+  id: number;
+  studentCode: string;
+  fullName: string;
+  room: string;
+  month: number;
+  year: number;
+  amount: number;
+  createdAt: string;
+  dueDate: string;
+  status: PaymentStatus;
+  paidAt?: string;
+};
 
 const ROOM_FEE_PER_MONTH = 350000;
 
@@ -73,6 +86,23 @@ const formatDate = (value: string) => {
   });
 };
 
+const formatRoomName = (bill: ApiRoomFeeBill) =>
+  bill.room ? `${bill.room.buildingCode}${bill.room.roomNumber}` : "-";
+
+const mapRoomFeeBill = (bill: ApiRoomFeeBill): RoomFeeBill => ({
+  id: bill.id,
+  studentCode: bill.student?.studentCode || "-",
+  fullName: bill.student?.fullName || "-",
+  room: formatRoomName(bill),
+  month: bill.month,
+  year: bill.year,
+  amount: bill.amount,
+  createdAt: bill.createdAt,
+  dueDate: bill.dueDate,
+  status: bill.status,
+  paidAt: bill.paidAt || undefined,
+});
+
 function StatusBadge({ status }: { status: PaymentStatus }) {
   return (
     <span className={`inline-flex items-center whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold ${statusMeta[status].className}`}>
@@ -91,7 +121,7 @@ function InfoLine({ label, value }: { label: string; value: ReactNode }) {
 
 export default function AdminRoomFeePage() {
   const { headerSearchValue } = useOutletContext<AdminLayoutOutletContext>();
-  const [bills, setBills] = useState<RoomFeeBill[]>(mockRoomFeeBills);
+  const [bills, setBills] = useState<RoomFeeBill[]>([]);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [draftStatusFilter, setDraftStatusFilter] = useState<StatusFilter>("all");
   const [monthFilter, setMonthFilter] = useState(String(currentMonth));
@@ -116,7 +146,35 @@ export default function AdminRoomFeePage() {
     year: String(currentYear),
     dueDate: getTodayValue(),
   });
-  const years = useMemo(() => Array.from(new Set(bills.map((bill) => bill.year))).sort((a, b) => b - a), [bills]);
+  const years = useMemo(() => Array.from(new Set([currentYear, ...bills.map((bill) => bill.year)])).sort((a, b) => b - a), [bills]);
+
+  const loadBills = async () => {
+    const data = await listRoomFeeBills();
+    setBills(data.map(mapRoomFeeBill));
+  };
+
+  const loadSettings = async () => {
+    const settings = await getPaymentSettings();
+    setMonthlyRoomFee(settings.roomFeePerMonth);
+    setFeeFormValue(String(settings.roomFeePerMonth));
+  };
+
+  useEffect(() => {
+    void loadBills();
+    void loadSettings();
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("ktx-payments-updated", loadBills);
+      window.addEventListener("focus", loadBills);
+    }
+
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("ktx-payments-updated", loadBills);
+        window.removeEventListener("focus", loadBills);
+      }
+    };
+  }, []);
 
   const visibleBills = useMemo(() => {
     const normalizedHeaderSearch = headerSearchValue.trim().toLowerCase();
@@ -252,7 +310,7 @@ export default function AdminRoomFeePage() {
     setFeeError("");
   };
 
-  const handleSaveFee = () => {
+  const handleSaveFee = async () => {
     const nextFee = Number(feeFormValue);
 
     if (!Number.isInteger(nextFee) || nextFee <= 0) {
@@ -260,11 +318,17 @@ export default function AdminRoomFeePage() {
       return;
     }
 
-    setMonthlyRoomFee(nextFee);
-    closeFeeModal();
+    try {
+      const settings = await updatePaymentSettings({ room_fee_per_month: nextFee });
+      setMonthlyRoomFee(settings.roomFeePerMonth);
+      setFeeFormValue(String(settings.roomFeePerMonth));
+      closeFeeModal();
+    } catch {
+      setFeeError("Không thể cập nhật mức phí. Vui lòng thử lại.");
+    }
   };
 
-  const handleCreateBills = () => {
+  const handleCreateBills = async () => {
     const year = Number(form.year);
     const month = Number(form.month);
 
@@ -283,51 +347,40 @@ export default function AdminRoomFeePage() {
       return;
     }
 
-    const existingBillKeys = new Set(bills.map((bill) => `${bill.studentCode}-${bill.month}-${bill.year}`));
-    const activeOccupancies = roomFeeStudents.filter((student) => student.occupancyStatus === "DANG_LUU_TRU");
-    const skippedCount = activeOccupancies.filter((student) => existingBillKeys.has(`${student.studentCode}-${month}-${year}`)).length;
-    const maxId = bills.reduce((max, bill) => Math.max(max, bill.id), 0);
-    const nextBills = activeOccupancies.reduce<RoomFeeBill[]>((items, student) => {
-      const billKey = `${student.studentCode}-${month}-${year}`;
-
-      if (existingBillKeys.has(billKey)) {
-        return items;
-      }
-
-      items.push({
-        id: maxId + items.length + 1,
-        studentCode: student.studentCode,
-        fullName: student.fullName,
-        room: student.room,
+    try {
+      const result = await generateRoomFeeBills({
         month,
         year,
         amount: monthlyRoomFee,
-        createdAt: getTodayValue(),
-        dueDate: form.dueDate,
-        status: "unpaid",
+        due_date: form.dueDate,
       });
 
-      return items;
-    }, []);
-
-    setBills((current) => [...nextBills, ...current]);
-    setCreateResult({ createdCount: nextBills.length, skippedCount });
-    closeCreateModal();
+      setCreateResult({ createdCount: result.createdCount, skippedCount: result.skippedCount });
+      await loadBills();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("ktx-payments-updated"));
+      }
+      closeCreateModal();
+    } catch {
+      setFormError("Không thể tạo hóa đơn tháng. Vui lòng thử lại.");
+    }
   };
 
-  const confirmPayment = (billId: number) => {
-    setBills((current) =>
-      current.map((bill) =>
-        bill.id === billId
-          ? {
-              ...bill,
-              status: "paid",
-              paidAt: getTodayValue(),
-            }
-          : bill,
-      ),
-    );
-    setSelectedBill((current) => (current?.id === billId ? { ...current, status: "paid", paidAt: getTodayValue() } : current));
+  const confirmPayment = async (billId: number) => {
+    try {
+      const updated = mapRoomFeeBill(await confirmRoomFeePayment(billId, {
+        payment_method: "Thủ công",
+        paid_at: getTodayValue(),
+      }));
+
+      setBills((current) => current.map((bill) => (bill.id === billId ? updated : bill)));
+      setSelectedBill((current) => (current?.id === billId ? updated : current));
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("ktx-payments-updated"));
+      }
+    } catch {
+      setFormError("Không thể xác nhận thanh toán. Vui lòng thử lại.");
+    }
   };
 
   const monthHeader = (
@@ -797,3 +850,4 @@ function PaymentTable({
     </div>
   );
 }
+

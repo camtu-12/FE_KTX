@@ -100,7 +100,7 @@ export default function PaymentManagementPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [roomForm, setRoomForm] = useState({
-    quarter: String(Math.ceil((new Date().getMonth() + 1) / 3)),
+    month: String(new Date().getMonth() + 1),
     year: String(new Date().getFullYear()),
     amount: "",
     dueDate: getTodayValue(),
@@ -215,7 +215,7 @@ export default function PaymentManagementPage() {
 
     try {
       await generateRoomFeeBills({
-        quarter: Number(roomForm.quarter),
+        month: Number(roomForm.month),
         year: Number(roomForm.year),
         amount,
         due_date: roomForm.dueDate,
@@ -363,9 +363,9 @@ export default function PaymentManagementPage() {
             <div className="mt-4 space-y-4">
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block">
-                  <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Quý</span>
-                  <select value={roomForm.quarter} onChange={(event) => setRoomForm((current) => ({ ...current, quarter: event.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10">
-                    {[1, 2, 3, 4].map((quarter) => <option key={quarter} value={quarter}>Quý {quarter}</option>)}
+                  <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Tháng</span>
+                  <select value={roomForm.month} onChange={(event) => setRoomForm((current) => ({ ...current, month: event.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10">
+                    {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => <option key={month} value={month}>Tháng {month}</option>)}
                   </select>
                 </label>
                 <label className="block">
@@ -403,7 +403,7 @@ export default function PaymentManagementPage() {
               cells: [
                 <StudentCell key="student" student={bill.student} />,
                 formatRoomName(bill.room),
-                `Quý ${bill.quarter}/${bill.year}`,
+                `Tháng ${bill.month}/${bill.year}`,
                 moneyFormatter.format(bill.amount),
                 formatDate(bill.dueDate),
                 <StatusBadge key="status" status={bill.status} />,

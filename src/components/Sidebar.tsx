@@ -11,7 +11,6 @@ import {
   LayoutDashboard,
   School,
   ShieldAlert,
-  UserCog,
   type LucideIcon,
 } from "lucide-react";
 import { useState } from "react";
@@ -96,11 +95,6 @@ const adminMenu: MenuItem[] = [
     label: "Quản lý tòa",
     to: "/admin/buildings",
     icon: Building2,
-  },
-  {
-    label: "Quản lý sinh viên",
-    to: "/admin/students",
-    icon: UserCog ,
   },
   
   
