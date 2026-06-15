@@ -23,7 +23,7 @@ import { useAuthStore } from "../../auth/store";
 import type { RegistrationRequest } from "../../admin/data/registrationRequests";
 import ProgressStep from "../components/ProgressStep";
 
-type RegistrationStatus = "unregistered" | "pending" | "approved" | "rejected" | "completed";
+type RegistrationStatus = "unregistered" | "submitted" | "approved" | "rejected" | "completed";
 type ProgressStatus = "pending" | "approved" | "assigned_room" | "selected_bed" | "completed";
 type DocumentField = "portraitPhoto" | "cccdFrontPhoto" | "cccdBackPhoto";
 type RegistrationWithAssignment = RegistrationRequest & {
@@ -1314,7 +1314,7 @@ export default function RegistrationPage() {
 
       
 
-      {statusForView === "pending" && (
+      {statusForView === "submitted" && (
         <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-[#b7ccef] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-5 text-center shadow-[0_12px_24px_rgba(36,76,184,0.10)] backdrop-blur-sm">
           <div className="flex items-center justify-center gap-2 text-[#2f63da]">
             <Clock className="h-5 w-5" />

@@ -29,7 +29,7 @@ import { getRegistrationById } from "../../../api/registrationService";
 import { createPortal } from "react-dom";
 
 const statusIconMap: Record<RegistrationStatus, typeof Clock3> = {
-  pending: Clock3,
+  submitted: Clock3,
   approved: CheckCircle2,
   rejected: CircleAlert,
 };

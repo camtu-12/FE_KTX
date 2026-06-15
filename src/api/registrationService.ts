@@ -93,11 +93,11 @@ const toPublicAssetUrl = (value?: string | null) => {
 };
 
 const normalizeStatus = (value: unknown): RegistrationStatus => {
-  if (value === "approved" || value === "rejected" || value === "pending") {
+  if (value === "approved" || value === "rejected" || value === "submitted") {
     return value;
   }
 
-  return "pending";
+  return "submitted";
 };
 
 const normalizeBedApprovalStatus = (value: unknown): RegistrationRequest["bed_approval_status"] => {

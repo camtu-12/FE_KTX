@@ -15,7 +15,7 @@ import {
 type RegistrationIdSortOrder = "asc" | "desc";
 
 const statusIconMap: Record<RegistrationStatus, typeof Clock3> = {
-  pending: Clock3,
+  submitted: Clock3,
   approved: CheckCircle2,
   rejected: CircleAlert,
 };
@@ -117,7 +117,7 @@ export default function AdminRegistrationsPage() {
       .sort((a, b) => a.id - b.id);
   }, [requests, selectedRequest]);
 
-  const pendingCount = latestRequests.filter((item) => item.status === "pending").length;
+  const pendingCount = latestRequests.filter((item) => item.status === "submitted").length;
   const approvedCount = latestRequests.filter((item) => item.status === "approved").length;
   const rejectedCount = latestRequests.filter((item) => item.status === "rejected").length;
 
@@ -144,7 +144,7 @@ export default function AdminRegistrationsPage() {
 
   const statusFilterOptions: Array<{ value: RegistrationFilterStatus; label: string }> = [
     { value: "all", label: "Tất cả" },
-    { value: "pending", label: "Chờ duyệt" },
+    { value: "submitted", label: "Chờ duyệt" },
     { value: "approved", label: "Đã duyệt" },
     { value: "rejected", label: "Từ chối" },
   ];
@@ -445,7 +445,7 @@ export default function AdminRegistrationsPage() {
                   const statusUi = statusMap[request.status];
                   const StatusIcon = statusIconMap[request.status];
                   const isApproved = request.status === "approved";
-                  const isPending = request.status === "pending";
+                  const isPending = request.status === "submitted";
 
                   return (
                     <motion.tr
