@@ -143,13 +143,16 @@ export default function PaymentManagementPage() {
   };
 
   useEffect(() => {
-    void loadData();
+    const initialLoadId = window.setTimeout(() => {
+      void loadData();
+    }, 0);
 
     if (typeof window !== "undefined") {
       window.addEventListener("ktx-payments-updated", loadData);
     }
 
     return () => {
+      window.clearTimeout(initialLoadId);
       if (typeof window !== "undefined") {
         window.removeEventListener("ktx-payments-updated", loadData);
       }

@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   BedSingle,
+  DoorOpen,
   Eye,
   Pencil,
   Plus,
@@ -15,14 +16,26 @@ import {
 import { useOutletContext, useSearchParams } from "react-router-dom";
 import { createPortal } from "react-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
-import { listRooms, createRoom, updateRoom, deleteRoom, updateBedStatus } from "../../../api/roomApi";
+import { listRooms, createRoom, updateRoom, deleteRoom, updateBedStatus, transferBedOccupancy, getRoomBeds, type BedPayload, type RoomPayload, type BedDetail, type BedStudent } from "../../../api/roomApi";
 import { getBuilding, listBuildings } from "../../../api/buildingApi";
+import {
+  completeBedMaintenance,
+  completeRoomMaintenance,
+  completeRoomMaintenanceStudent,
+  getRoomMaintenancePlan,
+  startBedMaintenance,
+  startRoomMaintenance,
+} from "../../../api/maintenanceApi";
 import type { Building } from "../../../types/building";
+import BunkBedCard, { type BunkBedGroup } from "../components/BunkBedCard";
+import BedStudentDetailModal from "../components/BedStudentDetailModal";
+import MaintenanceWizardModal, { type MaintenanceWizardState } from "../components/MaintenanceWizardModal";
 
 type RoomStatus = "AVAILABLE" | "FULL" | "MAINTENANCE";
 type BedStatus = "ACTIVE" | "MAINTENANCE";
 type BedPosition = "UPPER" | "LOWER";
 type RoomGender = "MALE" | "FEMALE";
+type BedActionMode = "detail" | "status" | "transfer";
 
 type Room = {
   id: number;
@@ -54,12 +67,10 @@ type RoomFormState = {
   floor_number: number;
   capacity: string;
   status: RoomStatus;
-};
-
-type BedPair = {
-  pairNumber: number;
-  upper: Bed;
-  lower: Bed;
+  maintenance_reason: string;
+  maintenance_start_date: string;
+  maintenance_expected_end_date: string;
+  maintenance_note: string;
 };
 
 const statusMeta: Record<RoomStatus, { label: string; className: string }> = {
@@ -77,22 +88,6 @@ const statusMeta: Record<RoomStatus, { label: string; className: string }> = {
   },
 };
 
-const bedStatusMeta: Record<BedStatus, { label: string; className: string }> = {
-  ACTIVE: {
-    label: "Trống",
-    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  },
-  MAINTENANCE: {
-    label: "Bảo trì",
-    className: "border-amber-200 bg-amber-50 text-amber-700",
-  },
-};
-
-const maintenanceRoomBedMeta = {
-  label: "Tạm ngưng sử dụng",
-  className: "border-amber-200 bg-amber-50 text-amber-700",
-};
-
 const genderLabel: Record<RoomGender, string> = {
   MALE: "Nam",
   FEMALE: "Nữ",
@@ -104,6 +99,10 @@ const initialFormState: RoomFormState = {
   floor_number: 1,
   capacity: "",
   status: "AVAILABLE",
+  maintenance_reason: "",
+  maintenance_start_date: "",
+  maintenance_expected_end_date: "",
+  maintenance_note: "",
 };
 
 function isBedEffectivelyOccupied(bed: Pick<Bed, "id" | "occupied">) {
@@ -111,14 +110,23 @@ function isBedEffectivelyOccupied(bed: Pick<Bed, "id" | "occupied">) {
 }
 
 function getRoomOccupiedBeds(room: Room) {
+  if (room.status === "MAINTENANCE") {
+    return 0;
+  }
   return room.beds.filter(isBedEffectivelyOccupied).length;
 }
 
 function getEmptyBeds(room: Room) {
+  if (room.status === "MAINTENANCE") {
+    return 0;
+  }
   return Math.max(room.capacity - getRoomOccupiedBeds(room) - getRoomMaintenanceBeds(room), 0);
 }
 
 function getRoomMaintenanceBeds(room: Room) {
+  if (room.status === "MAINTENANCE") {
+    return room.capacity;
+  }
   return room.beds.filter((bed) => bed.status === "MAINTENANCE").length;
 }
 
@@ -141,21 +149,52 @@ function getRoomDisplayStatus(room: Room): RoomStatus {
   return "AVAILABLE";
 }
 
-function getBedDisplayStatus(room: Room, bed: Bed): string {
-  if (room.status === "MAINTENANCE") {
-    return "Tạm ngưng sử dụng";
-  }
-  if (bed.status === "MAINTENANCE") {
-    return "Bảo trì";
-  }
-  if (isBedEffectivelyOccupied(bed)) {
-    return "Có người";
-  }
-  return "Trống";
-}
-
 function getRoomCode(room: Pick<Room, "building_code" | "room_number">) {
   return `${room.building_code}${room.room_number}`;
+}
+
+function getApiErrorMessage(error: unknown, fallback: string) {
+  if (typeof error === "object" && error !== null && "response" in error) {
+    const response = (error as { response?: { data?: { message?: unknown } } }).response;
+    if (typeof response?.data?.message === "string") {
+      return response.data.message;
+    }
+  }
+
+  return fallback;
+}
+
+function formatPreviewDate(value?: string | null) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function getBedPositionLabel(position?: BedPosition | BedDetail["position"] | null) {
+  return position === "LOWER" || position === "bottom" ? "Tầng dưới" : "Tầng trên";
+}
+
+function getBedStatusLabel(status?: BedStatus | BedDetail["status"] | BedDetail["display_status"] | null) {
+  if (status === "MAINTENANCE" || status === "maintenance") return "Bảo trì";
+  if (status === "occupied") return "Có người";
+  if (status === "empty") return "Trống";
+  return "Hoạt động";
+}
+
+function getHistoryReasonLabel(reason?: string | null) {
+  if (reason === "BED_MAINTENANCE") return "Bảo trì giường";
+  if (reason === "ROOM_MAINTENANCE") return "Bảo trì phòng";
+  if (reason === "BED_MAINTENANCE_RETURN") return "Quay lại sau bảo trì giường";
+  if (reason === "ROOM_MAINTENANCE_RETURN") return "Quay lại sau bảo trì phòng";
+  if (reason === "admin_transfer_bed") return "Chuyển giường";
+  return reason || "—";
+}
+
+function getHistoryStatusLabel(status?: string | null) {
+  if (status === "ACTIVE") return "Đang hiệu lực";
+  if (status === "RETURNED") return "Đã quay về";
+  return status || "—";
 }
 
 function getFloorGenderByLocation(buildings: Building[], buildingCode: string, floorNumber: number): RoomGender | null {
@@ -202,20 +241,33 @@ function getNextRoomNumber(buildingCode: string, floorNumber: number, existingRo
 
 // Room records are loaded from BE; localStorage-backed read removed.
 
-function toBedPairs(beds: Bed[]): BedPair[] {
-  const pairs: BedPair[] = [];
+function getBedSortValue(bed: BedDetail) {
+  const value = Number(bed.bed_number);
+  return Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER;
+}
 
-  for (let index = 0; index < beds.length; index += 2) {
-    const pairNumber = index / 2 + 1;
-    const upper = beds[index];
-    const lower = beds[index + 1];
+function createBunkBedGroups(beds: BedDetail[]): BunkBedGroup[] {
+  const sortedBeds = [...beds].sort((left, right) => {
+    const sortDiff = getBedSortValue(left) - getBedSortValue(right);
+    if (sortDiff !== 0) return sortDiff;
+    return left.id - right.id;
+  });
 
-    if (upper && lower) {
-      pairs.push({ pairNumber, upper, lower });
-    }
+  const groups: BunkBedGroup[] = [];
+
+  for (let index = 0; index < sortedBeds.length; index += 2) {
+    const pairBeds = sortedBeds.slice(index, index + 2);
+    const top = pairBeds.find((bed) => bed.position === "top") ?? pairBeds[0];
+    const bottom = pairBeds.find((bed) => bed.position === "bottom") ?? pairBeds.find((bed) => bed.id !== top?.id);
+
+    groups.push({
+      pairNumber: groups.length + 1,
+      top,
+      bottom,
+    });
   }
 
-  return pairs;
+  return groups;
 }
 
 function InputField(props: React.InputHTMLAttributes<HTMLInputElement>) {
@@ -264,7 +316,7 @@ export default function AdminRoomManagement() {
         if (!mounted) return;
         // normalize shape to existing RoomWithBeds type (loose cast)
         setRooms(data as unknown as RoomWithBeds[]);
-      } catch (err) {
+      } catch {
         // keep empty fallback
       } finally {
         if (mounted) {
@@ -339,6 +391,11 @@ export default function AdminRoomManagement() {
 
   const [isBedsModalOpen, setIsBedsModalOpen] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState<RoomWithBeds | null>(null);
+  const [bedDetails, setBedDetails] = useState<BedDetail[]>([]);
+  const [isBedDetailsLoading, setIsBedDetailsLoading] = useState(false);
+  const [bedDetailsError, setBedDetailsError] = useState("");
+  const [detailStudent, setDetailStudent] = useState<{ student: BedStudent; bedNumber: string } | null>(null);
+  const bunkBedGroups = useMemo(() => createBunkBedGroups(bedDetails), [bedDetails]);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [confirmMessage, setConfirmMessage] = useState("");
   const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
@@ -347,8 +404,36 @@ export default function AdminRoomManagement() {
     roomId: number | null;
     bed: Bed | null;
   } | null>(null);
+  const [bedActionMode, setBedActionMode] = useState<BedActionMode | null>(null);
+  const [bedDetailTab, setBedDetailTab] = useState<"current" | "transfer" | "maintenance">("current");
   const [editingBedStatus, setEditingBedStatus] = useState<BedStatus>("ACTIVE");
   const [editingBedError, setEditingBedError] = useState("");
+  const [transferTargetBedId, setTransferTargetBedId] = useState("");
+  const [transferSourceStatus, setTransferSourceStatus] = useState<BedPayload["status"]>("active");
+  const [transferChangeType, setTransferChangeType] = useState<"PERMANENT" | "TEMPORARY_MAINTENANCE">("PERMANENT");
+  const [transferExpectedReturnDate, setTransferExpectedReturnDate] = useState("");
+  const [transferMaintenanceReason, setTransferMaintenanceReason] = useState("");
+  const [transferBedError, setTransferBedError] = useState("");
+  const [isTransferringBed, setIsTransferringBed] = useState(false);
+  const [maintenanceWizard, setMaintenanceWizard] = useState<MaintenanceWizardState | null>(null);
+  const [maintenanceWizardError, setMaintenanceWizardError] = useState("");
+  const [isMaintenanceSubmitting, setIsMaintenanceSubmitting] = useState(false);
+  const [roomReturnModal, setRoomReturnModal] = useState<{ room: RoomWithBeds; beds: BedDetail[] } | null>(null);
+  const [roomReturnError, setRoomReturnError] = useState("");
+  const [isRoomReturnSubmitting, setIsRoomReturnSubmitting] = useState(false);
+  const editingBedDetail = useMemo(() => {
+    if (!editingBed?.bed) return null;
+    return bedDetails.find((bed) => bed.id === editingBed.bed?.id) ?? null;
+  }, [bedDetails, editingBed]);
+  const transferTargetBeds = useMemo(() => {
+    if (!editingBed?.bed) return [];
+    return bedDetails.filter((bed) => bed.id !== editingBed.bed?.id && !bed.student && bed.display_status === "empty");
+  }, [bedDetails, editingBed]);
+  const selectedTransferTargetBed = useMemo(
+    () => transferTargetBeds.find((bed) => String(bed.id) === transferTargetBedId) ?? null,
+    [transferTargetBedId, transferTargetBeds],
+  );
+  const isTemporaryMaintenanceTransfer = transferChangeType === "TEMPORARY_MAINTENANCE";
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -448,13 +533,6 @@ export default function AdminRoomManagement() {
     }
   }, [filterFloor, floorOptions, hasLoadedBuildings, searchParams, setSearchParams]);
 
-  const selectedRoomBedPairs = useMemo(() => {
-    if (!selectedRoom) {
-      return [];
-    }
-    return toBedPairs(selectedRoom.beds);
-  }, [selectedRoom]);
-
   const filteredRooms = useMemo(() => {
     const keyword = headerSearchValue.trim().toLowerCase();
     return rooms.filter((room) => {
@@ -516,7 +594,15 @@ export default function AdminRoomManagement() {
   const isCapacityOdd = Number.isFinite(formCapacity) && Number.isInteger(formCapacity) && formCapacity % 2 !== 0;
   const isCapacityTooSmall = Boolean(editingRoomId && editingRoom && formCapacity > 0 && formCapacity < editingRoomOccupiedBeds);
 
-  const isMaintenanceBlocked = roomForm.status === "MAINTENANCE" && formOccupiedBeds > 0;
+  const isMaintenancePlanningRequired = Boolean(
+    editingRoomId
+      && editingRoom
+      && editingRoom.status !== "MAINTENANCE"
+      && roomForm.status === "MAINTENANCE"
+      && formOccupiedBeds > 0,
+  );
+  const isMaintenanceMetaMissing = isMaintenancePlanningRequired
+    && (!roomForm.maintenance_reason.trim() || !roomForm.maintenance_start_date || !roomForm.maintenance_expected_end_date);
   const oddCapacityError = useMemo(() => {
     if (!isCapacityOdd) return "";
     return "Sức chứa phải là số chẵn vì ký túc xá dùng giường đôi.";
@@ -554,10 +640,8 @@ export default function AdminRoomManagement() {
   const isFullBlocked = Boolean(fullStatusError);
   const isAvailableBlocked = Boolean(availableStatusError);
 
-  const isRoomStatusBlocked = Boolean(
-    isMaintenanceBlocked || isFullBlocked || isAvailableBlocked || isCapacityTooSmall,
-  );
-  const isRoomSubmitBlocked = Boolean(isRoomStatusBlocked || isCapacityInvalid || isCapacityOdd);
+  const isRoomStatusBlocked = Boolean(isFullBlocked || isAvailableBlocked || isCapacityTooSmall);
+  const isRoomSubmitBlocked = Boolean(isRoomStatusBlocked || isCapacityInvalid || isCapacityOdd || isMaintenanceMetaMissing);
 
   const autoGeneratedRoomNumber = useMemo(() => {
     if (editingRoomId) {
@@ -578,10 +662,6 @@ export default function AdminRoomManagement() {
       return capacityTooSmallError;
     }
 
-    if (isMaintenanceBlocked) {
-      return `Phòng đang có ${formOccupiedBeds} sinh viên ở. Cần di dời trước khi chuyển sang BẢO TRÌ.`;
-    }
-
     if (availableStatusError) {
       return availableStatusError;
     }
@@ -594,7 +674,6 @@ export default function AdminRoomManagement() {
   }, [
     formOccupiedBeds,
     isFullBlocked,
-    isMaintenanceBlocked,
     fullStatusError,
     capacityTooSmallError,
     availableStatusError,
@@ -636,6 +715,10 @@ export default function AdminRoomManagement() {
       floor_number: getRoomFloor(room),
       capacity: String(room.capacity),
       status: room.status,
+      maintenance_reason: "",
+      maintenance_start_date: new Date().toISOString().slice(0, 10),
+      maintenance_expected_end_date: "",
+      maintenance_note: "",
     });
     setRoomFormError("");
     setRoomValidationErrors({});
@@ -729,13 +812,6 @@ export default function AdminRoomManagement() {
       return;
     }
 
-    if (roomForm.status === "MAINTENANCE" && formOccupiedBeds > 0) {
-      setRoomFormError(
-        `Không được chuyển phòng sang BẢO TRÌ khi phòng không có sinh viên ở. Hiện đang có ${formOccupiedBeds} sinh viên.`,
-      );
-      return;
-    }
-
     if (fullStatusError) {
       setRoomFormError(fullStatusError);
       return;
@@ -750,6 +826,21 @@ export default function AdminRoomManagement() {
     const normalizedRoomNumber = autoGeneratedRoomNumber.trim().toUpperCase();
 
     try {
+      if (isMaintenancePlanningRequired && editingRoomId) {
+        if (isMaintenanceMetaMissing) {
+          setRoomFormError("Vui lòng nhập đầy đủ lý do bảo trì, ngày bắt đầu và ngày dự kiến hoàn thành.");
+          return;
+        }
+        await openRoomMaintenanceWizard(editingRoomId, {
+          reason: roomForm.maintenance_reason.trim(),
+          startedAt: roomForm.maintenance_start_date,
+          expectedEndAt: roomForm.maintenance_expected_end_date,
+          note: roomForm.maintenance_note.trim(),
+        });
+        closeRoomModal();
+        return;
+      }
+
       const building = await getBuilding(normalizedBuildingCode);
       const floorObj = building.floors.find((f) => f.floorNumber === roomForm.floor_number);
       if (!floorObj || !floorObj.id) {
@@ -757,12 +848,12 @@ export default function AdminRoomManagement() {
         return;
       }
 
-      const payload = {
+      const payload: RoomPayload = {
         floor_id: floorObj.id,
         room_number: normalizedRoomNumber,
         capacity: nextCapacity,
         status: roomForm.status === "MAINTENANCE" ? "maintenance" : "active",
-      } as any;
+      };
 
       if (editingRoomId) {
         const updated = await updateRoom(editingRoomId, payload);
@@ -773,8 +864,8 @@ export default function AdminRoomManagement() {
       }
 
       closeRoomModal();
-    } catch (err: any) {
-      setRoomFormError(err?.response?.data?.message ?? "Lỗi khi lưu phòng");
+    } catch (error) {
+      setRoomFormError(getApiErrorMessage(error, "Lỗi khi lưu phòng"));
     }
   };
 
@@ -788,7 +879,7 @@ export default function AdminRoomManagement() {
       return;
     }
 
-    showConfirm(`Bạn có chắc muốn xóa phòng ${room.room_number}?`, () => {
+    showConfirm(`Bạn có chắc muốn xóa phòng ${getRoomCode(room)}?`, () => {
         (async () => {
           try {
             await deleteRoom(room.id);
@@ -797,16 +888,47 @@ export default function AdminRoomManagement() {
               setIsBedsModalOpen(false);
               setSelectedRoom(null);
             }
-          } catch (err) {
+          } catch {
             showConfirm("Lỗi khi xóa phòng. Vui lòng thử lại.", () => {});
           }
         })();
     });
   };
 
+  const fetchBedDetails = async (roomId: number) => {
+    setIsBedDetailsLoading(true);
+    setBedDetailsError("");
+    try {
+      const data = await getRoomBeds(roomId);
+      setBedDetails(data.beds);
+    } catch {
+      setBedDetails([]);
+      setBedDetailsError("Không thể tải danh sách giường. Vui lòng thử lại.");
+    } finally {
+      setIsBedDetailsLoading(false);
+    }
+  };
+
   const handleViewBeds = (room: RoomWithBeds) => {
     setSelectedRoom(room);
+    setBedDetails([]);
     setIsBedsModalOpen(true);
+    void fetchBedDetails(room.id);
+  };
+
+  const openBedAction = (bedDetail: BedDetail, mode: BedActionMode) => {
+    if (!selectedRoom) return;
+    const originalBed = selectedRoom.beds.find((item) => item.id === bedDetail.id);
+    const bedForEdit: Bed = originalBed
+      ? { ...originalBed, occupied: Boolean(bedDetail.student) || Boolean(originalBed.occupied) }
+      : {
+          id: bedDetail.id,
+          bed_number: bedDetail.bed_number,
+          position: bedDetail.position === "bottom" ? "LOWER" : "UPPER",
+          status: bedDetail.status === "maintenance" ? "MAINTENANCE" : "ACTIVE",
+          occupied: Boolean(bedDetail.student),
+        };
+    openEditBed(bedForEdit, selectedRoom.id, mode);
   };
 
   function showConfirm(message: string, action: () => void) {
@@ -834,23 +956,35 @@ export default function AdminRoomManagement() {
       return "Phòng đang bảo trì. Vui lòng kích hoạt lại phòng trước khi chỉnh sửa giường.";
     }
 
-    // Kiểm tra ràng buộc chuyển trạng thái
-    if (isBedEffectivelyOccupied(editingBed.bed) && editingBedStatus === "MAINTENANCE") {
-      return "Giường đang có sinh viên ở nên không thể chuyển sang bảo trì.";
-    }
-
     return "";
   }
 
-  function openEditBed(bed: Bed, roomId: number) {
+  function openEditBed(bed: Bed, roomId: number, mode: BedActionMode = "status") {
     setEditingBed({ roomId, bed });
+    setBedActionMode(mode);
+    setBedDetailTab("current");
     setEditingBedStatus(bed.status);
     setEditingBedError("");
+    setTransferTargetBedId("");
+    setTransferSourceStatus("active");
+    setTransferChangeType("PERMANENT");
+    setTransferExpectedReturnDate("");
+    setTransferMaintenanceReason("");
+    setTransferBedError("");
   }
 
   function closeEditBed() {
     setEditingBed(null);
+    setBedActionMode(null);
+    setBedDetailTab("current");
     setEditingBedError("");
+    setTransferTargetBedId("");
+    setTransferSourceStatus("active");
+    setTransferChangeType("PERMANENT");
+    setTransferExpectedReturnDate("");
+    setTransferMaintenanceReason("");
+    setTransferBedError("");
+    setIsTransferringBed(false);
   }
 
   function saveEditBed() {
@@ -863,25 +997,239 @@ export default function AdminRoomManagement() {
       setEditingBedError(error);
       return;
     }
+    if (editingBedStatus === "MAINTENANCE" && editingBedDetail?.student) {
+      setEditingBedError("Giường hiện đang có sinh viên. Cần chuyển sinh viên trước khi đưa giường vào bảo trì.");
+      return;
+    }
     (async () => {
       try {
-        const payload = { status: editingBedStatus === "MAINTENANCE" ? "maintenance" : "empty" } as any;
+        const payload: BedPayload = { status: editingBedStatus === "MAINTENANCE" ? "maintenance" : "active" };
         const updatedRoom = await updateBedStatus(roomId, bed.id, payload);
         setRooms((prev) => prev.map((r) => (r.id === updatedRoom.id ? (updatedRoom as unknown as RoomWithBeds) : r)));
         if (selectedRoom?.id === updatedRoom.id) {
           setSelectedRoom(updatedRoom as unknown as RoomWithBeds);
           setIsBedsModalOpen(true);
+          void fetchBedDetails(updatedRoom.id);
         }
         closeEditBed();
-      } catch (err: any) {
-        setEditingBedError(err?.response?.data?.message ?? "Lỗi khi cập nhật giường");
+      } catch (error) {
+        setEditingBedError(getApiErrorMessage(error, "Lỗi khi cập nhật giường"));
       }
     })();
+  }
+
+  function handleTransferBed() {
+    if (!editingBed || !editingBed.bed || editingBed.roomId === null) return;
+    if (!editingBedDetail?.student) {
+      setTransferBedError("Giường này chưa có sinh viên để chuyển.");
+      return;
+    }
+    if (!transferTargetBedId) {
+      setTransferBedError("Vui lòng chọn giường trống cần chuyển đến.");
+      return;
+    }
+    if (isTemporaryMaintenanceTransfer && !transferExpectedReturnDate) {
+      setTransferBedError("Vui lòng chọn ngày dự kiến hoàn tất bảo trì.");
+      return;
+    }
+    if (isTemporaryMaintenanceTransfer && !transferMaintenanceReason.trim()) {
+      setTransferBedError("Vui lòng nhập lý do bảo trì.");
+      return;
+    }
+
+    setIsTransferringBed(true);
+    setTransferBedError("");
+    (async () => {
+      try {
+        const updatedRoom = await transferBedOccupancy(editingBed.roomId!, editingBed.bed!.id, {
+          target_bed_id: Number(transferTargetBedId),
+          source_status: isTemporaryMaintenanceTransfer ? "maintenance" : transferSourceStatus,
+          change_type: transferChangeType,
+          transfer_type: isTemporaryMaintenanceTransfer ? "TEMP_MAINTENANCE" : "PERMANENT",
+          reason: isTemporaryMaintenanceTransfer ? transferMaintenanceReason.trim() : "admin_transfer_bed",
+          expected_return_date: isTemporaryMaintenanceTransfer ? transferExpectedReturnDate : undefined,
+          maintenance_reason: isTemporaryMaintenanceTransfer ? transferMaintenanceReason.trim() : undefined,
+        });
+        setRooms((prev) => prev.map((r) => (r.id === updatedRoom.id ? (updatedRoom as unknown as RoomWithBeds) : r)));
+        if (selectedRoom?.id === updatedRoom.id) {
+          setSelectedRoom(updatedRoom as unknown as RoomWithBeds);
+          await fetchBedDetails(updatedRoom.id);
+        }
+        closeEditBed();
+      } catch (error) {
+        setTransferBedError(getApiErrorMessage(error, "Lỗi khi chuyển giường"));
+      } finally {
+        setIsTransferringBed(false);
+      }
+    })();
+  }
+
+  async function openRoomMaintenanceWizard(
+    roomId: number,
+    meta?: { reason: string; startedAt: string; expectedEndAt: string; note: string },
+  ) {
+    setMaintenanceWizardError("");
+    const plan = await getRoomMaintenancePlan(roomId);
+    const assignments = plan.affected.reduce<Record<number, string>>((acc, item) => {
+      if (item.target) {
+        acc[item.occupancy_id] = String(item.target.id);
+      }
+      return acc;
+    }, {});
+    setMaintenanceWizard({
+      type: "room",
+      step: 1,
+      plan,
+      assignments,
+      reason: meta?.reason ?? "",
+      startedAt: meta?.startedAt ?? new Date().toISOString().slice(0, 10),
+      expectedEndAt: meta?.expectedEndAt ?? "",
+      note: meta?.note ?? "",
+    });
+  }
+
+  function closeMaintenanceWizard() {
+    setMaintenanceWizard(null);
+    setMaintenanceWizardError("");
+    setIsMaintenanceSubmitting(false);
+  }
+
+  async function confirmMaintenanceWizard() {
+    if (!maintenanceWizard) return;
+    setIsMaintenanceSubmitting(true);
+    setMaintenanceWizardError("");
+
+    try {
+      const updatedRoom =
+        maintenanceWizard.type === "bed"
+          ? await startBedMaintenance(
+              maintenanceWizard.plan.source.room.id,
+              maintenanceWizard.plan.source.bed.id,
+              Number(maintenanceWizard.targetBedId),
+            )
+          : await startRoomMaintenance(
+              maintenanceWizard.plan.room.id,
+              {
+                reason: maintenanceWizard.reason.trim(),
+                started_at: maintenanceWizard.startedAt,
+                expected_end_at: maintenanceWizard.expectedEndAt,
+                maintenance_reason: maintenanceWizard.reason.trim(),
+                maintenance_start_date: maintenanceWizard.startedAt,
+                maintenance_expected_end_date: maintenanceWizard.expectedEndAt,
+                is_temporary_relocation: true,
+                note: maintenanceWizard.note.trim() || undefined,
+                assignments: maintenanceWizard.plan.affected.map((item) => ({
+                  occupancy_id: item.occupancy_id,
+                  target_bed_id: Number(maintenanceWizard.assignments[item.occupancy_id]),
+                  original_room_id: item.original_room_id ?? item.current_room_id ?? maintenanceWizard.plan.room.id,
+                  original_bed_id: item.original_bed_id ?? item.current_bed_id ?? null,
+                  original_room_code: item.original_room_code ?? item.current_room,
+                  original_bed_number: item.original_bed_number ?? item.current_bed,
+                })),
+              },
+            );
+
+      setRooms((prev) => prev.map((r) => (r.id === updatedRoom.id ? (updatedRoom as unknown as RoomWithBeds) : r)));
+      if (selectedRoom?.id === updatedRoom.id) {
+        setSelectedRoom(updatedRoom as unknown as RoomWithBeds);
+        await fetchBedDetails(updatedRoom.id);
+      }
+      closeMaintenanceWizard();
+    } catch (error) {
+      setMaintenanceWizardError(getApiErrorMessage(error, "Lỗi khi xác nhận bảo trì"));
+    } finally {
+      setIsMaintenanceSubmitting(false);
+    }
+  }
+
+  async function handleCompleteBedMaintenance(roomId: number, bedId: number) {
+    setEditingBedError("");
+    try {
+      const updatedRoom = await completeBedMaintenance(roomId, bedId);
+      setRooms((prev) => prev.map((r) => (r.id === updatedRoom.id ? (updatedRoom as unknown as RoomWithBeds) : r)));
+      if (selectedRoom?.id === updatedRoom.id) {
+        setSelectedRoom(updatedRoom as unknown as RoomWithBeds);
+        await fetchBedDetails(updatedRoom.id);
+      }
+      closeEditBed();
+    } catch (error) {
+      setEditingBedError(getApiErrorMessage(error, "Lỗi khi hoàn tất bảo trì giường"));
+    }
+  }
+
+  async function handleCompleteRoomMaintenance(roomId: number) {
+    const room = rooms.find((item) => item.id === roomId) ?? selectedRoom;
+    if (!room) return;
+    setRoomReturnError("");
+    try {
+      const data = await getRoomBeds(roomId);
+      const hasPendingReturns = data.beds.some((bed) => Boolean(bed.maintenance_assignment?.occupancy_id));
+      if (!hasPendingReturns) {
+        const updatedRoom = await completeRoomMaintenance(roomId);
+        setRooms((prev) => prev.map((r) => (r.id === updatedRoom.id ? (updatedRoom as unknown as RoomWithBeds) : r)));
+        if (selectedRoom?.id === updatedRoom.id) {
+          setSelectedRoom(updatedRoom as unknown as RoomWithBeds);
+          await fetchBedDetails(updatedRoom.id);
+        }
+        setRoomReturnModal(null);
+        return;
+      }
+      setRoomReturnModal({ room, beds: data.beds });
+    } catch (error) {
+      showConfirm(getApiErrorMessage(error, "Lỗi khi tải danh sách sinh viên điều chuyển tạm"), () => {});
+    }
+  }
+
+  async function confirmCompleteRoomMaintenanceAll() {
+    if (!roomReturnModal) return;
+    setIsRoomReturnSubmitting(true);
+    setRoomReturnError("");
+    try {
+      const updatedRoom = await completeRoomMaintenance(roomReturnModal.room.id);
+      setRooms((prev) => prev.map((r) => (r.id === updatedRoom.id ? (updatedRoom as unknown as RoomWithBeds) : r)));
+      if (selectedRoom?.id === updatedRoom.id) {
+        setSelectedRoom(updatedRoom as unknown as RoomWithBeds);
+        await fetchBedDetails(updatedRoom.id);
+      }
+      setRoomReturnModal(null);
+    } catch (error) {
+      setRoomReturnError(getApiErrorMessage(error, "Lỗi khi hoàn nguyên tất cả sinh viên"));
+    } finally {
+      setIsRoomReturnSubmitting(false);
+    }
+  }
+
+  async function confirmCompleteRoomMaintenanceStudent(occupancyId: number) {
+    if (!roomReturnModal) return;
+    setIsRoomReturnSubmitting(true);
+    setRoomReturnError("");
+    try {
+      const updatedRoom = await completeRoomMaintenanceStudent(roomReturnModal.room.id, occupancyId);
+      setRooms((prev) => prev.map((r) => (r.id === updatedRoom.id ? (updatedRoom as unknown as RoomWithBeds) : r)));
+      if (selectedRoom?.id === updatedRoom.id) {
+        setSelectedRoom(updatedRoom as unknown as RoomWithBeds);
+        await fetchBedDetails(updatedRoom.id);
+      }
+      const data = await getRoomBeds(roomReturnModal.room.id);
+      const hasPending = data.beds.some((bed) => Boolean(bed.maintenance_assignment?.occupancy_id));
+      if (hasPending) {
+        setRoomReturnModal((current) => (current ? { ...current, beds: data.beds } : current));
+      } else {
+        setRoomReturnModal(null);
+      }
+    } catch (error) {
+      setRoomReturnError(getApiErrorMessage(error, "Lỗi khi hoàn nguyên sinh viên"));
+    } finally {
+      setIsRoomReturnSubmitting(false);
+    }
   }
 
   const closeBedsModal = () => {
     setIsBedsModalOpen(false);
     setSelectedRoom(null);
+    setBedDetails([]);
+    setBedDetailsError("");
+    setDetailStudent(null);
   };
 
   if (!hasLoadedRooms || !hasLoadedBuildings) {
@@ -897,8 +1245,19 @@ export default function AdminRoomManagement() {
           <p className="mt-1 text-sm text-[#62789f]">Đang tải danh sách phòng, giường và trạng thái lưu trú.</p>
         </header>
 
-        <div className="rounded-[20px] border border-[#d8e4f5] bg-white px-6 py-10 text-center">
-          <div className="text-sm text-[#62789f]">Đang tải dữ liệu, vui lòng chờ...</div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="h-[88px] animate-pulse rounded-2xl border border-[#d7e3f5] bg-white" />
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div
+              key={index}
+              className="h-[260px] animate-pulse rounded-3xl border border-[#cfdbef] bg-[linear-gradient(180deg,#ffffff_0%,#f1f6ff_100%)]"
+            />
+          ))}
         </div>
       </motion.section>
     );
@@ -1059,6 +1418,7 @@ export default function AdminRoomManagement() {
         {displayedRooms.map((room) => {
           const occupiedBeds = getRoomOccupiedBeds(room);
           const emptyBeds = getEmptyBeds(room);
+          const maintenanceBeds = getRoomMaintenanceBeds(room);
           const roomDisplayStatus = getRoomDisplayStatus(room);
 
           return (
@@ -1104,9 +1464,13 @@ export default function AdminRoomManagement() {
                   <BedSingle className="h-4 w-4 text-slate-400" />
                   Giường trống: <span className="font-semibold text-emerald-700">{emptyBeds}</span>
                 </p>
+                <p className="flex items-center gap-2">
+                  <BedSingle className="h-4 w-4 text-slate-400" />
+                  Giường bảo trì: <span className="font-semibold text-amber-700">{maintenanceBeds}</span>
+                </p>
               </div>
 
-              <div className="mt-5 grid grid-cols-3 gap-2">
+              <div className={`mt-5 grid gap-2 ${roomDisplayStatus === "MAINTENANCE" ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
                 <button
                   type="button"
                   onClick={() => handleViewBeds(room)}
@@ -1131,6 +1495,15 @@ export default function AdminRoomManagement() {
                   <Trash2 className="h-4 w-4" />
                   Xóa
                 </button>
+                {roomDisplayStatus === "MAINTENANCE" ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleCompleteRoomMaintenance(room.id)}
+                    className="inline-flex h-10 items-center justify-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 text-xs font-semibold text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-100"
+                  >
+                    Hoàn tất bảo trì
+                  </button>
+                ) : null}
               </div>
             </article>
           );
@@ -1151,12 +1524,14 @@ export default function AdminRoomManagement() {
             <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
               <div className="absolute inset-0 bg-slate-950/35" onClick={closeBedsModal} />
 
-              <div className="relative z-70 flex w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-[#d5e2f5] bg-white shadow-2xl max-h-[88vh]">
+              <div className="relative z-70 flex w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-[#d5e2f5] bg-white shadow-2xl max-h-[88vh]">
                 <div className="min-h-0 flex-1 overflow-y-auto pr-1 [scrollbar-gutter:stable_both-edges]">
-                  <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-slate-100 bg-white p-5 sm:p-6">
+                  <div className="sticky top-0 z-40 flex items-center justify-between gap-4 border-b border-slate-100 bg-white p-5 shadow-[0_10px_24px_rgba(15,23,42,0.06)] sm:p-6">
                     <div>
                       <h3 className="text-xl font-bold text-[#1a2d52]">Danh sách giường - Phòng {getRoomCode(selectedRoom)}</h3>
-                      <p className="mt-1 text-sm text-[#61779d]">Phòng này có {selectedRoom.capacity} giường, danh sách bên dưới phản ánh đúng sức chứa hiện tại.</p>
+                      <p className="mt-1 text-sm text-[#61779d]">
+                        Tòa {selectedRoom.building_code} - Tầng {getRoomFloor(selectedRoom)} - Giới tính {getRoomGender(selectedRoom, buildings) ? genderLabel[getRoomGender(selectedRoom, buildings)!] : "Chưa xác định"}
+                      </p>
                     </div>
                     <button
                       type="button"
@@ -1167,49 +1542,196 @@ export default function AdminRoomManagement() {
                     </button>
                   </div>
 
-                  <div className="p-5 pt-0 sm:p-6 sm:pt-0">
-                    <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {selectedRoomBedPairs.map((pair) => (
-                    <div
-                      key={pair.pairNumber}
-                      className="rounded-2xl border border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-3 shadow-sm"
-                    >
-                      <div className="mt-3 space-y-2">
-                                {[pair.upper, pair.lower].map((bed) => (
-                                  <div
-                                    key={bed.id}
-                                    className="flex cursor-pointer items-center justify-between rounded-xl border border-[#e3ebf8] bg-white px-3 py-2"
-                                    onClick={() => openEditBed(bed, selectedRoom.id)}
-                                  >
-                            <div>
-                              <p className="text-sm font-semibold text-[#1f3152]">Giường {bed.bed_number}</p>
-                              <p className="text-xs text-[#6f84ad]">Vị trí: {bed.position === "UPPER" ? "Trên" : "Dưới"}</p>
-                            </div>
-                                    {(() => {
-                              const displayStatus = getBedDisplayStatus(selectedRoom, bed);
-                              let meta = bedStatusMeta[bed.status];
-                              
-                              if (selectedRoom.status === "MAINTENANCE") {
-                                meta = maintenanceRoomBedMeta;
-                              } else if (isBedEffectivelyOccupied(bed)) {
-                                meta = { label: "Có người", className: "border-blue-200 bg-blue-50 text-blue-700" };
-                              }
-                              
-                              return (
-                                <span
-                                  className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${meta.className}`}
-                                >
-                                  {displayStatus}
-                                </span>
-                              );
-                            })()}
-                          </div>
+                  <div className="relative z-0 p-5 pt-0 sm:p-6 sm:pt-0">
+                    {isBedDetailsLoading ? (
+                      <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
+                        {Array.from({ length: Math.max(Math.ceil(selectedRoom.capacity / 2), 2) }).map((_, index) => (
+                          <div
+                            key={index}
+                            className="h-[620px] animate-pulse rounded-[26px] border border-[#e3ebf8] bg-[linear-gradient(180deg,#f4f8ff_0%,#eaf2fd_100%)]"
+                          />
                         ))}
                       </div>
-                    </div>
-                  ))}
-                    </div>
+                    ) : bedDetailsError ? (
+                      <div className="mt-5 flex flex-col items-center justify-center rounded-2xl border border-dashed border-rose-200 bg-rose-50/50 px-6 py-10 text-center">
+                        <p className="text-sm font-semibold text-rose-600">{bedDetailsError}</p>
+                        <button
+                          type="button"
+                          onClick={() => void fetchBedDetails(selectedRoom.id)}
+                          className="mt-4 inline-flex h-9 items-center justify-center rounded-xl bg-[#244cb8] px-4 text-sm font-semibold text-white transition hover:bg-[#1f44a4]"
+                        >
+                          Thử lại
+                        </button>
+                      </div>
+                    ) : bedDetails.length === 0 ? (
+                      <div className="mt-5 flex flex-col items-center justify-center rounded-2xl border border-dashed border-[#cfdcf0] bg-[#f8fbff] px-6 py-10 text-center">
+                        <p className="text-sm font-semibold text-[#1a2d52]">Phòng này chưa có giường nào.</p>
+                      </div>
+                    ) : (
+                      <div className="mt-5 space-y-4">
+                        <div className="rounded-[22px] border border-[#c7d8f2] bg-[linear-gradient(180deg,#f8fbff_0%,#eef5ff_100%)] px-5 py-3 text-center shadow-[0_12px_28px_rgba(36,76,184,0.08)]">
+                          <p className="inline-flex items-center justify-center gap-2 text-base font-extrabold uppercase tracking-[0.16em] text-[#6f86b2]">
+                            <DoorOpen className="h-4 w-4" />
+                            Cửa phòng
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                          {[
+                            { key: "left", label: "Cửa sổ dãy trái", groups: bunkBedGroups.filter((_, index) => index % 2 === 0) },
+                            { key: "right", label: "Cửa sổ dãy phải", groups: bunkBedGroups.filter((_, index) => index % 2 === 1) },
+                          ].map((column) => (
+                            <div key={column.key} className="flex h-full flex-col gap-4">
+                              <div className="flex-1 space-y-4">
+                                {column.groups.map((group) => (
+                                  <BunkBedCard
+                                    key={group.pairNumber}
+                                    group={group}
+                                    beds={bedDetails}
+                                    onViewBed={(bed) => openBedAction(bed, "detail")}
+                                    onEditStatus={(bed) => openBedAction(bed, "status")}
+                                    onTransferStudent={(bed) => openBedAction(bed, "transfer")}
+                                    onCompleteMaintenance={(bed) => void handleCompleteBedMaintenance(selectedRoom.id, bed.id)}
+                                  />
+                                ))}
+                              </div>
+                              <div className="rounded-[22px] border border-[#bfd6f7] bg-[linear-gradient(180deg,#edf5ff_0%,#e5f0ff_100%)] px-5 py-3 text-center shadow-[0_12px_28px_rgba(36,76,184,0.08)]">
+                                <p className="text-sm font-extrabold uppercase tracking-[0.14em] text-[#6f86b2]">
+                                  {column.label}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {detailStudent && selectedRoom ? (
+        <BedStudentDetailModal
+          student={detailStudent.student}
+          bedNumber={detailStudent.bedNumber}
+          roomCode={getRoomCode(selectedRoom)}
+          onClose={() => setDetailStudent(null)}
+        />
+      ) : null}
+
+      {maintenanceWizard ? (
+        <MaintenanceWizardModal
+          state={maintenanceWizard}
+          error={maintenanceWizardError}
+          submitting={isMaintenanceSubmitting}
+          onClose={closeMaintenanceWizard}
+          onStepChange={(step) => setMaintenanceWizard((current) => (current ? { ...current, step } : current))}
+          onBedTargetChange={(bedId) =>
+            setMaintenanceWizard((current) => (current?.type === "bed" ? { ...current, targetBedId: bedId } : current))
+          }
+          onRoomAssignmentChange={(occupancyId, bedId) =>
+            setMaintenanceWizard((current) =>
+              current?.type === "room"
+                ? { ...current, assignments: { ...current.assignments, [occupancyId]: bedId } }
+                : current,
+            )
+          }
+          onConfirm={confirmMaintenanceWizard}
+        />
+      ) : null}
+
+      {roomReturnModal
+        ? createPortal(
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-slate-950/35" onClick={() => setRoomReturnModal(null)} />
+              <div className="relative flex max-h-[86vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-[#d5e2f5] bg-white shadow-2xl">
+                <div className="flex items-center justify-between gap-4 border-b border-slate-100 p-5">
+                  <div>
+                    <h3 className="text-xl font-bold text-[#1a2d52]">Hoàn tất bảo trì phòng</h3>
+                    <p className="mt-1 text-sm text-[#61779d]">
+                      Phòng {getRoomCode(roomReturnModal.room)} - hoàn nguyên sinh viên đang điều chuyển tạm.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRoomReturnModal(null)}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto p-5">
+                  {(() => {
+                    const returnItems = roomReturnModal.beds.filter((bed) => Boolean(bed.maintenance_assignment?.occupancy_id));
+                    if (returnItems.length === 0) {
+                      return (
+                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm font-semibold text-slate-600">
+                          Không có sinh viên đang điều chuyển tạm trong phòng này.
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-3">
+                        {returnItems.map((bed) => {
+                          const assignment = bed.maintenance_assignment!;
+                          return (
+                            <div key={bed.id} className="rounded-2xl border border-[#d8e4f5] bg-white p-4 shadow-sm">
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-bold text-[#1a2d52]">{assignment.student_name}</p>
+                                  <p className="mt-1 text-sm text-[#61779d]">
+                                    Vị trí gốc: {getRoomCode(roomReturnModal.room)} - Giường {bed.bed_number}
+                                  </p>
+                                  <p className="text-sm text-[#61779d]">
+                                    Đang ở tạm: Giường {assignment.temporary_bed_number ?? "--"}
+                                  </p>
+                                  <p className="text-sm text-[#61779d]">
+                                    Dự kiến về: {formatPreviewDate(assignment.expected_return_date)}
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  disabled={isRoomReturnSubmitting || !assignment.occupancy_id}
+                                  onClick={() => assignment.occupancy_id ? void confirmCompleteRoomMaintenanceStudent(assignment.occupancy_id) : undefined}
+                                  className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  Hoàn nguyên
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+
+                  {roomReturnError ? (
+                    <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+                      {roomReturnError}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 p-5">
+                  <button
+                    type="button"
+                    onClick={() => setRoomReturnModal(null)}
+                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isRoomReturnSubmitting || !roomReturnModal.beds.some((bed) => Boolean(bed.maintenance_assignment?.occupancy_id))}
+                    onClick={() => void confirmCompleteRoomMaintenanceAll()}
+                    className="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    {isRoomReturnSubmitting ? "Đang xử lý..." : "Hoàn nguyên tất cả"}
+                  </button>
                 </div>
               </div>
             </div>,
@@ -1245,58 +1767,444 @@ export default function AdminRoomManagement() {
           )
         : null}
 
-      {editingBed && editingBed.bed
+      {editingBed && editingBed.bed && bedActionMode === "detail"
         ? createPortal(
             <div className="fixed inset-0 z-90 flex items-center justify-center p-4">
               <div className="absolute inset-0 bg-black/30" onClick={closeEditBed} />
-              <div className="relative w-full max-w-md rounded-xl bg-white p-5 shadow-lg">
-                <h3 className="text-lg font-semibold">Chỉnh sửa giường {editingBed.bed.bed_number}</h3>
-                
-                {selectedRoom?.status === "MAINTENANCE" ? (
-                  <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
-                    <p className="text-sm text-amber-700">
-                      Phòng đang bảo trì. Vui lòng kích hoạt lại phòng trước khi chỉnh sửa giường.
-                    </p>
+              <div className="relative flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-[#d5e2f5] bg-white shadow-2xl">
+                <div className="flex items-center justify-between gap-4 border-b border-slate-100 bg-[linear-gradient(180deg,#f8fbff_0%,#eef4ff_100%)] p-5">
+                  <div>
+                    <h3 className="text-lg font-bold uppercase text-[#1a2d52]">Thông tin giường</h3>
+                    <p className="mt-1 text-sm text-[#61779d]">Phòng {selectedRoom ? getRoomCode(selectedRoom) : "-"} · Giường {editingBed.bed.bed_number}</p>
                   </div>
-                ) : (
-                  <div className="mt-3">
-                    <label className="block text-sm text-slate-600">Trạng thái</label>
-                    <select
-                      value={editingBedStatus}
-                      onChange={(e) => {
-                        const nextStatus = e.target.value as BedStatus;
-                        setEditingBedStatus(nextStatus);
-                        
-                        // Tính error dựa trên nextStatus
-                        if (editingBed && editingBed.bed) {
-                          setEditingBedError(
-                            isBedEffectivelyOccupied(editingBed.bed) && nextStatus === "MAINTENANCE"
-                              ? "Giường đang có sinh viên ở nên không thể chuyển sang bảo trì."
-                              : "",
-                          );
-                        }
-                      }}
-                      className={`mt-2 w-full rounded-md border px-3 py-2 ${editingBedError ? "border-red-500 focus:border-red-500" : "border-slate-200"}`}
-                    >
-                      <option value="ACTIVE">Hoạt động</option>
-                      <option value="MAINTENANCE">Bảo trì</option>
-                    </select>
-                    {editingBedError ? (
-                      <p className="mt-2 text-sm text-red-600">{editingBedError}</p>
+                  <button type="button" onClick={closeEditBed} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto p-5">
+                  {editingBedDetail?.student ? (
+                    <div className="rounded-2xl border border-[#d8e4f5] bg-white p-4 shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-full bg-[#2563EB] text-sm font-bold text-white">
+                          {editingBedDetail.student.avatar ? (
+                            <img src={editingBedDetail.student.avatar} alt={editingBedDetail.student.full_name} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center">{editingBedDetail.student.full_name.slice(0, 2).toUpperCase()}</div>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-base font-bold text-[#1a2d52]">{editingBedDetail.student.full_name}</p>
+                          <p className="text-sm font-semibold text-[#2563EB]">MSSV: {editingBedDetail.student.student_code}</p>
+                          <p className="text-xs text-[#61779d]">{[editingBedDetail.student.class_name, editingBedDetail.student.faculty].filter(Boolean).join(" · ") || "—"}</p>
+                          <p className="text-xs text-[#7c8fb5]">Ngày vào ở: {formatPreviewDate(editingBedDetail.student.check_in_date)}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setDetailStudent({ student: editingBedDetail.student!, bedNumber: editingBed.bed!.bed_number })}
+                          className="rounded-xl border border-[#bfd2ec] bg-white px-3 py-2 text-xs font-semibold text-[#2563EB] transition hover:bg-sky-50"
+                        >
+                          Xem hồ sơ
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${editingBedDetail?.student ? "mt-4" : ""}`}>
+                    {[
+                      ["Tòa", selectedRoom?.building_code],
+                      ["Tầng", selectedRoom ? getRoomFloor(selectedRoom) : null],
+                      ["Phòng", selectedRoom ? getRoomCode(selectedRoom) : null],
+                      ["Giường", `Giường ${editingBed.bed.bed_number}`],
+                      ["Vị trí", getBedPositionLabel(editingBed.bed.position)],
+                      ["Trạng thái", getBedStatusLabel(editingBedDetail?.display_status ?? editingBed.bed.status)],
+                    ].map(([label, value]) => (
+                      <div key={String(label)} className="rounded-2xl border border-[#e7eef9] bg-[#f8fbff] px-4 py-3 shadow-sm">
+                        <p className="text-xs font-semibold uppercase text-[#7c8fb5]">{label}</p>
+                        <p className="mt-1 text-sm font-bold text-[#1a2d52]">{value || "—"}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2 border-b border-slate-100">
+                    {[
+                      ["current", "Lưu trú hiện tại"],
+                      ["transfer", "Lịch sử chuyển giường"],
+                      ["maintenance", "Lịch sử bảo trì"],
+                    ].map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setBedDetailTab(value as typeof bedDetailTab)}
+                        className={`border-b-2 px-3 py-2 text-sm font-semibold transition ${
+                          bedDetailTab === value ? "border-[#2563EB] text-[#2563EB]" : "border-transparent text-[#61779d] hover:text-[#1a2d52]"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-[#e7eef9] bg-slate-50 p-4 shadow-sm">
+                    {bedDetailTab === "current" ? (
+                      <div className="text-sm text-[#1a2d52]">
+                        <p className="font-semibold">Trạng thái lưu trú: {editingBedDetail?.student ? "Đang có sinh viên" : "Chưa có sinh viên"}</p>
+                        {editingBedDetail?.student?.temporary_assignment?.is_temporary ? (
+                          <p className="mt-1 text-orange-700">Đang ở tạm từ Giường {editingBedDetail.student.temporary_assignment.original_bed_number ?? "—"}</p>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {bedDetailTab === "transfer" ? (
+                      editingBedDetail?.transfer_history?.length ? (
+                        <div className="space-y-3">
+                          {editingBedDetail.transfer_history.map((item) => (
+                            <div key={item.id} className="rounded-2xl border border-[#d8e4f5] bg-white p-3 text-sm text-[#1a2d52] shadow-sm">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div>
+                                  <p className="font-bold">{item.student_name ?? "Sinh viên"}</p>
+                                  {item.student_code ? <p className="text-xs font-semibold text-[#2563EB]">MSSV: {item.student_code}</p> : null}
+                                </div>
+                                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-[#61779d]">
+                                  {getHistoryStatusLabel(item.status)}
+                                </span>
+                              </div>
+                              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                <p>
+                                  <span className="font-semibold text-[#61779d]">Từ: </span>
+                                  {item.old_room_code ? `Phòng ${item.old_room_code} · ` : ""}
+                                  Giường {item.old_bed_number ?? "—"}
+                                </p>
+                                <p>
+                                  <span className="font-semibold text-[#61779d]">Đến: </span>
+                                  {item.new_room_code ? `Phòng ${item.new_room_code} · ` : ""}
+                                  Giường {item.new_bed_number ?? "—"}
+                                </p>
+                                <p>
+                                  <span className="font-semibold text-[#61779d]">Lý do: </span>
+                                  {getHistoryReasonLabel(item.reason)}
+                                </p>
+                                <p>
+                                  <span className="font-semibold text-[#61779d]">Ngày chuyển: </span>
+                                  {formatPreviewDate(item.transferred_at)}
+                                </p>
+                                {item.expected_return_date ? (
+                                  <p>
+                                    <span className="font-semibold text-[#61779d]">Dự kiến về: </span>
+                                    {formatPreviewDate(item.expected_return_date)}
+                                  </p>
+                                ) : null}
+                                {item.completed_at ? (
+                                  <p>
+                                    <span className="font-semibold text-[#61779d]">Hoàn tất: </span>
+                                    {formatPreviewDate(item.completed_at)}
+                                  </p>
+                                ) : null}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm font-semibold text-[#7c8fb5]">🔄 Chưa có lịch sử chuyển giường</p>
+                      )
+                    ) : null}
+                    {bedDetailTab === "maintenance" ? (
+                      editingBedDetail?.maintenance_history?.length ? (
+                        <div className="space-y-3">
+                          {editingBedDetail.maintenance_history.map((item) => (
+                            <div key={item.id} className="rounded-2xl border border-orange-100 bg-white p-3 text-sm text-[#1a2d52] shadow-sm">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div>
+                                  <p className="font-bold">{item.student_name ?? "Sinh viên"}</p>
+                                  {item.student_code ? <p className="text-xs font-semibold text-[#2563EB]">MSSV: {item.student_code}</p> : null}
+                                </div>
+                                <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-xs font-bold text-orange-700">
+                                  {getHistoryStatusLabel(item.status)}
+                                </span>
+                              </div>
+                              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                <p>
+                                  <span className="font-semibold text-[#61779d]">Lý do: </span>
+                                  {getHistoryReasonLabel(item.reason)}
+                                </p>
+                                <p>
+                                  <span className="font-semibold text-[#61779d]">Ngày chuyển: </span>
+                                  {formatPreviewDate(item.transferred_at)}
+                                </p>
+                                {item.expected_return_date ? (
+                                  <p>
+                                    <span className="font-semibold text-[#61779d]">Dự kiến về: </span>
+                                    {formatPreviewDate(item.expected_return_date)}
+                                  </p>
+                                ) : null}
+                                {item.completed_at ? (
+                                  <p>
+                                    <span className="font-semibold text-[#61779d]">Hoàn tất: </span>
+                                    {formatPreviewDate(item.completed_at)}
+                                  </p>
+                                ) : null}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm font-semibold text-[#7c8fb5]">📄 Chưa có dữ liệu bảo trì</p>
+                      )
                     ) : null}
                   </div>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {editingBed && editingBed.bed && bedActionMode === "status"
+        ? createPortal(
+            <div className="fixed inset-0 z-90 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/30" onClick={closeEditBed} />
+              <div className="relative w-full max-w-md rounded-2xl border border-[#d5e2f5] bg-white p-5 shadow-2xl">
+                <h3 className="text-lg font-bold uppercase text-[#1a2d52]">Cập nhật trạng thái giường</h3>
+                <p className="mt-1 text-sm text-[#61779d]">Giường {editingBed.bed.bed_number} · {getBedPositionLabel(editingBed.bed.position)}</p>
+
+                {selectedRoom?.status === "MAINTENANCE" ? (
+                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3">
+                    <p className="text-sm font-semibold text-amber-700">Phòng đang bảo trì. Vui lòng kích hoạt lại phòng trước khi chỉnh sửa giường.</p>
+                  </div>
+                ) : (
+                  <>
+                    <label className="mt-4 block text-sm font-semibold text-slate-600">Trạng thái</label>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      {[
+                        ["ACTIVE", "Hoạt động"],
+                        ["MAINTENANCE", "Bảo trì"],
+                      ].map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => {
+                            setEditingBedStatus(value as BedStatus);
+                            setEditingBedError("");
+                          }}
+                          className={`relative rounded-2xl border px-3 py-3 text-sm font-semibold shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-lg ${
+                            editingBedStatus === value ? "border-[#2563EB] bg-indigo-50 text-[#2563EB] ring-2 ring-[#2563EB]/15" : "border-slate-200 bg-white text-slate-700"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {editingBedStatus === "MAINTENANCE" && editingBedDetail?.student ? (
+                      <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3">
+                        <p className="text-sm font-bold text-amber-700">⚠ Giường hiện đang có sinh viên.</p>
+                        <p className="mt-1 text-sm text-amber-700">Bạn cần chuyển sinh viên sang giường khác trước khi đưa giường vào bảo trì.</p>
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTransferChangeType("TEMPORARY_MAINTENANCE");
+                              setTransferSourceStatus("maintenance");
+                              setTransferBedError("");
+                              setBedActionMode("transfer");
+                            }}
+                            className="rounded-xl bg-[#2563EB] px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-110"
+                          >
+                            Chuyển sinh viên
+                          </button>
+                          <button type="button" onClick={closeEditBed} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600">
+                            Hủy
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                    {editingBedError ? <p className="mt-2 text-sm text-red-600">{editingBedError}</p> : null}
+                  </>
                 )}
 
-                <div className="mt-4 flex justify-end gap-3">
-                  <button onClick={closeEditBed} className="rounded-xl border px-3 py-2 text-sm">
+                <div className="mt-5 flex justify-end gap-3">
+                  <button onClick={closeEditBed} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600">
                     Hủy
                   </button>
                   <button
                     onClick={saveEditBed}
-                    disabled={Boolean(editingBedError) || selectedRoom?.status === "MAINTENANCE"}
-                    className={`rounded-xl px-3 py-2 text-sm text-white ${editingBedError || selectedRoom?.status === "MAINTENANCE" ? "bg-slate-300 cursor-not-allowed" : "bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_45%,#1f46ad_100%)]"}`}
+                    disabled={Boolean(editingBedError) || selectedRoom?.status === "MAINTENANCE" || Boolean(editingBedStatus === "MAINTENANCE" && editingBedDetail?.student)}
+                    className={`rounded-xl px-3 py-2 text-sm font-semibold text-white ${
+                      editingBedError || selectedRoom?.status === "MAINTENANCE" || (editingBedStatus === "MAINTENANCE" && editingBedDetail?.student)
+                        ? "cursor-not-allowed bg-slate-300"
+                        : "bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_45%,#1f46ad_100%)]"
+                    }`}
                   >
                     Lưu
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {editingBed && editingBed.bed && bedActionMode === "transfer" && editingBedDetail?.student
+        ? createPortal(
+            <div className="fixed inset-0 z-90 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/30" onClick={closeEditBed} />
+              <div className="relative flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-[#d5e2f5] bg-white shadow-2xl">
+                <div className="flex items-center justify-between gap-4 border-b border-slate-100 bg-[linear-gradient(180deg,#f8fbff_0%,#eef4ff_100%)] p-5">
+                  <div>
+                    <h3 className="text-lg font-bold uppercase text-[#1a2d52]">Chuyển sinh viên</h3>
+                    <p className="mt-1 text-sm text-[#61779d]">Chọn giường mới và hình thức chuyển phù hợp.</p>
+                  </div>
+                  <button type="button" onClick={closeEditBed} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto p-5">
+                  <div className="rounded-2xl border border-[#d8e4f5] bg-white p-4 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="h-14 w-14 shrink-0 overflow-hidden rounded-full bg-[#2563EB] text-sm font-bold text-white">
+                        {editingBedDetail.student.avatar ? (
+                          <img src={editingBedDetail.student.avatar} alt={editingBedDetail.student.full_name} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center">{editingBedDetail.student.full_name.slice(0, 2).toUpperCase()}</div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-base font-bold text-[#1a2d52]">{editingBedDetail.student.full_name}</p>
+                        <p className="text-sm font-semibold text-[#2563EB]">MSSV: {editingBedDetail.student.student_code}</p>
+                        <p className="text-xs font-semibold text-[#61779d]">Giường hiện tại: Giường {editingBed.bed.bed_number}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <label className="mt-4 block text-sm font-semibold text-slate-600">Giường chuyển đến</label>
+                  <select
+                    value={transferTargetBedId}
+                    onChange={(event) => {
+                      setTransferTargetBedId(event.target.value);
+                      setTransferBedError("");
+                    }}
+                    className={`mt-2 h-11 w-full rounded-xl border bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none transition focus:border-[#2563EB] focus:ring-4 focus:ring-[#2563EB]/10 ${transferBedError ? "border-red-500" : "border-slate-200"}`}
+                  >
+                    <option value="">Chọn giường trống</option>
+                    {transferTargetBeds.map((bed) => (
+                      <option key={bed.id} value={bed.id}>
+                        Giường {bed.bed_number} - {getBedPositionLabel(bed.position)}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {[
+                      {
+                        value: "PERMANENT",
+                        title: "🏠 Chuyển vĩnh viễn",
+                        description: "Sinh viên sẽ ở luôn tại giường mới.",
+                      },
+                      {
+                        value: "TEMPORARY_MAINTENANCE",
+                        title: "🔧 Chuyển tạm do bảo trì",
+                        description: "Giữ quyền sử dụng giường cũ. Sau khi bảo trì xong có thể chuyển về.",
+                      },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => {
+                          const nextType = option.value as "PERMANENT" | "TEMPORARY_MAINTENANCE";
+                          setTransferChangeType(nextType);
+                          setTransferBedError("");
+                          if (nextType === "TEMPORARY_MAINTENANCE") {
+                            setTransferSourceStatus("maintenance");
+                          } else {
+                            setTransferExpectedReturnDate("");
+                            setTransferMaintenanceReason("");
+                            setTransferSourceStatus("active");
+                          }
+                        }}
+                        className={`rounded-2xl border p-4 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-lg ${
+                          transferChangeType === option.value ? "border-indigo-500 bg-indigo-50" : "border-slate-200 bg-white"
+                        }`}
+                      >
+                        <p className="text-sm font-bold text-[#1a2d52]">{option.title}</p>
+                        <p className="mt-1 text-xs font-semibold text-[#61779d]">{option.description}</p>
+                      </button>
+                    ))}
+                  </div>
+
+                  {isTemporaryMaintenanceTransfer ? (
+                    <div className="mt-4 rounded-2xl border border-orange-200 bg-orange-50 p-4 shadow-sm">
+                      <label className="block text-sm font-semibold text-orange-700">Ngày dự kiến hoàn tất bảo trì *</label>
+                      <input
+                        type="date"
+                        value={transferExpectedReturnDate}
+                        onChange={(event) => {
+                          setTransferExpectedReturnDate(event.target.value);
+                          setTransferBedError("");
+                        }}
+                        className="mt-2 h-10 w-full rounded-xl border border-orange-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+                        required
+                      />
+                      <label className="mt-3 block text-sm font-semibold text-orange-700">Lý do bảo trì *</label>
+                      <textarea
+                        value={transferMaintenanceReason}
+                        onChange={(event) => {
+                          setTransferMaintenanceReason(event.target.value);
+                          setTransferBedError("");
+                        }}
+                        rows={3}
+                        className="mt-2 w-full resize-none rounded-xl border border-orange-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+                        placeholder="Gãy thanh chắn, hỏng khung giường, sơn sửa giường, thay mới thiết bị..."
+                        required
+                      />
+                    </div>
+                  ) : null}
+
+                  <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                    <p className="text-sm font-bold uppercase text-[#1a2d52]">Kết quả sau khi lưu</p>
+                    <div className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                      <div>
+                        <p className="text-xs font-semibold text-[#61779d]">Sinh viên:</p>
+                        <p className="font-bold text-[#1a2d52]">{editingBedDetail.student.full_name}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-[#61779d]">Giường gốc:</p>
+                        <p className="font-bold text-[#1a2d52]">Giường {editingBed.bed.bed_number}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-[#61779d]">Giường mới:</p>
+                        <p className="font-bold text-[#1a2d52]">{selectedTransferTargetBed ? `Giường ${selectedTransferTargetBed.bed_number}` : "Chưa chọn"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-[#61779d]">Trạng thái:</p>
+                        <p className="font-bold text-[#1a2d52]">{isTemporaryMaintenanceTransfer ? "Đang ở tạm" : "Đã chuyển vĩnh viễn"}</p>
+                      </div>
+                      {isTemporaryMaintenanceTransfer ? (
+                        <div className="sm:col-span-2">
+                          <p className="text-xs font-semibold text-[#61779d]">Ngày dự kiến quay lại:</p>
+                          <p className="font-bold text-[#1a2d52]">{formatPreviewDate(transferExpectedReturnDate)}</p>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {transferTargetBeds.length === 0 ? <p className="mt-3 text-sm font-semibold text-amber-700">Phòng này hiện không có giường trống để chuyển.</p> : null}
+                  {transferBedError ? <p className="mt-3 text-sm font-semibold text-red-600">{transferBedError}</p> : null}
+                </div>
+
+                <div className="flex justify-end gap-3 border-t border-slate-100 p-5">
+                  <button type="button" onClick={closeEditBed} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600">
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleTransferBed}
+                    disabled={isTransferringBed || transferTargetBeds.length === 0}
+                    className={`rounded-xl px-3 py-2 text-sm font-semibold text-white ${
+                      isTransferringBed || transferTargetBeds.length === 0
+                        ? "cursor-not-allowed bg-slate-300"
+                        : "bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_45%,#1f46ad_100%)]"
+                    }`}
+                  >
+                    {isTransferringBed ? "Đang chuyển..." : "Xác nhận chuyển"}
                   </button>
                 </div>
               </div>
@@ -1430,7 +2338,70 @@ export default function AdminRoomManagement() {
                       ) : null}
                     </div>
 
-                    
+                    {isMaintenancePlanningRequired ? (
+                      <div className="sm:col-span-2 space-y-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                        <div>
+                          <p className="font-bold">Phòng hiện đang có sinh viên lưu trú</p>
+                          <p className="mt-1">
+                            Phòng này có {formOccupiedBeds} sinh viên đang ở.
+                          </p>
+                          <p className="mt-1">
+                            Để đưa phòng vào bảo trì, cần di dời toàn bộ sinh viên sang vị trí tạm thời.
+                          </p>
+                          <p className="mt-1">
+                            Sau khi bảo trì hoàn tất, hệ thống sẽ hỗ trợ hoàn nguyên về phòng cũ.
+                          </p>
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div className="sm:col-span-2">
+                            <label className="text-sm font-medium text-amber-950">Lý do bảo trì <span className="ml-1 text-red-500">*</span></label>
+                            <textarea
+                              value={roomForm.maintenance_reason}
+                              onChange={(event) => {
+                                setRoomForm((prev) => ({ ...prev, maintenance_reason: event.target.value }));
+                                setRoomFormError("");
+                              }}
+                              rows={3}
+                              className="mt-2 w-full rounded-2xl border border-amber-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-amber-400 focus:ring-4 focus:ring-amber-100"
+                              placeholder="Ví dụ: Sửa hệ thống điện"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-sm font-medium text-amber-950">Ngày bắt đầu <span className="ml-1 text-red-500">*</span></label>
+                            <InputField
+                              type="date"
+                              value={roomForm.maintenance_start_date}
+                              onChange={(event) => {
+                                setRoomForm((prev) => ({ ...prev, maintenance_start_date: event.target.value }));
+                                setRoomFormError("");
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-sm font-medium text-amber-950">Ngày dự kiến hoàn thành <span className="ml-1 text-red-500">*</span></label>
+                            <InputField
+                              type="date"
+                              value={roomForm.maintenance_expected_end_date}
+                              onChange={(event) => {
+                                setRoomForm((prev) => ({ ...prev, maintenance_expected_end_date: event.target.value }));
+                                setRoomFormError("");
+                              }}
+                            />
+                          </div>
+                          <div className="sm:col-span-2">
+                            <label className="text-sm font-medium text-amber-950">Ghi chú</label>
+                            <textarea
+                              value={roomForm.maintenance_note}
+                              onChange={(event) => setRoomForm((prev) => ({ ...prev, maintenance_note: event.target.value }))}
+                              rows={2}
+                              className="mt-2 w-full rounded-2xl border border-amber-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-amber-400 focus:ring-4 focus:ring-amber-100"
+                              placeholder="Ghi chú nội bộ cho admin"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
 
                   {roomFormError ? (
@@ -1453,7 +2424,7 @@ export default function AdminRoomManagement() {
                       title={isRoomStatusBlocked ? blockedStatusMessage : undefined}
                       className="inline-flex h-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#1f5fd1_0%,#244cb8_42%,#31b7d4_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(36,76,184,0.28)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:brightness-100"
                     >
-                      {editingRoomId ? "Lưu thay đổi" : "Thêm phòng"}
+                      {isMaintenancePlanningRequired ? "Tiếp tục lập kế hoạch di dời" : editingRoomId ? "Lưu thay đổi" : "Thêm phòng"}
                     </button>
                   </div>
                 </form>

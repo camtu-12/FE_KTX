@@ -112,7 +112,7 @@
         } else {
           setEmailError("MSSV chưa được tạo tài khoản. Vui lòng đăng ký tài khoản.");
         }
-      } catch (err) {
+      } catch {
         setEmailError("Không thể kiểm tra MSSV lúc này.");
       }
     };

@@ -52,7 +52,17 @@ export type RoomPayload = {
 };
 
 export type BedPayload = {
-  status: "empty" | "maintenance";
+  status: "active" | "maintenance";
+};
+
+export type TransferBedPayload = {
+  target_bed_id: number;
+  source_status?: BedPayload["status"];
+  change_type?: "PERMANENT" | "TEMPORARY_MAINTENANCE";
+  transfer_type?: "PERMANENT" | "TEMP_MAINTENANCE";
+  reason?: string;
+  expected_return_date?: string;
+  maintenance_reason?: string;
 };
 
 type ApiBed = {
@@ -138,4 +148,210 @@ export const deleteRoom = async (roomId: number): Promise<void> => {
 export const updateBedStatus = async (roomId: number, bedId: number, payload: BedPayload): Promise<RoomApi> => {
   const response = await http.put<ApiRoom>(`/rooms/${roomId}/beds/${bedId}`, payload);
   return normalizeRoom(response.data);
+};
+
+export const transferBedOccupancy = async (
+  roomId: number,
+  bedId: number,
+  payload: TransferBedPayload,
+): Promise<RoomApi> => {
+  const response = await http.put<ApiRoom>(`/rooms/${roomId}/beds/${bedId}/transfer`, payload);
+  return normalizeRoom(response.data);
+};
+
+// ----- Danh sách giường kèm thông tin sinh viên (GET /rooms/{roomId}/beds) -----
+
+export type BedDetailStatus = "empty" | "occupied" | "maintenance";
+export type BedDetailPhysicalStatus = "active" | "maintenance";
+export type BedDetailPosition = "top" | "bottom";
+
+export type BedStudent = {
+  [key: string]: unknown;
+  id: number;
+  student_code: string;
+  full_name: string;
+  avatar: string | null;
+  class_name: string | null;
+  faculty: string | null;
+  academic_status: string | null;
+  gender: string | null;
+  phone: string | null;
+  email: string | null;
+  date_of_birth: string | null;
+  course_year: string | number | null;
+  permanent_address: string | null;
+  check_in_date: string | null;
+  check_out_date: string | null;
+  occupancy?: {
+    id: number;
+    bed_id: number | null;
+    room_id: number | null;
+    check_in_date: string | null;
+    check_out_date: string | null;
+    status: string | null;
+  } | null;
+  temporary_assignment?: {
+    is_temporary: boolean;
+    original_room_id: number | null;
+    original_room_code: string | null;
+    original_bed_id: number | null;
+    original_bed_number: string | null;
+    reason: string | null;
+    transferred_at?: string | null;
+    expected_return_date?: string | null;
+    change_type?: "PERMANENT" | "TEMPORARY_MAINTENANCE" | "SWAP" | "ADMIN_TRANSFER" | null;
+    maintenance_request_id: number | null;
+  } | null;
+};
+
+export type BedDetail = {
+  id: number;
+  bed_number: string;
+  position: BedDetailPosition;
+  status: BedDetailPhysicalStatus;
+  display_status: BedDetailStatus;
+  occupied: boolean;
+  student: BedStudent | null;
+  transfer_history?: BedChangeHistory[];
+  maintenance_history?: BedChangeHistory[];
+  maintenance_assignment?: {
+    occupancy_id: number | null;
+    student_name: string;
+    student_code: string;
+    student_avatar?: string | null;
+    temporary_bed_id: number | null;
+    temporary_bed_number: string | null;
+    transferred_at: string | null;
+    expected_return_date: string | null;
+    reason: string | null;
+    maintenance_request_id: number | null;
+    can_return: boolean;
+  } | null;
+};
+
+export type BedChangeHistory = {
+  id: number;
+  student_name: string | null;
+  student_code: string | null;
+  old_room_code: string | null;
+  old_bed_number: string | null;
+  new_room_code: string | null;
+  new_bed_number: string | null;
+  reason: string | null;
+  change_type: string | null;
+  status: string | null;
+  is_temporary: boolean;
+  transferred_at: string | null;
+  completed_at: string | null;
+  expected_return_date: string | null;
+  maintenance_request_id: number | null;
+};
+
+export type RoomBedsResponse = {
+  room_id: number;
+  room_status: string;
+  capacity: number;
+  beds: BedDetail[];
+};
+
+const resolveAssetUrl = (value?: string | null): string | null => {
+  if (!value) return null;
+  if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("data:")) {
+    return value;
+  }
+  const cleanPath = value.replace(/^\/+/, "").replace(/^(api\/|storage\/)/, "");
+  return API_BASE.includes("railway.app")
+    ? `${API_BASE}/api/storage/${cleanPath}`
+    : `${API_BASE}/storage/${cleanPath}`;
+};
+
+type ApiBedStudent = Partial<BedStudent> & { avatar?: string | null };
+
+type ApiBedDetail = {
+  id: number;
+  bed_number: number | string;
+  position?: string | null;
+  status?: string | null;
+  display_status?: string | null;
+  occupied?: boolean;
+  student?: ApiBedStudent | null;
+  transfer_history?: BedChangeHistory[];
+  maintenance_history?: BedChangeHistory[];
+  maintenance_assignment?: BedDetail["maintenance_assignment"];
+};
+
+type ApiRoomBedsResponse = {
+  room_id: number;
+  room_status?: string | null;
+  capacity?: number;
+  beds?: ApiBedDetail[];
+};
+
+const normalizeBedDetail = (bed: ApiBedDetail): BedDetail => {
+  const status = String(bed.status ?? "active").toLowerCase();
+  const physicalStatus: BedDetailPhysicalStatus = status === "maintenance" ? "maintenance" : "active";
+  const position: BedDetailPosition =
+    String(bed.position ?? "top").toLowerCase() === "bottom" ? "bottom" : "top";
+  const rawStudent = bed.student ?? null;
+  const rawDisplayStatus = String(bed.display_status ?? "").toLowerCase();
+  const displayStatus: BedDetailStatus =
+    rawDisplayStatus === "occupied" || rawDisplayStatus === "empty" || rawDisplayStatus === "maintenance"
+      ? rawDisplayStatus
+      : status === "occupied"
+        ? "occupied"
+        : physicalStatus === "maintenance"
+          ? "maintenance"
+          : rawStudent || bed.occupied
+            ? "occupied"
+            : "empty";
+
+  return {
+    id: bed.id,
+    bed_number: String(bed.bed_number),
+    position,
+    status: physicalStatus,
+    display_status: displayStatus,
+    occupied: displayStatus === "occupied" || Boolean(bed.occupied),
+    transfer_history: Array.isArray(bed.transfer_history) ? bed.transfer_history : [],
+    maintenance_history: Array.isArray(bed.maintenance_history) ? bed.maintenance_history : [],
+    maintenance_assignment: bed.maintenance_assignment
+      ? {
+          ...bed.maintenance_assignment,
+          student_avatar: resolveAssetUrl(bed.maintenance_assignment.student_avatar ?? null),
+        }
+      : null,
+    student: rawStudent
+      ? {
+          ...rawStudent,
+          id: Number(rawStudent.id ?? 0),
+          student_code: String(rawStudent.student_code ?? ""),
+          full_name: String(rawStudent.full_name ?? ""),
+          avatar: resolveAssetUrl(rawStudent.avatar ?? null),
+          class_name: rawStudent.class_name ?? null,
+          faculty: rawStudent.faculty ?? null,
+          academic_status: rawStudent.academic_status ?? null,
+          gender: rawStudent.gender ?? null,
+          phone: rawStudent.phone ?? null,
+          email: rawStudent.email ?? null,
+          date_of_birth: rawStudent.date_of_birth ?? null,
+          course_year: rawStudent.course_year ?? null,
+          permanent_address: rawStudent.permanent_address ?? null,
+          check_in_date: rawStudent.check_in_date ?? null,
+          check_out_date: rawStudent.check_out_date ?? null,
+          occupancy: rawStudent.occupancy ?? null,
+          temporary_assignment: rawStudent.temporary_assignment ?? null,
+        }
+      : null,
+  };
+};
+
+export const getRoomBeds = async (roomId: number): Promise<RoomBedsResponse> => {
+  const response = await http.get<ApiRoomBedsResponse>(`/rooms/${roomId}/beds`);
+  const data = response.data;
+  return {
+    room_id: data.room_id,
+    room_status: String(data.room_status ?? "ACTIVE").toUpperCase(),
+    capacity: Number(data.capacity ?? 0) || 0,
+    beds: Array.isArray(data.beds) ? data.beds.map(normalizeBedDetail) : [],
+  };
 };

@@ -424,8 +424,8 @@ export default function RegistrationPage() {
 
       setStudentDataReadonly(true);
       setAutoLoaded(true);
-    } catch (err) {
-      console.warn("Auto check student_code failed:", err);
+    } catch (error) {
+      console.warn("Auto check student_code failed:", error);
     } finally {
       setIsCheckingMssv(false);
     }

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import { getRegistrations } from "../../../api/registrationService";
-import { listRooms } from "../../../api/roomApi";
+import { listRooms, type RoomApi } from "../../../api/roomApi";
 import type { RegistrationRequest } from "../data/registrationRequests";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import type { DormRoom } from "../../../types/dormRoom";
@@ -32,6 +32,29 @@ const genderFilterOptions: Array<{ value: GenderFilter; label: string }> = [
 ];
 
 const getRoomName = (room: DormRoom) => `${room.building_code}${room.room_number}`;
+
+const mapRoomFromApi = (r: RoomApi): DormRoom => ({
+  id: r.id,
+  building_code: r.building_code,
+  room_number: r.room_number,
+  totalBeds: r.beds?.length ?? r.capacity ?? 0,
+  availableBeds: r.available_beds ?? (r.beds?.filter((b) => !b.occupied).length) ?? 0,
+  capacity: r.capacity ?? r.beds?.length,
+  gender: r.floor?.gender ?? null,
+  floor_id: r.floor?.id ?? r.floor_id,
+  floor: r.floor ? { id: r.floor.id, building_code: r.building_code, floor_number: r.floor.floor_number, gender: r.floor.gender ?? undefined } : undefined,
+  floor_number: r.floor_number ?? r.floor?.floor_number,
+  beds: Array.isArray(r.beds)
+    ? r.beds.map((b) => ({
+        id: b.id,
+        room_id: r.id,
+        bed_number: Number(b.bed_number) || 0,
+        position: String(b.position).toLowerCase() === "upper" ? "upper" : "lower",
+        status: String(b.status).toLowerCase() === "maintenance" ? "maintenance" : "active",
+        occupied: b.occupied,
+      }))
+    : [],
+});
 
 const getGenderLabel = (gender?: string | null) => {
   const normalized = String(gender ?? "").trim().toLowerCase();
@@ -108,23 +131,8 @@ export default function AssignRoomPage() {
       try {
         const roomData = await listRooms();
         if (!isMounted) return;
-        const mapped = (roomData as any[]).map((r) => ({
-          id: r.id,
-          building_code: r.building_code,
-          room_number: r.room_number,
-          totalBeds: r.beds?.length ?? r.capacity ?? 0,
-          availableBeds: r.available_beds ?? (r.beds?.filter((b: any) => !b.occupied).length) ?? 0,
-          capacity: r.capacity ?? r.beds?.length,
-          gender: r.floor?.gender ?? null,
-          floor_id: r.floor?.id ?? r.floor_id,
-          floor: r.floor ? { id: r.floor.id, building_code: r.building_code, floor_number: r.floor.floor_number, gender: r.floor.gender } : undefined,
-          floor_number: r.floor_number ?? r.floor?.floor_number,
-          beds: Array.isArray(r.beds)
-            ? r.beds.map((b: any) => ({ id: b.id, room_id: r.id, bed_number: Number(b.bed_number) || 0, position: String(b.position).toLowerCase() === "upper" ? "upper" : "lower", status: String(b.status).toLowerCase() === "maintenance" ? "maintenance" : "active" }))
-            : [],
-        })) as DormRoom[];
-        setRooms(mapped);
-      } catch (err) {
+        setRooms(roomData.map(mapRoomFromApi));
+      } catch {
         // ignore
       }
     };
@@ -136,23 +144,8 @@ export default function AssignRoomPage() {
       try {
         const roomData = await listRooms();
         if (!isMounted) return;
-        const mapped = (roomData as any[]).map((r) => ({
-          id: r.id,
-          building_code: r.building_code,
-          room_number: r.room_number,
-          totalBeds: r.beds?.length ?? r.capacity ?? 0,
-          availableBeds: r.available_beds ?? (r.beds?.filter((b: any) => !b.occupied).length) ?? 0,
-          capacity: r.capacity ?? r.beds?.length,
-          gender: r.floor?.gender ?? null,
-          floor_id: r.floor?.id ?? r.floor_id,
-          floor: r.floor ? { id: r.floor.id, building_code: r.building_code, floor_number: r.floor.floor_number, gender: r.floor.gender } : undefined,
-          floor_number: r.floor_number ?? r.floor?.floor_number,
-          beds: Array.isArray(r.beds)
-            ? r.beds.map((b: any) => ({ id: b.id, room_id: r.id, bed_number: Number(b.bed_number) || 0, position: String(b.position).toLowerCase() === "upper" ? "upper" : "lower", status: String(b.status).toLowerCase() === "maintenance" ? "maintenance" : "active" }))
-            : [],
-        })) as DormRoom[];
-        setRooms(mapped);
-      } catch (err) {
+        setRooms(roomData.map(mapRoomFromApi));
+      } catch {
         // ignore
       }
     };

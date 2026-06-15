@@ -44,7 +44,7 @@ function getRoomMetrics(rooms: RoomRecord[]) {
     (accumulator, room) => {
       accumulator.rooms += 1;
       accumulator.beds += room.beds?.length ?? 0;
-      accumulator.students += room.beds?.filter((bed) => !!(bed as any).occupied).length ?? 0;
+      accumulator.students += room.beds?.filter((bed) => bed.occupied).length ?? 0;
       return accumulator;
     },
     { rooms: 0, beds: 0, students: 0 },
@@ -402,7 +402,7 @@ export default function AdminBuildingDetailPage() {
       const current = metrics.get(floorNumber) ?? { rooms: 0, beds: 0, students: 0 };
       current.rooms += 1;
       current.beds += room.beds?.length ?? 0;
-      current.students += room.beds?.filter((bed) => !!(bed as any).occupied).length ?? 0;
+      current.students += room.beds?.filter((bed) => bed.occupied).length ?? 0;
       metrics.set(floorNumber, current);
     });
 
@@ -489,10 +489,13 @@ export default function AdminBuildingDetailPage() {
   if (isBuildingLoading) {
     return (
       <section className="relative isolate flex min-h-[calc(100vh-8rem)] flex-col gap-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6">
-        <div className="rounded-[24px] border border-[#d7e3f5] bg-white p-5 shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
-          <p className="text-lg font-bold text-[#1a2d52]">Đang tải dữ liệu tòa...</p>
-          <p className="mt-2 text-sm text-[#61779d]">Vui lòng chờ trong giây lát.</p>
+        <div className="h-[104px] animate-pulse rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_100%)]" />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="h-[84px] animate-pulse rounded-[24px] border border-[#d8e4f5] bg-white" />
+          ))}
         </div>
+        <div className="h-[320px] animate-pulse rounded-[32px] border border-[#d7e2f0] bg-white" />
       </section>
     );
   }

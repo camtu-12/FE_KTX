@@ -156,8 +156,8 @@ export default function BedManagementPage() {
 
         setRequests(registrationsRes);
         setRooms(roomsRes.map(mapRoomApiToDormRoom));
-      } catch (err) {
-        console.log(err);
+      } catch (error) {
+        console.log(error);
         if (!isMounted) return;
         setRequests([]);
         setRooms([]);

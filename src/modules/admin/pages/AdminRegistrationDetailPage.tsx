@@ -240,9 +240,9 @@ export default function AdminRegistrationDetailPage() {
         setRequest(res);
         setFailedDocuments(createEmptyDocumentErrorState());
         setImageLoadErrors({});
-      } catch (err) {
+      } catch (error) {
         if (cancelled) return;
-        console.log('[AdminRegistrationDetailPage] API error:', err);
+        console.log('[AdminRegistrationDetailPage] API error:', error);
         asyncSetRequest(null);
         asyncSetFailedDocuments(createEmptyDocumentErrorState());
       }

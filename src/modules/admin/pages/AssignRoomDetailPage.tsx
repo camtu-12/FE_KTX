@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
 import { assignRoomToRegistration, getRegistrations } from "../../../api/registrationService";
 import { listBuildings } from "../../../api/buildingApi";
-import { listRooms } from "../../../api/roomApi";
+import { listRooms, type RoomApi } from "../../../api/roomApi";
 import type { Building } from "../../../types/building";
 import type { RegistrationRequest } from "../data/registrationRequests";
 import type { DormRoom } from "../../../types/dormRoom";
@@ -63,24 +63,25 @@ const normalizeGender = (gender: string | null | undefined) => {
 const getBuildingFloorNumbers = (building: Building) =>
   building.floors.map((floor) => floor.floorNumber).sort((a, b) => a - b);
 
-const mapRoomFromApi = (r: any): DormRoomWithFloor => ({
+const mapRoomFromApi = (r: RoomApi): DormRoomWithFloor => ({
   id: r.id,
   building_code: r.building_code,
   room_number: r.room_number,
   totalBeds: r.beds?.length ?? r.capacity ?? 0,
-  availableBeds: r.available_beds ?? (r.beds?.filter((b: any) => !b.occupied).length) ?? 0,
+  availableBeds: r.available_beds ?? (r.beds?.filter((b) => !b.occupied).length) ?? 0,
   capacity: r.capacity ?? r.beds?.length,
   gender: r.floor?.gender ?? null,
   floor_id: r.floor?.id ?? r.floor_id,
-  floor: r.floor ? { id: r.floor.id, building_code: r.building_code, floor_number: r.floor.floor_number, gender: r.floor.gender } : undefined,
+  floor: r.floor ? { id: r.floor.id, building_code: r.building_code, floor_number: r.floor.floor_number, gender: r.floor.gender ?? undefined } : undefined,
   floor_number: r.floor_number ?? r.floor?.floor_number,
   beds: Array.isArray(r.beds)
-    ? r.beds.map((b: any) => ({
+    ? r.beds.map((b) => ({
         id: b.id,
         room_id: r.id,
         bed_number: Number(b.bed_number) || 0,
         position: String(b.position).toLowerCase() === "upper" ? "upper" : "lower",
         status: String(b.status).toLowerCase() === "maintenance" ? "maintenance" : "active",
+        occupied: b.occupied,
       }))
     : [],
 });
@@ -146,7 +147,7 @@ export default function AssignRoomDetailPage() {
         }
 
         setRequest(requests.find((item) => item.id === numericRequestId) ?? null);
-        setRooms((roomData as any[]).map(mapRoomFromApi));
+        setRooms(roomData.map(mapRoomFromApi));
         setBuildings(buildingData);
       } catch {
         if (!isMounted) {
@@ -170,7 +171,7 @@ export default function AssignRoomDetailPage() {
         if (!isMounted) {
           return;
         }
-        setRooms((roomData as any[]).map(mapRoomFromApi));
+        setRooms(roomData.map(mapRoomFromApi));
         setBuildings(buildingData);
       } catch {
         if (!isMounted) {

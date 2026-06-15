@@ -364,7 +364,7 @@ export default function SelectBedPage() {
 
     rooms.forEach((item) => {
       item.beds?.forEach((bed) => {
-        if (Boolean((bed as SelectableDormBed).occupied)) {
+        if ((bed as SelectableDormBed).occupied) {
           occupiedBedIds.add(bed.id);
         }
       });

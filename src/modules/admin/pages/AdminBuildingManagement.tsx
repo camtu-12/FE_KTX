@@ -95,7 +95,7 @@ function getBuildingMetrics(building: Building, rooms: RoomRecord[]) {
       accumulator.rooms += floorRooms.length;
       accumulator.beds += floorRooms.reduce((sum, room) => sum + (room.beds?.length ?? 0), 0);
       accumulator.students += floorRooms.reduce(
-        (sum, room) => sum + (room.beds?.filter((bed) => !!(bed as any).occupied).length ?? 0),
+        (sum, room) => sum + (room.beds?.filter((bed) => bed.occupied).length ?? 0),
         0,
       );
       return accumulator;
@@ -211,7 +211,7 @@ export default function AdminBuildingManagement() {
         const data = await listRooms();
         if (!mounted) return;
         setRooms(data as RoomRecord[]);
-      } catch (err) {
+      } catch {
         // ignore
       }
     })();
@@ -770,7 +770,17 @@ export default function AdminBuildingManagement() {
                 </tr>
               </thead>
               <tbody>
-                {filteredBuildings.length > 0 ? (
+                {isBuildingsLoading ? (
+                  Array.from({ length: 4 }).map((_, index) => (
+                    <tr key={`skeleton-${index}`}>
+                      {Array.from({ length: 8 }).map((__, cellIndex) => (
+                        <td key={cellIndex} className="border-t border-[#e7eef9] px-3 py-4">
+                          <div className="mx-auto h-4 w-3/4 animate-pulse rounded-full bg-[#e8eef8]" />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : filteredBuildings.length > 0 ? (
                   filteredBuildings.map((building) => {
                     const metrics = getBuildingMetrics(building, rooms);
 
@@ -813,7 +823,7 @@ export default function AdminBuildingManagement() {
                   <tr>
                     <td colSpan={8} className="border-t border-[#e7eef9] px-4 py-14 text-center">
                     <div className="mx-auto flex max-w-md flex-col items-center justify-center rounded-[28px] border border-dashed border-[#cfdcf0] bg-[#f8fbff] px-6 py-10 text-center">
-                        <p className="mt-3 text-sm font-semibold text-[#1a2d52]">{isBuildingsLoading ? "Đang tải danh sách tòa..." : "Không tìm thấy tòa phù hợp với bộ lọc hiện tại"}</p>
+                        <p className="mt-3 text-sm font-semibold text-[#1a2d52]">Không tìm thấy tòa phù hợp với bộ lọc hiện tại</p>
                         <button type="button" onClick={() => { setFilterStatus("all"); setFilterBuilding("all"); }} className="mt-4 inline-flex h-8 items-center justify-center rounded-xl bg-[#244cb8] px-3.5 text-sm font-semibold text-white transition hover:bg-[#1f44a4]">
                             Bỏ bộ lọc
                         </button>

@@ -19,6 +19,7 @@ export type DormBed = {
   position: "upper" | "lower";
   // Technical bed status coming from backend: active | maintenance
   status: "active" | "maintenance";
+  occupied?: boolean;
 };
 
 export type DormBedPair = {

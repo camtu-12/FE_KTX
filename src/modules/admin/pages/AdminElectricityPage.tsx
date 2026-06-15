@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
-import { CheckCircle2, Eye, Plus, X, Zap } from "lucide-react";
-import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { CheckCircle2, Eye, Funnel, Plus, X, Zap } from "lucide-react";
+import type { ReactNode, WheelEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useOutletContext } from "react-router-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
@@ -63,6 +63,8 @@ type ElectricityRecord = {
 const ELECTRICITY_PRICE_PER_KWH = 2900;
 const recordTableColumnWidths = ["10%", "12%", "10%", "10%", "13%", "13%", "15%", "18%"];
 const billTableColumnWidths = ["11%", "17%", "10%", "8%", "15%", "12%", "14%", "13%"];
+const currentMonth = new Date().getMonth() + 1;
+const monthOptions = Array.from({ length: 12 }, (_, index) => index + 1);
 
 const moneyFormatter = new Intl.NumberFormat("vi-VN", {
   style: "currency",
@@ -221,6 +223,11 @@ export default function AdminElectricityPage() {
   const [records, setRecords] = useState<ElectricityRecord[]>([]);
   const [bills, setBills] = useState<ElectricityBill[]>([]);
   const [rooms, setRooms] = useState<DormRoom[]>([]);
+  const [monthFilter, setMonthFilter] = useState(String(currentMonth));
+  const [draftMonthFilter, setDraftMonthFilter] = useState(String(currentMonth));
+  const [isMonthFilterOpen, setIsMonthFilterOpen] = useState(false);
+  const [monthFilterMenuPosition, setMonthFilterMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const monthFilterButtonRef = useRef<HTMLButtonElement | null>(null);
   const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
   const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
   const [selectedBill, setSelectedBill] = useState<ElectricityBill | null>(null);
@@ -237,9 +244,11 @@ export default function AdminElectricityPage() {
   });
 
   const roomOptions = useMemo(() => rooms.map((room) => ({ id: room.id, name: formatDormRoomName(room) })), [rooms]);
-  const autoOldIndex = useMemo(() => getPreviousElectricityIndex(records, form.room, form.month), [form.month, form.room, records]);
   const latestElectricityMonth = useMemo(() => getLatestElectricityMonth(records, form.room), [form.room, records]);
   const nextAvailableElectricityMonth = useMemo(() => getNextMonthValue(latestElectricityMonth), [latestElectricityMonth]);
+  const effectiveFormMonth = latestElectricityMonth && nextAvailableElectricityMonth && form.month <= latestElectricityMonth ? nextAvailableElectricityMonth : form.month;
+  const autoOldIndex = useMemo(() => getPreviousElectricityIndex(records, form.room, effectiveFormMonth), [effectiveFormMonth, form.room, records]);
+  const effectiveOldIndex = autoOldIndex === null ? form.oldIndex : String(autoOldIndex);
 
   const loadData = async () => {
     const [nextBills, nextRecords, nextRooms, settings] = await Promise.all([
@@ -262,7 +271,9 @@ export default function AdminElectricityPage() {
   };
 
   useEffect(() => {
-    void loadData();
+    const timeoutId = window.setTimeout(() => {
+      void loadData();
+    }, 0);
 
     if (typeof window !== "undefined") {
       window.addEventListener("ktx-payments-updated", loadData);
@@ -271,6 +282,8 @@ export default function AdminElectricityPage() {
     }
 
     return () => {
+      window.clearTimeout(timeoutId);
+
       if (typeof window !== "undefined") {
         window.removeEventListener("ktx-payments-updated", loadData);
         window.removeEventListener("ktx-rooms-updated", loadData);
@@ -279,28 +292,12 @@ export default function AdminElectricityPage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (autoOldIndex === null) {
-      setForm((current) => (current.oldIndex === "" ? current : { ...current, oldIndex: "" }));
-      return;
-    }
-
-    setForm((current) => (current.oldIndex === String(autoOldIndex) ? current : { ...current, oldIndex: String(autoOldIndex) }));
-    setFormError("");
-  }, [autoOldIndex]);
-
-  useEffect(() => {
-    if (!latestElectricityMonth || !nextAvailableElectricityMonth || form.month > latestElectricityMonth) {
-      return;
-    }
-
-    setForm((current) => ({ ...current, month: nextAvailableElectricityMonth }));
-    setFormError("");
-  }, [form.month, latestElectricityMonth, nextAvailableElectricityMonth]);
-
-  const usagePreview = Math.max(0, Number(form.newIndex || 0) - Number(form.oldIndex || 0));
+  const usagePreview = Math.max(0, Number(form.newIndex || 0) - Number(effectiveOldIndex || 0));
   const unitPricePreview = parseMoneyValue(form.unitPrice);
   const totalPreview = usagePreview * unitPricePreview;
+  const selectedMonthNumber = Number(monthFilter);
+
+  const visibleRecords = useMemo(() => records.filter((record) => Number(record.month.split("-")[1]) === selectedMonthNumber), [records, selectedMonthNumber]);
 
   const visibleBills = useMemo(() => {
     const normalizedHeaderSearch = headerSearchValue.trim().toLowerCase();
@@ -308,19 +305,20 @@ export default function AdminElectricityPage() {
     return bills.filter((bill) => {
       const searchableText = [bill.studentCode, bill.fullName].join(" ").toLowerCase();
       const matchesHeaderSearch = !normalizedHeaderSearch || searchableText.includes(normalizedHeaderSearch);
+      const matchesMonth = Number(bill.month.split("-")[1]) === selectedMonthNumber;
 
-      return matchesHeaderSearch;
+      return matchesHeaderSearch && matchesMonth;
     });
-  }, [bills, headerSearchValue]);
+  }, [bills, headerSearchValue, selectedMonthNumber]);
 
   const recordSummaryCards = useMemo<SummaryCard[]>(() => {
-    const roomStudentCountMap = records.reduce<Map<string, number>>((roomMap, record) => {
+    const roomStudentCountMap = visibleRecords.reduce<Map<string, number>>((roomMap, record) => {
       roomMap.set(record.room, record.studentCount);
       return roomMap;
     }, new Map());
     const totalStudents = Array.from(roomStudentCountMap.values()).reduce((total, studentCount) => total + studentCount, 0);
-    const totalUsageKwh = records.reduce((total, record) => total + record.usageKwh, 0);
-    const totalAmount = records.reduce((total, record) => total + record.totalAmount, 0);
+    const totalUsageKwh = visibleRecords.reduce((total, record) => total + record.usageKwh, 0);
+    const totalAmount = visibleRecords.reduce((total, record) => total + record.totalAmount, 0);
 
     return [
       { label: "Tổng phòng", value: roomStudentCountMap.size, valueClassName: "text-[#244cb8]" },
@@ -328,16 +326,16 @@ export default function AdminElectricityPage() {
       { label: "Tổng số điện", value: `${totalUsageKwh} kWh`, valueClassName: "text-[#9b6b00]", valueSizeClassName: "text-[1.65rem]" },
       { label: "Tổng tiền điện", value: moneyFormatter.format(totalAmount), valueClassName: "text-[#c4364f]", valueSizeClassName: "text-[1.65rem]" },
     ];
-  }, [records]);
+  }, [visibleRecords]);
 
   const billSummaryCards = useMemo<SummaryCard[]>(
     () => [
-      { label: "Tổng hóa đơn", value: bills.length, valueClassName: "text-[#244cb8]" },
-      { label: "Chưa thanh toán", value: bills.filter((bill) => bill.status === "unpaid").length, valueClassName: "text-[#9b6b00]" },
-      { label: "Đã thanh toán", value: bills.filter((bill) => bill.status === "paid").length, valueClassName: "text-[#16784b]" },
-      { label: "Quá hạn", value: bills.filter((bill) => bill.status === "overdue").length, valueClassName: "text-[#c4364f]" },
+      { label: "Tổng hóa đơn", value: visibleBills.length, valueClassName: "text-[#244cb8]" },
+      { label: "Chưa thanh toán", value: visibleBills.filter((bill) => bill.status === "unpaid").length, valueClassName: "text-[#9b6b00]" },
+      { label: "Đã thanh toán", value: visibleBills.filter((bill) => bill.status === "paid").length, valueClassName: "text-[#16784b]" },
+      { label: "Quá hạn", value: visibleBills.filter((bill) => bill.status === "overdue").length, valueClassName: "text-[#c4364f]" },
     ],
-    [bills],
+    [visibleBills],
   );
 
   const summaryCards = activeTab === "records" ? recordSummaryCards : billSummaryCards;
@@ -392,9 +390,10 @@ export default function AdminElectricityPage() {
   };
 
   const handleCreateRecord = async () => {
-    const oldIndex = Number(form.oldIndex);
+    const oldIndex = Number(effectiveOldIndex);
     const newIndex = Number(form.newIndex);
     const unitPrice = parseMoneyValue(form.unitPrice);
+    const month = effectiveFormMonth;
     const selectedRoom = roomOptions.find((room) => room.name === form.room);
 
     if (!form.room) {
@@ -407,12 +406,12 @@ export default function AdminElectricityPage() {
       return;
     }
 
-    if (!form.month) {
+    if (!month) {
       setFormError("Vui lòng chọn tháng.");
       return;
     }
 
-    if (latestElectricityMonth && form.month <= latestElectricityMonth) {
+    if (latestElectricityMonth && month <= latestElectricityMonth) {
       setFormError(`Tháng ghi nhận mới phải sau ${formatMonth(latestElectricityMonth)}.`);
       return;
     }
@@ -435,7 +434,7 @@ export default function AdminElectricityPage() {
     try {
       await generateElectricityBills({
         room_id: selectedRoom.id,
-        month_year: form.month,
+        month_year: month,
         old_index: oldIndex,
         new_index: newIndex,
         unit_price: unitPrice,
@@ -467,6 +466,78 @@ export default function AdminElectricityPage() {
       setFormError("Không thể xác nhận thanh toán. Vui lòng thử lại.");
     }
   };
+
+  useEffect(() => {
+    if (!isMonthFilterOpen) {
+      return;
+    }
+
+    const updateMenuPosition = () => {
+      const buttonRect = monthFilterButtonRef.current?.getBoundingClientRect();
+
+      if (!buttonRect) {
+        return;
+      }
+
+      setMonthFilterMenuPosition({
+        top: buttonRect.bottom + 10,
+        left: buttonRect.left + buttonRect.width / 2,
+      });
+    };
+
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [isMonthFilterOpen]);
+
+  const openMonthFilter = () => {
+    setDraftMonthFilter(monthFilter);
+    setIsMonthFilterOpen(true);
+  };
+
+  const resetMonthFilter = () => {
+    setDraftMonthFilter(String(currentMonth));
+    setMonthFilter(String(currentMonth));
+    setIsMonthFilterOpen(false);
+  };
+
+  const applyMonthFilter = () => {
+    setMonthFilter(draftMonthFilter);
+    setIsMonthFilterOpen(false);
+  };
+
+  const handleFilterOverlayWheel = (event: WheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const scrollContainer = document.querySelector<HTMLElement>(".auth-scrollbar");
+
+    if (scrollContainer) {
+      scrollContainer.scrollBy({ top: event.deltaY, left: event.deltaX });
+      return;
+    }
+
+    window.scrollBy({ top: event.deltaY, left: event.deltaX });
+  };
+
+  const monthHeader = (
+    <div className="inline-flex items-center justify-center gap-2">
+      <span>Tháng</span>
+      <button
+        ref={monthFilterButtonRef}
+        type="button"
+        onClick={isMonthFilterOpen ? () => setIsMonthFilterOpen(false) : openMonthFilter}
+        className="flex items-center justify-center text-[#244cb8] transition"
+        aria-label="Bật lọc tháng"
+        title="Bật lọc tháng"
+      >
+        <Funnel className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
 
   return (
     <>
@@ -554,9 +625,10 @@ export default function AdminElectricityPage() {
         {activeTab === "records" ? (
           <PaymentTable
             headings={["Phòng", "Số sinh viên", "Tháng", "Năm", "Chỉ số cũ", "Chỉ số mới", "Số điện", "Tổng tiền"]}
+            headerContentByIndex={{ 2: monthHeader }}
             columnWidths={recordTableColumnWidths}
             emptyMessage="Không có chỉ số điện phù hợp với bộ lọc."
-            rows={records.map((record) => ({
+            rows={visibleRecords.map((record) => ({
               key: record.id,
               cells: [
                 <span className="font-bold text-[#1f3152]">{record.room}</span>,
@@ -573,6 +645,7 @@ export default function AdminElectricityPage() {
         ) : (
           <PaymentTable
             headings={["MSSV", "Họ tên", "Phòng", "Tháng", "Tiền điện", "Hạn thanh toán", "Trạng thái", "Hành động"]}
+            headerContentByIndex={{ 3: monthHeader }}
             columnWidths={billTableColumnWidths}
             emptyMessage="Không có hóa đơn điện phù hợp với bộ lọc."
             rows={visibleBills.map((bill) => ({
@@ -600,6 +673,65 @@ export default function AdminElectricityPage() {
           />
         )}
       </motion.section>
+
+      {isMonthFilterOpen && monthFilterMenuPosition
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[68]"
+              onClick={() => setIsMonthFilterOpen(false)}
+              onWheel={handleFilterOverlayWheel}
+            >
+              <div
+                className="absolute w-[320px] -translate-x-1/2 overflow-hidden rounded-[22px] border border-[#d7e2f2] bg-white text-left shadow-[0_18px_38px_rgba(15,23,42,0.18)]"
+                style={{ top: monthFilterMenuPosition.top, left: monthFilterMenuPosition.left }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 p-2.5">
+                  {monthOptions.map((month) => {
+                    const value = String(month);
+                    const isSelected = draftMonthFilter === value;
+
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setDraftMonthFilter(value)}
+                        className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-[10px] font-medium tracking-normal text-[#1f4a8d] transition hover:bg-[#f5f9ff]"
+                      >
+                        <span
+                          className={`flex h-4 w-4 items-center justify-center rounded-full border ${
+                            isSelected ? "border-[#244cb8] bg-[#244cb8]/10" : "border-[#cfd9e8] bg-white"
+                          }`}
+                        >
+                          <span className={`h-2 w-2 rounded-full ${isSelected ? "bg-[#244cb8]" : "bg-transparent"}`} />
+                        </span>
+                        <span>{value.padStart(2, "0")}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center justify-between border-t border-[#dbe5f3] px-2.5 py-2">
+                  <button
+                    type="button"
+                    onClick={resetMonthFilter}
+                    className="text-[10px] font-medium tracking-normal text-[#b2b8c3] transition hover:text-[#7c8799]"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyMonthFilter}
+                    className="rounded-xl bg-[#0c4f97] px-3 py-1.5 text-[10px] font-semibold tracking-normal text-white shadow-[0_8px_16px_rgba(12,79,151,0.22)] transition hover:brightness-110"
+                  >
+                    OK
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {isPriceModalOpen
         ? createPortal(
@@ -680,11 +812,11 @@ export default function AdminElectricityPage() {
                   </label>
                   <label className="block">
                     <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Tháng</span>
-                    <input type="month" value={form.month} min={nextAvailableElectricityMonth} onChange={(event) => setForm((current) => ({ ...current, month: event.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10" />
+                    <input type="month" value={effectiveFormMonth} min={nextAvailableElectricityMonth} onChange={(event) => setForm((current) => ({ ...current, month: event.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10" />
                   </label>
                   <label className="block">
                     <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Chỉ số cũ</span>
-                    <input type="number" min="0" step="1" value={form.oldIndex} readOnly={autoOldIndex !== null} onChange={(event) => setForm((current) => ({ ...current, oldIndex: event.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10" />
+                    <input type="number" min="0" step="1" value={effectiveOldIndex} readOnly={autoOldIndex !== null} onChange={(event) => setForm((current) => ({ ...current, oldIndex: event.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10" />
                   </label>
                   <label className="block">
                     <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Chỉ số mới</span>
@@ -780,11 +912,15 @@ export default function AdminElectricityPage() {
 function PaymentTable({
   headings,
   columnWidths,
+  headerContent,
+  headerContentByIndex,
   rows,
   emptyMessage,
 }: {
   headings: string[];
   columnWidths?: string[];
+  headerContent?: Partial<Record<string, ReactNode>>;
+  headerContentByIndex?: Partial<Record<number, ReactNode>>;
   rows: Array<{ key: number; cells: ReactNode[] }>;
   emptyMessage: string;
 }) {
@@ -801,9 +937,9 @@ function PaymentTable({
           ) : null}
           <thead>
             <tr className="bg-[linear-gradient(180deg,#f7faff_0%,#eef4ff_100%)]">
-              {headings.map((heading) => (
+              {headings.map((heading, index) => (
                 <th key={heading} className="px-3 py-3.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
-                  {heading}
+                  {headerContentByIndex?.[index] ?? headerContent?.[heading] ?? heading}
                 </th>
               ))}
             </tr>

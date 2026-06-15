@@ -160,8 +160,10 @@ export default function AdminRoomFeePage() {
   };
 
   useEffect(() => {
-    void loadBills();
-    void loadSettings();
+    const initialLoadId = window.setTimeout(() => {
+      void loadBills();
+      void loadSettings();
+    }, 0);
 
     if (typeof window !== "undefined") {
       window.addEventListener("ktx-payments-updated", loadBills);
@@ -169,6 +171,7 @@ export default function AdminRoomFeePage() {
     }
 
     return () => {
+      window.clearTimeout(initialLoadId);
       if (typeof window !== "undefined") {
         window.removeEventListener("ktx-payments-updated", loadBills);
         window.removeEventListener("focus", loadBills);

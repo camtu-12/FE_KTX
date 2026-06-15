@@ -28,7 +28,7 @@ export default function StudentLayout() {
         if (res?.exists && res.student?.full_name) {
           setDisplayName(res.student.full_name);
         }
-      } catch (err) {
+      } catch {
         // ignore
       }
     })();
