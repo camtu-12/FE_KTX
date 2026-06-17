@@ -67,8 +67,7 @@ export async function getMyOccupancyFromBackend(email: string): Promise<MyRoom |
     !myRegistration ||
     myRegistration.status !== "approved" ||
     !myRegistration.assigned_room_id ||
-    !myRegistration.bedId ||
-    myRegistration.bed_approval_status !== "approved"
+    !myRegistration.bedId
   ) {
     return null;
   }
@@ -93,8 +92,7 @@ export async function getMyOccupancyFromBackend(email: string): Promise<MyRoom |
     if (
       registration.status !== "approved" ||
       registration.assigned_room_id !== room.id ||
-      !registration.bedId ||
-      registration.bed_approval_status !== "approved"
+      !registration.bedId
     ) {
       return;
     }

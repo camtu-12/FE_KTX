@@ -40,8 +40,11 @@ const adminMenu: MenuItem[] = [
   },
   {
     label: "Quản lý đăng ký",
-    to: "/admin/registrations",
     icon: ClipboardList,
+    children: [
+      { label: "Đợt đăng ký", to: "/admin/registration-periods" },
+      { label: "Danh sách đơn", to: "/admin/registrations" },
+    ],
   },
   {
     label: "Phân phòng",
@@ -49,7 +52,7 @@ const adminMenu: MenuItem[] = [
     icon: DoorOpen,
   },
   {
-    label: "Phân giường",
+    label: "Quản lý giường",
     to: "/admin/bed-management",
     icon: BedSingle,
   },
@@ -108,7 +111,7 @@ const studentMenu: MenuItem[] = [
   },
   {
     label: "Đăng ký nội trú",
-    to: "/student/registration",
+    to: "/student/room-status",
     icon: FilePenLine,
   },
   {
@@ -126,9 +129,12 @@ const studentMenu: MenuItem[] = [
 export default function Sidebar({ role }: SidebarProps) {
   const items = role === "admin" ? adminMenu : studentMenu;
   const location = useLocation();
+  const isRegistrationGroupActive =
+    location.pathname === "/admin/registrations" || location.pathname === "/admin/registration-periods";
   const isViolationGroupActive =
     location.pathname === "/admin/violations" || location.pathname === "/admin/violation-types";
   const isPaymentGroupActive = location.pathname.startsWith("/admin/payments");
+  const [isRegistrationGroupOpen, setIsRegistrationGroupOpen] = useState(isRegistrationGroupActive);
   const [isViolationGroupOpen, setIsViolationGroupOpen] = useState(isViolationGroupActive);
   const [isPaymentGroupOpen, setIsPaymentGroupOpen] = useState(isPaymentGroupActive);
 
@@ -145,14 +151,19 @@ export default function Sidebar({ role }: SidebarProps) {
             const Icon = item.icon;
 
             if (item.children) {
+              const isRegistrationGroup = item.label === "Quản lý đăng ký";
               const isPaymentGroup = item.label === "Quản lý thanh toán";
               const isViolationGroup = item.label === "Quản lý vi phạm";
-              const isOpen = isViolationGroup
-                ? isViolationGroupOpen || isViolationGroupActive
-                : isPaymentGroup
-                  ? isPaymentGroupOpen || isPaymentGroupActive
-                  : false;
-              const isGroupActive = item.children.some((child) => child.to === location.pathname) || (isPaymentGroup && isPaymentGroupActive);
+              const isOpen = isRegistrationGroup
+                ? isRegistrationGroupOpen || isRegistrationGroupActive
+                : isViolationGroup
+                  ? isViolationGroupOpen || isViolationGroupActive
+                  : isPaymentGroup
+                    ? isPaymentGroupOpen || isPaymentGroupActive
+                    : false;
+              const isGroupActive =
+                item.children.some((child) => child.to === location.pathname) ||
+                (isPaymentGroup && isPaymentGroupActive);
               const ChevronIcon = isOpen ? ChevronUp : ChevronDown;
 
               return (
@@ -160,6 +171,9 @@ export default function Sidebar({ role }: SidebarProps) {
                   <button
                     type="button"
                     onClick={() => {
+                      if (isRegistrationGroup) {
+                        setIsRegistrationGroupOpen((current) => !current);
+                      }
                       if (isViolationGroup) {
                         setIsViolationGroupOpen((current) => !current);
                       }

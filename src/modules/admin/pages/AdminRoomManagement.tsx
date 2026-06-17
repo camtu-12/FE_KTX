@@ -30,6 +30,7 @@ import type { Building } from "../../../types/building";
 import BunkBedCard, { type BunkBedGroup } from "../components/BunkBedCard";
 import BedStudentDetailModal from "../components/BedStudentDetailModal";
 import MaintenanceWizardModal, { type MaintenanceWizardState } from "../components/MaintenanceWizardModal";
+import { formatDate as formatPreviewDate } from "../../../utils/dateFormat";
 
 type RoomStatus = "AVAILABLE" | "FULL" | "MAINTENANCE";
 type BedStatus = "ACTIVE" | "MAINTENANCE";
@@ -162,13 +163,6 @@ function getApiErrorMessage(error: unknown, fallback: string) {
   }
 
   return fallback;
-}
-
-function formatPreviewDate(value?: string | null) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 function getBedPositionLabel(position?: BedPosition | BedDetail["position"] | null) {

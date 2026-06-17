@@ -167,6 +167,14 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
   const student = readRecord(rawRecord?.student, dataRecord?.student, registration.student) ?? {};
   const account = readRecord(student.account, rawRecord?.account, dataRecord?.account, registration.account) ?? {};
   const existingFormData = readRecord(registration.formData, rawRecord?.formData, dataRecord?.formData) ?? {};
+  const registrationPeriod = readRecord(
+    registration.registration_period,
+    registration.period,
+    rawRecord?.registration_period,
+    rawRecord?.period,
+    dataRecord?.registration_period,
+    dataRecord?.period,
+  ) ?? {};
 
   const studentCode = firstDefinedString(existingFormData.mssv, account.student_code, student.student_code);
   const fullName = firstDefinedString(existingFormData.fullName, account.full_name, student.full_name);
@@ -309,6 +317,21 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
     occupancy_reason: firstDefinedString(registration.occupancy_reason) || null,
     check_in_date: firstDefinedString(registration.check_in_date) || null,
     check_out_date: firstDefinedString(registration.check_out_date) || null,
+    priority_criteria: Array.isArray(registration.priority_criteria)
+      ? (registration.priority_criteria as RegistrationRequest["priority_criteria"])
+      : [],
+    auto_decision: (registration.auto_decision ?? null) as RegistrationRequest["auto_decision"],
+    auto_decision_reason: firstDefinedString(registration.auto_decision_reason) || null,
+    registration_period_id: toNumberOrNull(registration.registration_period_id) ?? null,
+    bed_selection_days: toNumberOrNull(registration.bed_selection_days ?? registrationPeriod.bed_selection_days) ?? null,
+    room_assigned_at: firstDefinedString(registration.room_assigned_at, registration.occupancy_created_at) || null,
+    channel: (registration.channel as 'main' | 'rolling' | null) ?? null,
+    period_name: firstDefinedString(registration.period_name) || null,
+    period_status: firstDefinedString(registration.period_status) || null,
+    registration_type: firstDefinedString(registration.registration_type) || null,
+    top_priority_tier: toNumberOrNull(registration.top_priority_tier) ?? null,
+    total_priority_score: toNumberOrNull(registration.total_priority_score) ?? null,
+    approved_at: firstDefinedString(registration.approved_at) || null,
   };
 };
 
@@ -431,8 +454,9 @@ export const updateRegistrationStatus = async ({
       ? await regApi.approveRegistration(id)
       : await regApi.rejectRegistration(id, rejectionReason ?? "");
 
+  // id=0 có nghĩa BE trả về message-only (không có registration data) → bỏ qua
   const updated = normalizeRegistrationResponse(response);
-  if (updated) {
+  if (updated && updated.id > 0) {
     dispatchRegistrationRequestsUpdated();
     return updated;
   }
@@ -582,6 +606,29 @@ export const forceCheckoutForRegistration = async (id: number, reason: string): 
   return updated;
 };
 
+export const patchAutoDecision = async (
+  id: number,
+  decision: 'approve' | 'reject' | 'review',
+  reason?: string,
+): Promise<RegistrationRequest | null> => {
+  const updated = normalizeRegistrationResponse(await regApi.patchAutoDecision(id, decision, reason));
+  return updated;
+};
+
+export const confirmSingleRegistration = async (id: number): Promise<RegistrationRequest | null> => {
+  const updated = normalizeRegistrationResponse(await regApi.confirmSingle(id));
+  dispatchRegistrationRequestsUpdated();
+  return updated;
+};
+
+export const confirmBatchRegistrations = async (
+  periodId: number,
+): Promise<{ confirmed: number; skipped_review: number; skipped_null: number }> => {
+  const result = await regApi.confirmBatch(periodId);
+  dispatchRegistrationRequestsUpdated();
+  return result;
+};
+
 export const submitRegistration = async (formData: FormData): Promise<RegistrationRequest | null> => {
   const res = await regApi.submitRegistration(formData);
   const result = normalizeRegistrationResponse(res);
@@ -594,6 +641,20 @@ export const submitRegistration = async (formData: FormData): Promise<Registrati
 export const getMyRegistration = async (email: string): Promise<RegistrationRequest | null> => {
   const res = await regApi.getMyRegistration(email);
   return normalizeRegistrationRequest(extract<unknown>(res));
+};
+
+export const verifyStudentPriority = async (
+  id: number,
+  status: "verified" | "rejected",
+  note?: string,
+): Promise<{ id: number; status: string; verified_at: string | null; top_priority_tier: number; total_priority_score: number }> => {
+  const res = await fetch(`${API_BASE}/api/admin/student-priority/${id}/verify`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status, note }),
+  });
+  if (!res.ok) throw new Error("verify failed");
+  return res.json();
 };
 
 export default {

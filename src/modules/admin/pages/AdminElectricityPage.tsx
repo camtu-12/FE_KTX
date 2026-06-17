@@ -18,6 +18,7 @@ import {
 } from "../../../api/paymentApi";
 import { getRooms } from "../../../api/registrationService";
 import type { DormRoom } from "../../../types/dormRoom";
+import { formatDate } from "../../../utils/dateFormat";
 
 type TabKey = "records" | "bills";
 
@@ -94,20 +95,6 @@ const formatMonth = (value: string) => {
   const [year, month] = value.split("-");
 
   return month && year ? `${month}/${year}` : value;
-};
-
-const formatDate = (value: string) => {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value || "-";
-  }
-
-  return date.toLocaleDateString("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
 };
 
 const formatMoneyInput = (value: string) => {

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import type { BedStudent } from "../../../api/roomApi";
 import StudentMiniInfo from "./StudentMiniInfo";
+import { formatDate } from "../../../utils/dateFormat";
 
 type StudentRecord = Record<string, unknown>;
 
@@ -104,12 +105,6 @@ function isEmptyValue(value: unknown) {
   if (Array.isArray(value)) return value.length === 0;
   if (typeof value === "object") return Object.keys(value as StudentRecord).length === 0;
   return false;
-}
-
-function formatDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 function formatValue(value: unknown): string {

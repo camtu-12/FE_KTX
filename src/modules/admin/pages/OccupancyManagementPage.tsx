@@ -16,6 +16,7 @@ import type { RegistrationRequest } from "../data/registrationRequests";
 import type { DormRoom } from "../../../types/dormRoom";
 import { listViolationTypes, type ViolationType } from "../../../api/violationTypeApi";
 import { createViolation } from "../../../api/violationApi";
+import { formatDate } from "../../../utils/dateFormat";
 
 type OccupancyStatusFilter = OccupancyStatus | "ALL";
 
@@ -60,20 +61,6 @@ const statusOptions: Array<{ value: OccupancyStatusFilter; label: string }> = [
 const getStatusMeta = (status: Occupancy["status"]) => statusMeta[status] ?? statusMeta.ACTIVE;
 const canAddViolation = (occupancy: Occupancy | null | undefined) =>
   occupancy?.status === "ACTIVE" || occupancy?.status === "CHECKOUT_REQUESTED";
-
-const formatDate = (iso: string) => {
-  const date = new Date(iso);
-
-  if (Number.isNaN(date.getTime())) {
-    return iso;
-  }
-
-  return date.toLocaleDateString("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-};
 
 const uniqueSorted = <T extends string | number>(items: T[]) => {
   return Array.from(new Set(items)).sort((a, b) => String(a).localeCompare(String(b), "vi-VN", { numeric: true }));
@@ -162,8 +149,7 @@ const createOccupancyRowsFromApi = (
       return (
         registration.status === "approved" &&
         Boolean(registration.assigned_room_id) &&
-        Boolean(registration.bedId) &&
-        registration.bed_approval_status === "approved"
+        Boolean(registration.bedId)
       );
     })
     .map((registration) => {

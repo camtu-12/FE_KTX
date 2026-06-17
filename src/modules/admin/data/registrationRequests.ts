@@ -1,5 +1,6 @@
 export type RegistrationStatus = "submitted" | "approved" | "rejected";
 export type RegistrationFilterStatus = "all" | RegistrationStatus;
+export type AutoDecision = "approve" | "reject" | "review" | null;
 export type RegistrationDocumentField = "portraitPhoto" | "cccdFrontPhoto" | "cccdBackPhoto";
 export type BedApprovalStatus = "pending" | "approved" | "rejected";
 
@@ -60,6 +61,26 @@ export type RegistrationRequest = {
       email?: string;
     };
   };
+  priority_criteria?: Array<{
+    id: number;
+    criteria_id: number;
+    code: string;
+    name: string;
+    evidence_urls: string[];
+    status: string;
+  }>;
+  auto_decision?: AutoDecision;
+  auto_decision_reason?: string | null;
+  registration_period_id?: number | null;
+  bed_selection_days?: number | null;
+  room_assigned_at?: string | null;
+  channel?: 'main' | 'rolling' | null;
+  period_name?: string | null;
+  period_status?: string | null;
+  registration_type?: string | null;
+  top_priority_tier?: number | null;
+  total_priority_score?: number | null;
+  approved_at?: string | null;
 };
 
 const createPreviewSvg = (title: string, subtitle: string, accent: string) =>

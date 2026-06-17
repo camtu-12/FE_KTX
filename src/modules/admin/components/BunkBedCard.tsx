@@ -2,6 +2,7 @@ import { ArrowDownToLine, ArrowUpToLine, BedDouble, CheckCircle2, Check, Eye, Pe
 import type { ReactNode } from "react";
 import type { BedDetail } from "../../../api/roomApi";
 import StudentMiniInfo from "./StudentMiniInfo";
+import { formatDate } from "../../../utils/dateFormat";
 
 export type BunkBedGroup = {
   pairNumber: number;
@@ -60,13 +61,6 @@ const statusMeta: Record<
     emptyText: "Giường đang tạm ngưng sử dụng",
   },
 };
-
-function formatDate(value?: string | null) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
-}
 
 function formatExpectedReturnDate(value?: string | null) {
   return value ? formatDate(value) : "Chưa xác định";

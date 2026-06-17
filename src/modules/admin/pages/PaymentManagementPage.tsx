@@ -19,6 +19,7 @@ import {
 } from "../../../api/paymentApi";
 import { getRooms } from "../../../api/registrationService";
 import type { DormRoom } from "../../../types/dormRoom";
+import { formatDate } from "../../../utils/dateFormat";
 
 type TabKey = "room" | "electricity";
 type ConfirmTarget =
@@ -69,13 +70,6 @@ const formatMoneyInput = (value: string) => {
 
 const isPositiveInteger = (value: number) => Number.isInteger(value) && value > 0;
 const isNonNegativeInteger = (value: number) => Number.isInteger(value) && value >= 0;
-
-const formatDate = (value: string) => {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
-};
 
 const formatRoomName = (room: { buildingCode?: string; roomNumber?: string } | null) =>
   room ? `${room.buildingCode ?? ""}${room.roomNumber ?? ""}` : "-";

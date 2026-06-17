@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import { getRegistrations } from "../../../api/registrationService";
 import { listRooms, type RoomApi } from "../../../api/roomApi";
+import { autoAssignRooms, confirmRoomProposals } from "../../../api/registrationApi";
 import type { RegistrationRequest } from "../data/registrationRequests";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import type { DormRoom } from "../../../types/dormRoom";
@@ -92,6 +93,8 @@ export default function AssignRoomPage() {
   const [requests, setRequests] = useState<RegistrationRequest[] | undefined>(() => undefined);
   const [rooms, setRooms] = useState<DormRoom[]>([]);
   const [toast, setToast] = useState<ToastState>(null);
+  const [isAutoAssigning, setIsAutoAssigning] = useState(false);
+  const [isConfirmingProposals, setIsConfirmingProposals] = useState(false);
 
   const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilter>("all");
   const [sortOrder, setSortOrder] = useState<StudentSortOrder>("desc");
@@ -267,6 +270,34 @@ export default function AssignRoomPage() {
     return () => window.clearTimeout(timerId);
   }, [toast]);
 
+  const handleAutoAssign = async () => {
+    setIsAutoAssigning(true);
+    try {
+      const result = await autoAssignRooms();
+      const nextRequests = await getRegistrations();
+      setRequests(nextRequests);
+      setToast({ kind: "success", message: `Đề xuất xong: ${result.assigned} sinh viên được xếp phòng.` });
+    } catch {
+      setToast({ kind: "error", message: "Phân phòng tự động thất bại. Vui lòng thử lại." });
+    } finally {
+      setIsAutoAssigning(false);
+    }
+  };
+
+  const handleConfirmProposals = async () => {
+    setIsConfirmingProposals(true);
+    try {
+      const result = await confirmRoomProposals();
+      const nextRequests = await getRegistrations();
+      setRequests(nextRequests);
+      setToast({ kind: "success", message: `Đã xác nhận ${result.confirmed} phòng đề xuất.` });
+    } catch {
+      setToast({ kind: "error", message: "Xác nhận phòng đề xuất thất bại. Vui lòng thử lại." });
+    } finally {
+      setIsConfirmingProposals(false);
+    }
+  };
+
   const approvedStudents = useMemo(() => {
     if (!requests) return [];
     return requests.filter((request) => request.status === "approved");
@@ -277,12 +308,14 @@ export default function AssignRoomPage() {
 
     return approvedStudents
       .filter((student) => {
+        const isConfirmed = student.occupancy_status === "ROOM_CONFIRMED" || student.occupancy_status === "ACTIVE";
+
         if (assignmentFilter === "assigned") {
-          if (!student.assigned_room_id) return false;
+          if (!isConfirmed) return false;
         }
 
         if (assignmentFilter === "unassigned") {
-          if (student.assigned_room_id) return false;
+          if (isConfirmed) return false;
         }
 
         if (genderFilter !== "all" && getGenderFilterValue(student.formData.gender) !== genderFilter) {
@@ -310,8 +343,11 @@ export default function AssignRoomPage() {
     return map;
   }, [rooms]);
 
-  const assignedCount = approvedStudents.filter((student) => student.assigned_room_id).length;
-  const unassignedCount = approvedStudents.length - assignedCount;
+  const assignedCount = approvedStudents.filter(
+    (s) => s.occupancy_status === "ROOM_CONFIRMED" || s.occupancy_status === "ACTIVE",
+  ).length;
+  const proposedCount = approvedStudents.filter((s) => s.occupancy_status === "PROPOSED").length;
+  const unassignedCount = approvedStudents.length - assignedCount - proposedCount;
 
   const handleOpenFilter = () => {
     setDraftAssignmentFilter(assignmentFilter);
@@ -435,12 +471,41 @@ export default function AssignRoomPage() {
         : null}
 
       <div className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
-        <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">Phân phòng</h1>
-        <p className="mt-1 text-sm text-[#62789f]">Danh sách sinh viên đã được duyệt đơn và thao tác chọn phòng.</p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">Phân phòng</h1>
+            <p className="mt-1 text-sm text-[#62789f]">Danh sách sinh viên đã được duyệt đơn và thao tác chọn phòng.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {proposedCount > 0 ? (
+              <button
+                type="button"
+                disabled={isConfirmingProposals || isAutoAssigning}
+                onClick={() => void handleConfirmProposals()}
+                className="auth-btn-gloss inline-flex items-center gap-2 whitespace-nowrap rounded-full bg-[linear-gradient(135deg,#16784b_0%,#0f5c39_100%)] px-5 py-2.5 text-[14px] font-semibold text-white shadow-[0_14px_28px_rgba(22,120,75,0.28)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
+              >
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                <span className="auth-btn-gloss__content">
+                  {isConfirmingProposals ? "Đang xác nhận…" : `Xác nhận tất cả (${proposedCount})`}
+                </span>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              disabled={isAutoAssigning || isConfirmingProposals}
+              onClick={() => void handleAutoAssign()}
+              className="auth-btn-gloss inline-flex items-center gap-2 whitespace-nowrap rounded-full bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-5 py-2.5 text-[14px] font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
+            >
+              <span className="auth-btn-gloss__content">
+                {isAutoAssigning ? "Đang phân phòng…" : "Phân phòng tự động"}
+              </span>
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <article className="flex flex-col items-center rounded-[24px] border border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <article className="flex flex-col items-center rounded-[24px] border border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#7c8fb5]">Đã duyệt</p>
           <p className="mt-3 text-[2rem] font-extrabold leading-none text-[#16784b]">{approvedStudents.length}</p>
         </article>
@@ -448,7 +513,11 @@ export default function AssignRoomPage() {
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#7c8fb5]">Chưa phân phòng</p>
           <p className="mt-3 text-[2rem] font-extrabold leading-none text-[#9b6b00]">{unassignedCount}</p>
         </article>
-          <article className="flex flex-col items-center rounded-[24px] border border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
+        <article className="flex flex-col items-center rounded-[24px] border border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#7c8fb5]">Đề xuất</p>
+          <p className="mt-3 text-[2rem] font-extrabold leading-none text-[#7c3fb0]">{proposedCount}</p>
+        </article>
+        <article className="flex flex-col items-center rounded-[24px] border border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#7c8fb5]">Đã phân phòng</p>
           <p className="mt-3 text-[2rem] font-extrabold leading-none text-[#244cb8]">{assignedCount}</p>
         </article>
@@ -456,13 +525,14 @@ export default function AssignRoomPage() {
 
       <div className="flex flex-col space-y-3 sm:space-y-4">
         <div className="overflow-x-auto rounded-[22px] border border-[#dde7f5] bg-white shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
-          <table className="min-w-[740px] w-full table-fixed border-separate border-spacing-0">
+          <table className="min-w-[860px] w-full table-fixed border-separate border-spacing-0">
             <colgroup>
+              <col className="w-[15%]" />
               <col className="w-[18%]" />
-              <col className="w-[22%]" />
+              <col className="w-[11%]" />
               <col className="w-[16%]" />
-              <col className="w-[18%]" />
-              <col className="w-[26%]" />
+              <col className="w-[17%]" />
+              <col className="w-[23%]" />
             </colgroup>
             <thead>
               <tr className="bg-[linear-gradient(180deg,#f7faff_0%,#eef4ff_100%)]">
@@ -491,17 +561,18 @@ export default function AssignRoomPage() {
                 <th className="px-3 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
                   Trạng thái
                 </th>
+                <th className="px-3 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                  Phòng đề xuất
+                </th>
                 <th className="relative z-30 px-3 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
-                    <div className="inline-flex items-center justify-center gap-2">
+                  <div className="inline-flex items-center justify-center gap-2">
                     <span>Hành động</span>
                     <button
                       ref={filterButtonRef}
                       type="button"
                       onClick={isFilterOpen ? () => setIsFilterOpen(false) : handleOpenFilter}
-                      className={`flex items-center justify-center transition   ${
-                        assignmentFilter !== "all"
-                           ? "text-[#244cb8]"
-                            : "text-[#6f84ad] hover:text-[#244cb8]"
+                      className={`flex items-center justify-center transition ${
+                        assignmentFilter !== "all" ? "text-[#244cb8]" : "text-[#6f84ad] hover:text-[#244cb8]"
                       }`}
                       title="Bật lọc"
                     >
@@ -513,8 +584,10 @@ export default function AssignRoomPage() {
             </thead>
             <tbody>
               {visibleStudents.map((student) => {
-                const isAssigned = Boolean(student.assigned_room_id);
-                const roomName = student.assigned_room_id ? roomNameById.get(student.assigned_room_id) : null;
+                const isConfirmed = student.occupancy_status === "ROOM_CONFIRMED" || student.occupancy_status === "ACTIVE";
+                const isProposed = student.occupancy_status === "PROPOSED";
+                const confirmedRoomName = isConfirmed && student.assigned_room_id ? roomNameById.get(student.assigned_room_id) : null;
+                const proposedRoomName = isProposed && student.assigned_room_id ? roomNameById.get(student.assigned_room_id) : null;
 
                 return (
                   <tr key={student.id} className="transition-colors hover:bg-[#f8fbff]">
@@ -529,27 +602,41 @@ export default function AssignRoomPage() {
                     </td>
                     <td className="border-t border-[#e7eef9] px-3 py-2.5 text-center text-[15px]">
                       <span
-                        className={`inline-flex items-center rounded-full border px-3 py-1 text-[14px] font-semibold ${
-                          isAssigned
+                        className={`inline-flex items-center rounded-full border px-3 py-1 text-[13px] font-semibold ${
+                          isConfirmed
                             ? "border-[#b9e6c7] bg-[#effcf3] text-[#16784b]"
                             : "border-[#f3dd9c] bg-[#fff8df] text-[#9b6b00]"
                         }`}
                       >
-                        {isAssigned ? `Đã phân phòng${roomName ? `: ${roomName}` : ""}` : "Chưa phân phòng"}
+                        {isConfirmed
+                          ? confirmedRoomName
+                            ? `Đã phân: ${confirmedRoomName}`
+                            : "Đã phân phòng"
+                          : "Chưa phân phòng"}
                       </span>
                     </td>
-                    <td className="border-t border-[#e7eef9] px-3 py-2.5 text-center ">
+                    <td className="border-t border-[#e7eef9] px-3 py-2.5 text-center text-[14px]">
+                      {isProposed && proposedRoomName ? (
+                        <span className="inline-flex items-center rounded-full border border-[#d4b0f0] bg-[#f6eeff] px-3 py-1 text-[13px] font-semibold text-[#7c3fb0]">
+                          {proposedRoomName}
+                        </span>
+                      ) : (
+                        <span className="text-[#b0bdd4]">—</span>
+                      )}
+                    </td>
+                    <td className="border-t border-[#e7eef9] px-3 py-2.5 text-center">
                       <button
                         type="button"
-                        disabled={isAssigned}
                         onClick={() => navigate(`/admin/assign-room/${student.id}`)}
-                        className={`auth-btn-gloss inline-flex min-w-[108px] flex-nowrap items-center justify-center whitespace-nowrap rounded-full px-4 py-2 text-[13px] font-semibold transition duration-200 ${
-                          isAssigned
-                            ? "border border-[#d2def0] bg-[linear-gradient(135deg,#edf4ff_0%,#dfeaff_100%)] text-[#7f8da8] shadow-[0_10px_18px_rgba(36,76,184,0.10)] disabled:opacity-100"
+                        className={`auth-btn-gloss inline-flex min-w-[100px] flex-nowrap items-center justify-center whitespace-nowrap rounded-full px-4 py-2 text-[13px] font-semibold transition duration-200 ${
+                          isConfirmed
+                            ? "border border-[#c8d8ef] bg-[linear-gradient(135deg,#f0f5ff_0%,#e4edff_100%)] text-[#5a78b8] shadow-[0_6px_14px_rgba(36,76,184,0.08)] hover:-translate-y-0.5 hover:brightness-105"
                             : "bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] hover:-translate-y-0.5 hover:brightness-110"
                         }`}
                       >
-                        <span className="auth-btn-gloss__content">{isAssigned ? "Đã phân phòng" : "Chọn phòng"}</span>
+                        <span className="auth-btn-gloss__content">
+                          {isConfirmed ? "Đổi phòng" : "Chọn phòng"}
+                        </span>
                       </button>
                     </td>
                   </tr>

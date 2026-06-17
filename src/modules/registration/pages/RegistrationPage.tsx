@@ -1,36 +1,49 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   AlertCircle,
-  BedSingle,
+  ArrowLeft,
+  ArrowRight,
+  CalendarDays,
   CheckCircle,
   Clock,
+  FileCheck,
+  GraduationCap,
   Home,
   ImagePlus,
+  Loader2,
   LoaderCircle,
+  Paperclip,
+  Receipt,
+  Shield,
+  ShieldX,
+  Star,
   UserCircle2,
   Users,
+  X,
 } from "lucide-react";
 import {
-  getEffectiveBedApprovalStatus,
   getLatestRegistrationByEmail,
   submitRegistration,
 } from "../../../api/registrationService";
-import { listRooms, type RoomApi } from "../../../api/roomApi";
+import { checkEligibility, getRegistrationPeriods, getPriorityCriteria, type EligibilityResult, type RegistrationPeriodData } from "../../../api/registrationApi";
 import { checkStudentCodeExists } from "../../auth/services/auth.api";
 import { useAuthStore } from "../../auth/store";
 import type { RegistrationRequest } from "../../admin/data/registrationRequests";
-import ProgressStep from "../components/ProgressStep";
+import { formatDate } from "../../../utils/dateFormat";
 
 type RegistrationStatus = "unregistered" | "submitted" | "approved" | "rejected" | "completed";
-type ProgressStatus = "pending" | "approved" | "assigned_room" | "selected_bed" | "completed";
 type DocumentField = "portraitPhoto" | "cccdFrontPhoto" | "cccdBackPhoto";
-type RegistrationWithAssignment = RegistrationRequest & {
-  assigned_room_id?: number | null;
-  building_code?: string;
-  room_number?: number | string;
-};
+
+interface PriorityCriteria {
+  id: number;
+  code: string;
+  name: string;
+  description?: string;
+  priority_score?: number;
+  tier?: number;
+}
 
 interface FormData {
   mssv: string;
@@ -47,10 +60,13 @@ interface FormData {
   cccdIssueDate: string;
   cccdIssuePlace: string;
   address: string;
+  current_address: string;
   father_name: string;
+  father_birth_year: string;
   father_phone: string;
   father_job: string;
   mother_name: string;
+  mother_birth_year: string;
   mother_phone: string;
   mother_job: string;
   familyContactAddress: string;
@@ -61,22 +77,6 @@ interface FormData {
   dormEndDate: string;
 }
 
-function getCurrentStep(status: string): number {
-  switch (status) {
-    case "pending":
-      return 1;
-    case "approved":
-      return 2;
-    case "assigned_room":
-      return 3;
-    case "selected_bed":
-      return 4;
-    case "completed":
-      return 5;
-    default:
-      return 1;
-  }
-}
 
 const initialFormData: FormData = {
   mssv: "",
@@ -93,10 +93,13 @@ const initialFormData: FormData = {
   cccdIssueDate: "",
   cccdIssuePlace: "",
   address: "",
+  current_address: "",
   father_name: "",
+  father_birth_year: "",
   father_phone: "",
   father_job: "",
   mother_name: "",
+  mother_birth_year: "",
   mother_phone: "",
   mother_job: "",
   familyContactAddress: "",
@@ -184,11 +187,13 @@ const relationshipOptions = [
   { value: "other", label: "Khác" },
 ];
 
-const dateFieldNames: Array<keyof FormData> = ["birthDate", "cccdIssueDate", "dormStartDate", "dormEndDate"];
+const dateFieldNames: Array<keyof FormData> = ["birthDate", "cccdIssueDate"];
 
 const dateRegex = /^\d{2}\/\d{2}\/\d{4}$/;
 
-const formFieldLabels: Record<keyof FormData, string> = {
+type RequiredRegistrationField = Exclude<keyof FormData, "dormStartDate" | "dormEndDate">;
+
+const formFieldLabels: Record<RequiredRegistrationField, string> = {
   mssv: "MSSV",
   fullName: "họ và tên",
   birthDate: "ngày sinh",
@@ -203,18 +208,19 @@ const formFieldLabels: Record<keyof FormData, string> = {
   cccdIssueDate: "ngày cấp",
   cccdIssuePlace: "nơi cấp",
   address: "địa chỉ thường trú",
+  current_address: "địa chỉ hiện tại",
   father_name: "họ tên cha",
+  father_birth_year: "năm sinh cha",
   father_phone: "SĐT cha",
   father_job: "nghề nghiệp cha",
   mother_name: "họ tên mẹ",
+  mother_birth_year: "năm sinh mẹ",
   mother_phone: "SĐT mẹ",
   mother_job: "nghề nghiệp mẹ",
   familyContactAddress: "địa chỉ liên hệ cha/mẹ",
   relationName: "người liên hệ khẩn cấp",
   relationPhone: "SĐT người liên hệ",
   relationship: "quan hệ",
-  dormStartDate: "từ ngày",
-  dormEndDate: "đến ngày",
 };
 
 const commitmentSections = [
@@ -299,35 +305,48 @@ const buildImageUrl = (path?: string): string => {
 
 export default function RegistrationPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isResubmit = searchParams.get("resubmit") === "true";
+  const [step, setStep] = useState<"info" | "form">(isResubmit ? "form" : "info");
   const studentEmail = useAuthStore((state) => state.user?.email ?? "");
   const studentCodeFromAuth = useAuthStore((state) => {
     const user = state.user;
     return user ? user.student_code ?? user.studentCode ?? "" : "";
   });
-  const [registration, setRegistration] = useState<RegistrationWithAssignment | null>(null);
+  const [, setRegistration] = useState<RegistrationRequest | null>(null);
   const [status, setStatus] = useState<RegistrationStatus>("unregistered");
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [documentFiles, setDocumentFiles] = useState<Record<DocumentField, File | null>>(initialDocumentFiles);
   const [draggingDocumentField, setDraggingDocumentField] = useState<DocumentField | null>(null);
-  const [rejectionReason, setRejectionReason] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isCheckingRegistration, setIsCheckingRegistration] = useState(false);
   const [hasLoadedRegistration, setHasLoadedRegistration] = useState(false);
+  const [eligibility, setEligibility] = useState<EligibilityResult | null>(null);
+  const [periodsForStatus, setPeriodsForStatus] = useState<RegistrationPeriodData[] | null>(null);
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [documentErrors, setDocumentErrors] = useState<Partial<Record<DocumentField, string>>>({});
-  const [isReviewingSubmittedForm, setIsReviewingSubmittedForm] = useState(false);
   const [reviewDocumentUrls, setReviewDocumentUrls] = useState<Record<DocumentField, string>>(initialDocumentPreviewUrls);
   const [commitmentConfirmed, setCommitmentConfirmed] = useState(false);
   const [isCheckingMssv, setIsCheckingMssv] = useState(false);
   const [studentDataReadonly, setStudentDataReadonly] = useState(false);
   const [autoLoaded, setAutoLoaded] = useState(false);
-  const [roomCatalog, setRoomCatalog] = useState<RoomApi[]>([]);
+  const [priorityCriteriaList, setPriorityCriteriaList] = useState<PriorityCriteria[]>([]);
+  const [selectedCriteriaIds, setSelectedCriteriaIds] = useState<number[]>([]);
+  const [evidenceFiles, setEvidenceFiles] = useState<Record<number, File[]>>({});
+  const [evidenceErrors, setEvidenceErrors] = useState<Record<number, string>>({});
+  type BlurLevel = 'ok' | 'warn' | 'blur' | 'small' | 'analyzing' | null;
+  const initialBlurStatus: Record<DocumentField, BlurLevel> = { portraitPhoto: null, cccdFrontPhoto: null, cccdBackPhoto: null };
+  const [blurStatus, setBlurStatus] = useState<Record<DocumentField, BlurLevel>>(initialBlurStatus);
+  const [blurWarnField, setBlurWarnField] = useState<DocumentField | null>(null);
+  const [pendingBlurFile, setPendingBlurFile] = useState<{ field: DocumentField; file: File } | null>(null);
+  const MAX_EVIDENCE_FILES = 6;
   const formRef = useRef<HTMLFormElement | null>(null);
   const fieldRefs = useRef<
     Partial<Record<keyof FormData, HTMLInputElement | HTMLSelectElement | null>>
   >({});
   const documentRefs = useRef<Partial<Record<DocumentField, HTMLInputElement | null>>>({});
+  const evidenceRefs = useRef<Record<number, HTMLInputElement | null>>({});
+  const criteriaRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   const documentPreviewUrls = useMemo(() => {
     const nextPreviewUrls = { ...initialDocumentPreviewUrls };
@@ -348,39 +367,21 @@ export default function RegistrationPage() {
     return nextPreviewUrls;
   }, [documentFiles, reviewDocumentUrls]);
 
-  const getRegistration = async (): Promise<RegistrationWithAssignment | null> => {
-    if (!studentEmail) {
-      return null;
-    }
-    return (await getLatestRegistrationByEmail(studentEmail)) as RegistrationWithAssignment | null;
-  };
 
   useEffect(() => {
     let mounted = true;
-
-    const loadRooms = async () => {
+    const load = async () => {
       try {
-        const rooms = await listRooms();
+        const list = await getPriorityCriteria();
         if (mounted) {
-          setRoomCatalog(rooms);
+          setPriorityCriteriaList(Array.isArray(list) ? (list as PriorityCriteria[]) : []);
         }
       } catch {
-        if (mounted) {
-          setRoomCatalog([]);
-        }
+        if (mounted) setPriorityCriteriaList([]);
       }
     };
-
-    void loadRooms();
-
-    window.addEventListener("ktx-rooms-updated", loadRooms);
-    window.addEventListener("ktx-registrations-updated", loadRooms);
-
-    return () => {
-      mounted = false;
-      window.removeEventListener("ktx-rooms-updated", loadRooms);
-      window.removeEventListener("ktx-registrations-updated", loadRooms);
-    };
+    void load();
+    return () => { mounted = false; };
   }, []);
 
   // When user is logged in with a student_code, auto-load student info and prefill form
@@ -442,42 +443,16 @@ export default function RegistrationPage() {
     };
   }, [loadStudentData, studentCodeFromAuth]);
 
-  const openResubmit = async () => {
-    resetFormState();
-    setRegistration(null);
-    setStatus("unregistered");
-    setRejectionReason("");
-    setReviewDocumentUrls(initialDocumentPreviewUrls);
-    setIsReviewingSubmittedForm(false);
-    // reload student info (prefill and readonly) when resubmitting
-    try {
-      await loadStudentData(studentCodeFromAuth);
-    } finally {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const scrollContainer =
-            formRef.current?.closest(".auth-scrollbar") ?? document.querySelector(".auth-scrollbar");
-          if (scrollContainer instanceof HTMLElement) {
-            scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
-            return;
-          }
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        });
-      });
-    }
-  };
-
   useEffect(() => {
     const syncRegistrationState = async () => {
+      setHasLoadedRegistration(false);
       setFormData({ ...initialFormData });
       setDocumentFiles({ ...initialDocumentFiles });
       setErrors({});
       setDocumentErrors({});
       setRegistration(null);
       setStatus("unregistered");
-      setRejectionReason("");
       setSubmitError("");
-      setIsReviewingSubmittedForm(false);
       setReviewDocumentUrls(initialDocumentPreviewUrls);
 
       documentFieldConfigs.forEach(({ field }) => {
@@ -491,159 +466,56 @@ export default function RegistrationPage() {
         return;
       }
 
-      setIsCheckingRegistration(true);
-
       try {
-        const data = await getLatestRegistrationByEmail(studentEmail);
+        const [data, eligRes] = await Promise.all([
+          getLatestRegistrationByEmail(studentEmail),
+          checkEligibility(studentEmail).catch(() => ({ eligible: true } as EligibilityResult)),
+        ]);
+        setEligibility(eligRes);
+
+        if (eligRes.reason_code === 'no_open_channel') {
+          getRegistrationPeriods()
+            .then(setPeriodsForStatus)
+            .catch(() => setPeriodsForStatus([]));
+        }
 
         if (!data) {
           setRegistration(null);
           setStatus("unregistered");
-          setRejectionReason("");
           setReviewDocumentUrls(initialDocumentPreviewUrls);
-          setIsReviewingSubmittedForm(false);
           return;
         }
 
-        console.log('[RegistrationPage] Loaded registration:', {
-          id: data.id,
-          status: data.status,
-          avatarUrl: data.avatarUrl,
-          cccdFrontUrl: data.cccdFrontUrl,
-          cccdBackUrl: data.cccdBackUrl,
-        });
+        // Any existing registration: redirect to room-status
+        // Exception: ?resubmit=true from room-status "Gửi lại đơn" button
+        //   → only allowed for rejected registrations, show form prefilled
+        if (!isResubmit || data.status !== "rejected") {
+          navigate("/student/room-status", { replace: true });
+          return;
+        }
 
-        setRegistration(data);
-        setStatus(data.status);
-        setRejectionReason(data.rejectionReason ?? "");
-        setFormData({ ...initialFormData, ...data.formData });
+        // Resubmit flow: rejected + ?resubmit=true → show form prefilled with old data
+        setStatus("unregistered");
+        setFormData({ ...initialFormData, ...(data.formData ?? {}) });
         setDocumentFiles({ ...initialDocumentFiles });
-
-        // Build URLs for document previews
         setReviewDocumentUrls({
           portraitPhoto: buildImageUrl(data.avatarUrl || data.documents?.portraitPhoto),
           cccdFrontPhoto: buildImageUrl(data.cccdFrontUrl || data.documents?.cccdFrontPhoto),
           cccdBackPhoto: buildImageUrl(data.cccdBackUrl || data.documents?.cccdBackPhoto),
         });
-        
-        setIsReviewingSubmittedForm(false);
       } catch (error) {
         console.error('[RegistrationPage] Error loading registration:', error);
+        setEligibility({ eligible: true });
       } finally {
-        setIsCheckingRegistration(false);
         setHasLoadedRegistration(true);
       }
     };
 
     void syncRegistrationState();
-  }, [studentEmail]);
+  }, [studentEmail, isResubmit]);
 
-  async function reloadRegistration() {
-    setIsCheckingRegistration(true);
 
-    try {
-      const data = await getRegistration();
 
-      if (!data) {
-        setRegistration(null);
-        setStatus("unregistered");
-        setRejectionReason("");
-        setReviewDocumentUrls(initialDocumentPreviewUrls);
-        setIsReviewingSubmittedForm(false);
-        return null;
-      }
-
-      console.log('[RegistrationPage] Reloaded registration:', {
-        id: data.id,
-        status: data.status,
-        avatarUrl: data.avatarUrl,
-      });
-
-      setRegistration(data);
-      setStatus(data.status);
-      setRejectionReason(data.rejectionReason ?? "");
-      setFormData({ ...initialFormData, ...data.formData });
-      setDocumentFiles({ ...initialDocumentFiles });
-      
-      setReviewDocumentUrls({
-        portraitPhoto: buildImageUrl(data.avatarUrl || data.documents?.portraitPhoto),
-        cccdFrontPhoto: buildImageUrl(data.cccdFrontUrl || data.documents?.cccdFrontPhoto),
-        cccdBackPhoto: buildImageUrl(data.cccdBackUrl || data.documents?.cccdBackPhoto),
-      });
-      
-      setIsReviewingSubmittedForm(false);
-      return data;
-    } catch (error) {
-      console.error('[RegistrationPage] Error reloading registration:', error);
-      return null;
-    } finally {
-      setIsCheckingRegistration(false);
-    }
-  }
-
-  const assignedRoomLookup = useMemo(() => {
-    const assignedRoomId = registration?.assigned_room_id;
-    const assignedBedId = registration?.bedId;
-    const room = assignedRoomId ? roomCatalog.find((item) => item.id === assignedRoomId) ?? null : null;
-    const bed = assignedBedId && room ? room.beds.find((item) => item.id === assignedBedId) ?? null : null;
-
-    return { room, bed };
-  }, [registration?.assigned_room_id, registration?.bedId, roomCatalog]);
-
-  const registrationForView = useMemo(() => {
-    if (!registration?.assigned_room_id) {
-      return registration;
-    }
-
-    const assignedRoom = assignedRoomLookup.room;
-    if (!assignedRoom) {
-      return registration;
-    }
-
-    return {
-      ...registration,
-      building_code: assignedRoom.building_code,
-      room_number: assignedRoom.room_number,
-    };
-  }, [assignedRoomLookup.room, registration]);
-  const statusForView = registrationForView?.status ?? status;
-  const assignedRoomName = registrationForView?.assigned_room_id
-    ? registrationForView?.room_number
-      ? `${registrationForView.building_code ?? ""}${registrationForView.room_number}`
-      : null
-    : null;
-  const assignedRoomDisplayName = registrationForView?.assigned_room_id
-    ? assignedRoomName ?? "Đang tải..."
-    : null;
-  const selectedBedNumber = registrationForView?.bedId ? assignedRoomLookup.bed?.bed_number ?? null : null;
-  const selectedBedName = registrationForView?.bedId
-    ? selectedBedNumber
-      ? `Giường ${selectedBedNumber}`
-      : "Đang tải..."
-    : null;
-  const bedApprovalStatus = getEffectiveBedApprovalStatus(registrationForView);
-  const hasSelectedBed = Boolean(registrationForView?.bedId && bedApprovalStatus !== "rejected");
-
-  const progressStatus: ProgressStatus = useMemo(() => {
-    if (statusForView === "completed") {
-      return "completed";
-    }
-    if (registrationForView?.bedId && bedApprovalStatus === "approved") {
-      return "completed";
-    }
-    if (registrationForView?.bedId && bedApprovalStatus !== "rejected") {
-      return "selected_bed";
-    }
-    if (statusForView === "approved" && registrationForView?.assigned_room_id) {
-      return "assigned_room";
-    }
-    if (statusForView === "approved") {
-      return "approved";
-    }
-    return "pending";
-  }, [bedApprovalStatus, registrationForView?.assigned_room_id, registrationForView?.bedId, statusForView]);
-
-  const currentProgressStep = useMemo(() => getCurrentStep(progressStatus), [progressStatus]);
 
   const readFileAsDataUrl = (file: File) =>
     new Promise<string>((resolve, reject) => {
@@ -659,6 +531,42 @@ export default function RegistrationPage() {
         reject(new Error("Không thể đọc tệp ảnh."));
       };
       reader.readAsDataURL(file);
+    });
+
+  const analyzeBlur = (file: File): Promise<BlurLevel> =>
+    new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        if (img.width < 100 || img.height < 100) { resolve('small'); return; }
+        const MAX = 200;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.floor(img.width * scale));
+        const h = Math.max(1, Math.floor(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { resolve('ok'); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+        const { data } = ctx.getImageData(0, 0, w, h);
+        const gray: number[] = [];
+        for (let i = 0; i < data.length; i += 4) {
+          gray.push(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+        }
+        let sumSq = 0; let count = 0;
+        for (let y = 1; y < h - 1; y++) {
+          for (let x = 1; x < w - 1; x++) {
+            const idx = y * w + x;
+            const lap = -4 * gray[idx] + gray[idx - 1] + gray[idx + 1] + gray[idx - w] + gray[idx + w];
+            sumSq += lap * lap; count++;
+          }
+        }
+        const variance = count > 0 ? sumSq / count : 0;
+        resolve(variance >= 100 ? 'ok' : variance >= 50 ? 'warn' : 'blur');
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve('ok'); };
+      img.src = url;
     });
 
   const toDataUrl = async (file: File) => {
@@ -724,25 +632,30 @@ export default function RegistrationPage() {
 
   const setDocumentFile = (fieldName: DocumentField, nextFile: File) => {
     if (!nextFile.type.startsWith("image/")) {
-      setDocumentErrors((prev) => ({
-        ...prev,
-        [fieldName]: "Vui lòng chọn tệp ảnh hợp lệ",
-      }));
+      setDocumentErrors((prev) => ({ ...prev, [fieldName]: "Vui lòng chọn tệp ảnh hợp lệ" }));
       return;
     }
 
-    setDocumentFiles((prev) => ({
-      ...prev,
-      [fieldName]: nextFile,
-    }));
+    setDocumentErrors((prev) => { const n = { ...prev }; delete n[fieldName]; return n; });
+    setBlurStatus((prev) => ({ ...prev, [fieldName]: 'analyzing' }));
 
-    setDocumentErrors((prev) => {
-      if (!prev[fieldName]) {
-        return prev;
+    void analyzeBlur(nextFile).then((result) => {
+      if (result === 'blur') {
+        setBlurStatus((prev) => ({ ...prev, [fieldName]: 'blur' }));
+        setDocumentErrors((prev) => ({ ...prev, [fieldName]: 'Ảnh quá mờ, không thể nhận dạng. Vui lòng chụp lại trong điều kiện đủ sáng.' }));
+        if (documentRefs.current[fieldName]) documentRefs.current[fieldName]!.value = '';
+      } else if (result === 'small') {
+        setBlurStatus((prev) => ({ ...prev, [fieldName]: 'small' }));
+        setDocumentErrors((prev) => ({ ...prev, [fieldName]: 'Ảnh quá nhỏ, vui lòng dùng ảnh chất lượng cao hơn.' }));
+        if (documentRefs.current[fieldName]) documentRefs.current[fieldName]!.value = '';
+      } else if (result === 'warn') {
+        setPendingBlurFile({ field: fieldName, file: nextFile });
+        setBlurWarnField(fieldName);
+        setBlurStatus((prev) => ({ ...prev, [fieldName]: 'warn' }));
+      } else {
+        setBlurStatus((prev) => ({ ...prev, [fieldName]: 'ok' }));
+        setDocumentFiles((prev) => ({ ...prev, [fieldName]: nextFile }));
       }
-      const nextErrors = { ...prev };
-      delete nextErrors[fieldName];
-      return nextErrors;
     });
   };
 
@@ -853,11 +766,12 @@ export default function RegistrationPage() {
   const clearDocumentInputs = () => {
     documentFieldConfigs.forEach(({ field }) => {
       const input = documentRefs.current[field];
-      if (input) {
-        input.value = "";
-      }
+      if (input) input.value = "";
     });
     setDraggingDocumentField(null);
+    setBlurStatus({ ...initialBlurStatus });
+    setBlurWarnField(null);
+    setPendingBlurFile(null);
   };
 
   const handlePhoneBlur = () => {
@@ -903,7 +817,7 @@ export default function RegistrationPage() {
     e.preventDefault();
     setSubmitError("");
 
-    const requiredFields = Object.keys(formFieldLabels) as Array<keyof FormData>;
+    const requiredFields = Object.keys(formFieldLabels) as RequiredRegistrationField[];
     const nextErrors: Partial<Record<keyof FormData, string>> = {};
     const nextDocumentErrors: Partial<Record<DocumentField, string>> = {};
     let commitmentError = "";
@@ -960,9 +874,33 @@ export default function RegistrationPage() {
       commitmentError = "Vui lòng xác nhận cam kết trước khi đăng ký.";
     }
 
-    if (Object.keys(nextErrors).length > 0 || Object.keys(nextDocumentErrors).length > 0 || commitmentError) {
+    // Đã chọn diện ưu tiên thì bắt buộc phải có ít nhất 1 ảnh minh chứng
+    const nextEvidenceErrors: Record<number, string> = {};
+    for (const criteriaId of selectedCriteriaIds) {
+      const files = evidenceFiles[criteriaId];
+      if (!files || files.length === 0) {
+        nextEvidenceErrors[criteriaId] = "Vui lòng tải lên minh chứng cho diện ưu tiên đã chọn";
+      }
+    }
+    const hasMissingEvidence = Object.keys(nextEvidenceErrors).length > 0;
+
+    const hasRejectedImage = documentFieldConfigs.some(({ field }) =>
+      blurStatus[field] === 'blur' || blurStatus[field] === 'small'
+    );
+    if (hasRejectedImage) {
+      setSubmitError('Có ảnh không đạt yêu cầu chất lượng. Vui lòng chọn lại ảnh rõ nét hơn.');
+      return;
+    }
+
+    if (Object.keys(nextErrors).length > 0 || Object.keys(nextDocumentErrors).length > 0 || commitmentError || hasMissingEvidence) {
       setErrors(nextErrors);
       setDocumentErrors(nextDocumentErrors);
+      if (hasMissingEvidence) {
+        setEvidenceErrors((prev) => ({ ...prev, ...nextEvidenceErrors }));
+        if (!commitmentError) {
+          setSubmitError("Vui lòng tải lên minh chứng cho các diện ưu tiên đã chọn.");
+        }
+      }
       if (commitmentError) {
         setSubmitError(commitmentError);
       }
@@ -984,6 +922,17 @@ export default function RegistrationPage() {
           behavior: "smooth",
           block: "center",
         });
+        return;
+      }
+
+      if (hasMissingEvidence) {
+        const firstMissingId = selectedCriteriaIds.find((id) => nextEvidenceErrors[id]);
+        if (firstMissingId != null) {
+          criteriaRefs.current[firstMissingId]?.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        }
       }
       return;
     }
@@ -1043,27 +992,38 @@ export default function RegistrationPage() {
       form.append("mother_job", formData.mother_job);
       form.append("parent_address", formData.familyContactAddress || formData.address || "");
 
-      form.append("stay_from_date", formData.dormStartDate || "");
-      form.append("stay_to_date", formData.dormEndDate || "");
 
       form.append("commitment_confirmed", commitmentConfirmed ? "true" : "false");
       form.append("commitment_confirm", commitmentConfirmed ? "1" : "0");
+
+      if (selectedCriteriaIds.length > 0) {
+        selectedCriteriaIds.forEach((id) => {
+          form.append("priority_criteria_ids[]", String(id));
+          const files = evidenceFiles[id];
+          if (files && files.length > 0) {
+            files.slice(0, MAX_EVIDENCE_FILES).forEach((file) => {
+              form.append(`priority_evidence_${id}[]`, file);
+            });
+          }
+        });
+      }
+
+      form.append("current_address", formData.current_address || "");
+      form.append("father_birth_year", formData.father_birth_year || "");
+      form.append("mother_birth_year", formData.mother_birth_year || "");
 
       form.append("avatar", documentFiles.portraitPhoto as File);
       form.append("cccd_front", documentFiles.cccdFrontPhoto as File);
       form.append("cccd_back", documentFiles.cccdBackPhoto as File);
 
       const res = await submitRegistration(form);
-      const data = res;
 
-      if (!data) {
+      if (!res) {
         setSubmitError("Không thể gửi đơn. Vui lòng thử lại.");
         return;
       }
 
-      setRegistration(data);
-      setStatus(data.status);
-      setIsReviewingSubmittedForm(false);
+      navigate("/student/room-status");
     } catch (error) {
       if (error && typeof error === "object" && "response" in error) {
         const response = (error as { response?: { data?: Record<string, unknown> } }).response;
@@ -1251,13 +1211,16 @@ export default function RegistrationPage() {
     { name: "cccdIssueDate", label: "Ngày cấp", required: true },
     { name: "cccdIssuePlace", label: "Nơi cấp", placeholder: "Nhập nơi cấp", required: true },
     { name: "address", label: "Địa chỉ thường trú", placeholder: "Nhập địa chỉ thường trú", required: true, fullWidth: true },
+    { name: "current_address", label: "Địa chỉ hiện tại", placeholder: "Nhập địa chỉ đang ở hiện tại", required: true, fullWidth: true },
   ];
 
   const familyFields: FormFieldConfig[] = [
     { name: "father_name", label: "Họ tên cha", placeholder: "Nhập họ tên cha", required: true },
+    { name: "father_birth_year", label: "Năm sinh cha", placeholder: "Ví dụ: 1975", required: true },
     { name: "father_phone", label: "SĐT cha", type: "tel", placeholder: "Số điện thoại cha", required: true },
     { name: "father_job", label: "Nghề nghiệp cha", placeholder: "Nhập nghề nghiệp cha", required: true },
     { name: "mother_name", label: "Họ tên mẹ", placeholder: "Nhập họ tên mẹ", required: true },
+    { name: "mother_birth_year", label: "Năm sinh mẹ", placeholder: "Ví dụ: 1978", required: true },
     { name: "mother_phone", label: "SĐT mẹ", type: "tel", placeholder: "Số điện thoại mẹ", required: true },
     { name: "mother_job", label: "Nghề nghiệp mẹ", placeholder: "Nhập nghề nghiệp mẹ", required: true },
     { name: "familyContactAddress", label: "Địa chỉ liên hệ cha/mẹ", placeholder: "Nhập địa chỉ liên hệ", fullWidth: true, required: true },
@@ -1266,10 +1229,8 @@ export default function RegistrationPage() {
     { name: "relationship", label: "Quan hệ", type: "select", placeholder: "Chọn quan hệ", options: relationshipOptions, required: true },
   ];
 
-  const accommodationFields: FormFieldConfig[] = [
-    { name: "dormStartDate", label: "Từ ngày", required: true },
-    { name: "dormEndDate", label: "Đến ngày", required: true },
-  ];
+  const stayInfo = eligibility?.channel_info;
+  const eligibilityReasonCode = eligibility?.reason_code ?? "";
 
   if (!hasLoadedRegistration && studentEmail) {
     return (
@@ -1310,121 +1271,355 @@ export default function RegistrationPage() {
         </p>
       </motion.div>
 
-      <ProgressStep currentStep={currentProgressStep} />
+      {eligibility && !eligibility.eligible ? (
+        <div className="auth-reveal is-visible mx-auto w-full max-w-2xl">
+          {(() => {
+            const rc = eligibilityReasonCode;
 
-      
+            // ── no_open_channel ──
+            if (rc === "no_open_channel") {
+              const pending = periodsForStatus?.find(p => p.status === "pending");
+              const processing = periodsForStatus?.find(p => p.status === "processing");
 
-      {statusForView === "submitted" && (
-        <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-[#b7ccef] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-5 text-center shadow-[0_12px_24px_rgba(36,76,184,0.10)] backdrop-blur-sm">
-          <div className="flex items-center justify-center gap-2 text-[#2f63da]">
-            <Clock className="h-5 w-5" />
-            <p className="font-semibold text-[#1F3152]">Đơn của bạn đã được gửi</p>
-          </div>
-          <p className="mt-1.5 text-sm text-[#5C7094]">
-            Vui lòng chờ. Kết quả sẽ có trong vòng 1-3 ngày làm việc.
-          </p>
-          <button
-            type="button"
-            onClick={() => void reloadRegistration()}
-            disabled={isCheckingRegistration}
-            className="auth-btn-gloss mx-auto mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#b7ccef] bg-[linear-gradient(135deg,#edf4ff_0%,#dfeaff_100%)] px-4 text-sm font-semibold text-[#244cb8] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            <span className="auth-btn-gloss__content inline-flex items-center justify-center gap-2">
-              {isCheckingRegistration ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
-              {isCheckingRegistration ? "Đang kiểm tra..." : "Kiểm tra lại"}
-            </span>
-          </button>
+              if (periodsForStatus === null) {
+                return (
+                  <div className="flex items-center justify-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-6 py-8 text-amber-700">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span className="text-sm font-medium">Đang kiểm tra lịch đăng ký...</span>
+                  </div>
+                );
+              }
+              if (pending) {
+                return (
+                  <div className="rounded-2xl border border-amber-200 bg-[linear-gradient(180deg,#fffdf3_0%,#fff7db_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.08)] sm:px-8 sm:py-7">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-amber-200 bg-amber-100 text-amber-600">
+                        <Clock className="h-6 w-6" />
+                      </span>
+                      <div>
+                        <h2 className="text-xl font-bold text-amber-900">Chưa đến thời gian đăng ký</h2>
+                        <p className="mt-2 text-sm leading-6 text-amber-800">
+                          Đợt <strong>{pending.name}</strong> sẽ mở nhận đơn từ <strong>{formatDate(pending.start_date)}</strong> đến <strong>{formatDate(pending.end_date)}</strong>.<br />
+                          Vui lòng quay lại vào ngày <strong>{formatDate(pending.start_date)}</strong>.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              if (processing) {
+                return (
+                  <div className="rounded-2xl border border-amber-200 bg-[linear-gradient(180deg,#fffdf3_0%,#fff7db_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.08)] sm:px-8 sm:py-7">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-amber-200 bg-amber-100 text-amber-600">
+                        <Loader2 className="h-6 w-6" />
+                      </span>
+                      <div>
+                        <h2 className="text-xl font-bold text-amber-900">Đợt đăng ký đang trong quá trình xét duyệt</h2>
+                        <p className="mt-2 text-sm leading-6 text-amber-800">
+                          Đợt <strong>{processing.name}</strong> đã kết thúc nhận đơn và đang được xét duyệt. Vui lòng chờ kết quả.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div className="rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.06)] sm:px-8 sm:py-7">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-100 text-slate-500">
+                      <CalendarDays className="h-6 w-6" />
+                    </span>
+                    <div>
+                      <h2 className="text-xl font-bold text-slate-700">Hiện chưa có đợt đăng ký nào</h2>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">
+                        Vui lòng theo dõi thông báo từ Ban quản lý để biết thời gian mở đợt tiếp theo.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            // ── has_active_application ──
+            if (rc === "has_active_application") return (
+              <div className="rounded-2xl border border-[#b7ccef] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.08)] sm:px-8 sm:py-7">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#c6d8f4] bg-[#eef5ff] text-[#2f63da]">
+                    <FileCheck className="h-6 w-6" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-xl font-bold text-[#1F3152]">Bạn đã có đơn đang xử lý</h2>
+                    <p className="mt-2 text-sm leading-6 text-[#5C7094]">Đơn đăng ký của bạn đang được xem xét. Vui lòng chờ kết quả.</p>
+                    <button type="button" onClick={() => navigate("/student/room-status")}
+                      className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_100%)] px-5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(36,76,184,0.22)] transition hover:-translate-y-0.5 hover:brightness-110">
+                      <FileCheck className="h-4 w-4" /> Xem trạng thái đơn
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+
+            // ── already_approved ──
+            if (rc === "already_approved") return (
+              <div className="rounded-2xl border border-emerald-200 bg-[linear-gradient(180deg,#f0fdf8_0%,#e6faf3_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.08)] sm:px-8 sm:py-7">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-100 text-emerald-600">
+                    <CheckCircle className="h-6 w-6" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-xl font-bold text-emerald-900">Đơn của bạn đã được duyệt</h2>
+                    <p className="mt-2 text-sm leading-6 text-emerald-800">Bạn đã có đơn đăng ký được duyệt thành công.</p>
+                    <button type="button" onClick={() => navigate("/student/room")}
+                      className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl bg-[linear-gradient(135deg,#059669_0%,#047857_100%)] px-5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(5,150,105,0.22)] transition hover:-translate-y-0.5 hover:brightness-110">
+                      <Home className="h-4 w-4" /> Xem phòng của tôi
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+
+            // ── already_residing ──
+            if (rc === "already_residing") return (
+              <div className="rounded-2xl border border-emerald-200 bg-[linear-gradient(180deg,#f0fdf8_0%,#e6faf3_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.08)] sm:px-8 sm:py-7">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-100 text-emerald-600">
+                    <Home className="h-6 w-6" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-xl font-bold text-emerald-900">Bạn đang lưu trú tại KTX</h2>
+                    <p className="mt-2 text-sm leading-6 text-emerald-800">{eligibility.reason_message} Nếu muốn ở tiếp, vui lòng dùng chức năng Gia hạn.</p>
+                    <button type="button" onClick={() => navigate("/student/room")}
+                      className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl bg-[linear-gradient(135deg,#059669_0%,#047857_100%)] px-5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(5,150,105,0.22)] transition hover:-translate-y-0.5 hover:brightness-110">
+                      <Home className="h-4 w-4" /> Xem phòng của tôi
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+
+            // ── not_studying ──
+            if (rc === "not_studying") return (
+              <div className="rounded-2xl border border-red-200 bg-[linear-gradient(180deg,#fff7f7_0%,#fff0f0_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.08)] sm:px-8 sm:py-7">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-red-200 bg-red-100 text-red-600">
+                    <GraduationCap className="h-6 w-6" />
+                  </span>
+                  <div>
+                    <h2 className="text-xl font-bold text-red-900">Không đủ điều kiện đăng ký</h2>
+                    <p className="mt-2 text-sm leading-6 text-red-800">
+                      {eligibility.reason_message} Vui lòng liên hệ Ban quản lý KTX nếu có thắc mắc.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+
+            // ── blacklisted ──
+            if (rc === "blacklisted") return (
+              <div className="rounded-2xl border border-red-200 bg-[linear-gradient(180deg,#fff7f7_0%,#fff0f0_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.08)] sm:px-8 sm:py-7">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-red-200 bg-red-100 text-red-600">
+                    <ShieldX className="h-6 w-6" />
+                  </span>
+                  <div>
+                    <h2 className="text-xl font-bold text-red-900">Tài khoản bị hạn chế đăng ký</h2>
+                    <p className="mt-2 text-sm leading-6 text-red-800">
+                      Tài khoản của bạn không được phép đăng ký nội trú. Vui lòng liên hệ Ban quản lý KTX để biết thêm thông tin.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+
+            // ── not_eligible_year ──
+            if (rc === "not_eligible_year") return (
+              <div className="rounded-2xl border border-orange-200 bg-[linear-gradient(180deg,#fff8f0_0%,#fff3e3_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.08)] sm:px-8 sm:py-7">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-orange-200 bg-orange-100 text-orange-600">
+                    <CalendarDays className="h-6 w-6" />
+                  </span>
+                  <div>
+                    <h2 className="text-xl font-bold text-orange-900">Không đủ điều kiện đăng ký</h2>
+                    <p className="mt-2 text-sm leading-6 text-orange-800">
+                      Bạn đã quá thời hạn đào tạo tối đa (6 năm), không thuộc diện được ở KTX.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+
+            // ── unpaid_bills ──
+            if (rc === "unpaid_bills") return (
+              <div className="rounded-2xl border border-red-200 bg-[linear-gradient(180deg,#fff7f7_0%,#fff0f0_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.08)] sm:px-8 sm:py-7">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-red-200 bg-red-100 text-red-600">
+                    <Receipt className="h-6 w-6" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-xl font-bold text-red-900">Còn hóa đơn chưa thanh toán</h2>
+                    <p className="mt-2 text-sm leading-6 text-red-800">Bạn còn hóa đơn chưa thanh toán. Vui lòng thanh toán trước khi đăng ký nội trú.</p>
+                    <button type="button" onClick={() => navigate("/student/payment")}
+                      className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl bg-[linear-gradient(135deg,#dc2626_0%,#b91c1c_100%)] px-5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(220,38,38,0.22)] transition hover:-translate-y-0.5 hover:brightness-110">
+                      <Receipt className="h-4 w-4" /> Đi đến thanh toán
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+
+            // ── fallback ──
+            return (
+              <div className="rounded-2xl border border-red-200 bg-[linear-gradient(180deg,#fff7f7_0%,#fff0f0_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.08)] sm:px-8 sm:py-7">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-red-200 bg-red-100 text-red-600">
+                    <AlertCircle className="h-6 w-6" />
+                  </span>
+                  <div>
+                    <h2 className="text-xl font-bold text-red-900">Bạn chưa đủ điều kiện đăng ký nội trú</h2>
+                    <p className="mt-2 text-sm leading-6 text-red-800">{eligibility.reason_message}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
-      )}
+      ) : (
+        <>
+          {step === 'info' ? (
+            /* ── MÀN HÌNH 1: Thông tin đợt đăng ký ── */
+            <motion.div
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, ease: 'easeOut' }}
+              className="space-y-5"
+            >
+              {/* Thông tin đợt */}
+              {stayInfo && (
+                <div className={`auth-reveal is-visible rounded-[20px] border px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)] ${
+                  stayInfo.channel === 'main'
+                    ? 'border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)]'
+                    : 'border-emerald-200 bg-[linear-gradient(180deg,#f0fdf8_0%,#e6faf3_100%)]'
+                }`}>
+                  <div className="mb-4 flex flex-wrap items-center gap-2">
+                    <CalendarDays className={`h-5 w-5 shrink-0 ${stayInfo.channel === 'main' ? 'text-[#244CB8]' : 'text-emerald-600'}`} />
+                    <h2 className={`text-lg font-bold ${stayInfo.channel === 'main' ? 'text-[#1A2D52]' : 'text-emerald-900'}`}>
+                      {stayInfo.period_name}
+                    </h2>
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                      stayInfo.channel === 'main'
+                        ? 'bg-[#eef5ff] text-[#244cb8] ring-1 ring-inset ring-[#c6d8f4]'
+                        : 'bg-emerald-100 text-emerald-700 ring-1 ring-inset ring-emerald-200'
+                    }`}>
+                      {stayInfo.channel === 'main' ? 'Đợt chính' : 'Quanh năm'}
+                    </span>
+                    {stayInfo.status === 'pending' && (
+                      <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                        Sắp mở
+                      </span>
+                    )}
+                  </div>
+                  <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {stayInfo.school_year && (
+                      <div className="rounded-xl border border-[#ddeaf8] bg-white/70 px-4 py-3">
+                        <dt className="text-xs font-medium uppercase tracking-wide text-[#8095B4]">Năm học / Học kỳ</dt>
+                        <dd className="mt-1 text-sm font-semibold text-[#1F3152]">
+                          {stayInfo.school_year} — Học kỳ {stayInfo.semester}
+                        </dd>
+                      </div>
+                    )}
+                    <div className="rounded-xl border border-[#ddeaf8] bg-white/70 px-4 py-3">
+                      <dt className="text-xs font-medium uppercase tracking-wide text-[#8095B4]">Thời gian nhận đơn</dt>
+                      <dd className="mt-1 text-sm font-semibold text-[#1F3152]">
+                        {formatDate(stayInfo.start_date)} → {formatDate(stayInfo.end_date)}
+                      </dd>
+                    </div>
+                    {(stayInfo.stay_start_date || stayInfo.stay_end_date) && (
+                      <div className="rounded-xl border border-[#ddeaf8] bg-white/70 px-4 py-3">
+                        <dt className="text-xs font-medium uppercase tracking-wide text-[#8095B4]">Thời gian lưu trú</dt>
+                        <dd className="mt-1 text-sm font-semibold text-[#1F3152]">
+                          {stayInfo.stay_start_date ? formatDate(stayInfo.stay_start_date) : '—'}{' '}
+                          → {stayInfo.stay_end_date ? formatDate(stayInfo.stay_end_date) : '—'}
+                        </dd>
+                      </div>
+                    )}
+                    <div className={`rounded-xl border bg-white/70 px-4 py-3 ${
+                      stayInfo.channel === 'main' ? 'border-[#ddeaf8] sm:col-span-2' : 'border-emerald-100 sm:col-span-2'
+                    }`}>
+                      <dt className={`text-xs font-medium uppercase tracking-wide ${stayInfo.channel === 'main' ? 'text-[#8095B4]' : 'text-emerald-600'}`}>Xét duyệt</dt>
+                      <dd className={`mt-1 text-sm ${stayInfo.channel === 'main' ? 'text-[#5C7094]' : 'text-emerald-700'}`}>
+                        {stayInfo.channel === 'main'
+                          ? 'Đơn sẽ được xét duyệt sau khi hết hạn đợt nhận đơn'
+                          : 'Đơn được xét duyệt ngay sau khi nộp (khi còn giường trống)'}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              )}
 
-      {submitError ? (
+              {/* Điều kiện đăng ký */}
+              <div className="auth-reveal is-visible rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
+                <div className="mb-4 flex items-center gap-2">
+                  <Shield className="h-5 w-5 text-[#244CB8]" />
+                  <h2 className="text-lg font-bold text-[#1A2D52]">Điều kiện đăng ký</h2>
+                </div>
+                <ul className="space-y-2.5">
+                  {[
+                    'Là sinh viên chính quy đang theo học tại trường',
+                    'Không thuộc danh sách cấm đăng ký ký túc xá',
+                    'Không còn hóa đơn phí phòng hoặc tiền điện chưa thanh toán',
+                    'Chưa có đơn đăng ký đang được xử lý trong đợt hiện tại',
+                  ].map((item) => (
+                    <li key={item} className="flex items-start gap-2.5 text-sm text-[#324B76]">
+                      <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#244CB8]" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Lưu ý quan trọng */}
+              <div className="auth-reveal is-visible flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 px-5 py-4">
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                <div>
+                  <p className="text-sm font-semibold text-amber-900">Lưu ý quan trọng</p>
+                  <p className="mt-0.5 text-sm text-amber-700">
+                    Đơn sau khi gửi sẽ không thể chỉnh sửa hoặc hủy. Vui lòng kiểm tra kỹ thông tin trước khi nộp.
+                  </p>
+                </div>
+              </div>
+
+              {/* Nút Bắt đầu đăng ký */}
+              <div className="flex items-center justify-end gap-3">
+                {stayInfo?.status === 'pending' && (
+                  <p className="text-sm text-amber-700">
+                    Đợt sẽ mở nhận đơn từ <strong>{formatDate(stayInfo.start_date)}</strong>
+                  </p>
+                )}
+                <button
+                  type="button"
+                  disabled={stayInfo?.status === 'pending'}
+                  onClick={() => { setStep('form'); document.querySelector('.auth-scrollbar')?.scrollTo({ top: 0, behavior: 'instant' }); }}
+                  className="auth-btn-gloss inline-flex items-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-7 py-3 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition-all duration-300 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_22px_40px_rgba(36,76,184,0.34)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:brightness-100"
+                >
+                  <span className="auth-btn-gloss__content flex items-center gap-2">
+                    Bắt đầu đăng ký
+                    <ArrowRight className="h-4 w-4" />
+                  </span>
+                </button>
+              </div>
+            </motion.div>
+          ) : (
+            /* ── MÀN HÌNH 2: Form điền thông tin ── */
+            <>
+          {submitError ? (
         <div className="auth-reveal is-visible flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50/95 p-4 shadow-[0_12px_24px_rgba(239,68,68,0.16)]">
           <AlertCircle className="h-5 w-5 text-red-600" />
           <p className="text-sm font-medium text-red-800">{submitError}</p>
         </div>
       ) : null}
 
-      {progressStatus === "completed" || progressStatus === "selected_bed" || progressStatus === "assigned_room" || progressStatus === "approved" ? (
-        hasSelectedBed ? (
-          <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-emerald-200 bg-emerald-50/95 p-5 text-center shadow-[0_12px_24px_rgba(16,185,129,0.16)]">
-            <div className="flex items-center justify-center gap-2 text-emerald-700">
-              <BedSingle className="h-5 w-5" />
-              <p className="font-semibold text-emerald-900">
-                {progressStatus === "completed" ? "Đăng ký nội trú đã hoàn tất" : "Bạn đã chọn giường thành công"}
-              </p>
-            </div>
-            <p className="mt-1.5 text-sm text-emerald-800/90">
-              Phòng: <span className="font-bold">{assignedRoomDisplayName}</span>
-            </p>
-            <p className="mt-1 text-sm text-emerald-800/90">
-              Giường: <span className="font-bold">{selectedBedName}</span>
-            </p>
-            <p className="mt-1.5 text-sm text-emerald-800/90">
-              {progressStatus === "completed"
-                ? "Đơn đăng ký nội trú đã hoàn tất. Bạn chính thức được xếp tại giường này."
-                : "Vui lòng chờ ban quản lý duyệt giường. Nếu được duyệt, đăng ký sẽ hoàn tất."}
-            </p>
-          </div>
-        ) : registrationForView?.assigned_room_id && assignedRoomDisplayName ? (
-          <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-emerald-200 bg-emerald-50/95 p-5 text-center shadow-[0_12px_24px_rgba(16,185,129,0.16)]">
-            <div className="flex items-center justify-center gap-2 text-emerald-700">
-              <Home className="h-5 w-5" />
-              <p className="font-semibold text-emerald-900">Bạn đã được phân phòng</p>
-            </div>
-            <p className="mt-1.5 text-sm text-emerald-800/90">
-              Phòng: <span className="font-bold">{assignedRoomDisplayName}</span>
-            </p>
-            <p className="mt-1 text-sm text-emerald-800/90">Vui lòng chọn giường để hoàn tất đăng ký nội trú</p>
-            <button
-              type="button"
-              onClick={() => navigate("/student/select-bed")}
-              className="auth-btn-gloss mx-auto mt-4 inline-flex h-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-4 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.98]"
-            >
-              <span className="auth-btn-gloss__content">Chọn giường</span>
-            </button>
-          </div>
-        ) : (
-          <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-emerald-200 bg-emerald-50/95 p-5 text-center shadow-[0_12px_24px_rgba(16,185,129,0.16)]">
-            <div className="flex items-center justify-center gap-2 text-emerald-700">
-              <CheckCircle className="h-5 w-5" />
-              <p className="font-semibold text-emerald-900">Đơn đã được duyệt</p>
-            </div>
-            <p className="mt-1.5 text-sm text-emerald-800/90">
-              Vui lòng chờ quản lý phân phòng (1-2 ngày)
-            </p>
-            <button
-              type="button"
-              onClick={() => void reloadRegistration()}
-              disabled={isCheckingRegistration}
-              className="auth-btn-gloss mx-auto mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#b7ccef] bg-[linear-gradient(135deg,#edf4ff_0%,#dfeaff_100%)] px-4 text-sm font-semibold text-[#244cb8] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              <span className="auth-btn-gloss__content inline-flex items-center justify-center gap-2">
-                {isCheckingRegistration ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
-                {isCheckingRegistration ? "Đang kiểm tra..." : "Kiểm tra lại"}
-              </span>
-            </button>
-          </div>
-        )
-      ) : null}
-
-      {statusForView === "rejected" && (
-        <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-red-200 bg-red-50/95 p-5 text-center shadow-[0_12px_24px_rgba(239,68,68,0.16)]">
-          <div className="flex items-center justify-center gap-2 text-red-700">
-            <AlertCircle className="h-5 w-5" />
-            <p className="font-semibold text-red-900">Đơn đăng ký bị từ chối</p>
-          </div>
-          <p className="mt-1.5 text-sm text-red-700">Lý do: {rejectionReason}</p>
-          <button
-            type="button"
-            onClick={openResubmit}
-            className="auth-btn-gloss mx-auto mt-4 rounded-xl bg-[linear-gradient(135deg,#e25569_0%,#cc3c4f_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_18px_rgba(204,60,79,0.20)] transition-all duration-200 hover:-translate-y-0.5 hover:brightness-105 active:scale-[0.98]"
-          >
-            <span className="auth-btn-gloss__content">Gửi lại đơn</span>
-          </button>
-        </div>
-      )}
-
-      {statusForView === "unregistered" || isReviewingSubmittedForm ? (
+      {status === "unregistered" ? (
         <motion.div
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1434,14 +1629,8 @@ export default function RegistrationPage() {
           <form
             ref={formRef}
             onSubmit={handleSubmit}
-            className={`space-y-6 ${isReviewingSubmittedForm ? "pointer-events-none select-none" : ""}`}
+            className="space-y-6"
           >
-            {isReviewingSubmittedForm ? (
-              <div className="mb-2 rounded-2xl border border-[#b7ccef] bg-white/70 p-4 text-sm text-[#1F3152] shadow-[0_10px_20px_rgba(36,76,184,0.08)]">
-                Đang hiển thị lại hồ sơ bạn đã nộp trước đó.
-              </div>
-            ) : null}
-
             <div className="grid gap-6 xl:grid-cols-2">
               <div className="space-y-6 xl:col-span-2">
                 <div className="rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] transition-all duration-300 ease-out hover:border-[#aac3ea] hover:shadow-[0_22px_44px_rgba(36,76,184,0.14)] sm:p-7">
@@ -1521,20 +1710,38 @@ export default function RegistrationPage() {
                           className="sr-only"
                         />
 
-                        {documentFiles[field] && (
+                        {(documentFiles[field] || blurStatus[field] === 'analyzing') && (
                           <div className="flex items-start justify-between gap-4">
                             <div>
                               <p className="text-sm font-semibold text-[#204178]">
                                 {documentLabels[field]} <span className="text-red-500">*</span>
                               </p>
                             </div>
-                            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(180deg,#eef4ff_0%,#e2ecff_100%)] text-[#244CB8] transition-all duration-300 group-hover:bg-[#dce7ff] group-hover:shadow-[0_10px_22px_rgba(36,76,184,0.18)]">
-                              <CheckCircle className="h-5 w-5" />
+                            <div className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl transition-all duration-300 ${
+                              blurStatus[field] === 'ok'
+                                ? 'bg-emerald-50 text-emerald-600'
+                                : blurStatus[field] === 'warn'
+                                ? 'bg-amber-50 text-amber-500'
+                                : blurStatus[field] === 'analyzing'
+                                ? 'bg-[#eef4ff] text-[#244CB8]'
+                                : 'bg-[linear-gradient(180deg,#eef4ff_0%,#e2ecff_100%)] text-[#244CB8] group-hover:bg-[#dce7ff] group-hover:shadow-[0_10px_22px_rgba(36,76,184,0.18)]'
+                            }`}>
+                              {blurStatus[field] === 'analyzing'
+                                ? <LoaderCircle className="h-5 w-5 animate-spin" />
+                                : blurStatus[field] === 'warn'
+                                ? <AlertCircle className="h-5 w-5" />
+                                : <CheckCircle className="h-5 w-5" />
+                              }
                             </div>
                           </div>
                         )}
 
-                        {documentFiles[field] ? (
+                        {blurStatus[field] === 'analyzing' ? (
+                          <div className="mt-4 flex min-h-[120px] flex-col items-center justify-center gap-2">
+                            <LoaderCircle className="h-6 w-6 animate-spin text-[#244CB8]" />
+                            <p className="text-xs font-medium text-[#5C7094]">Đang phân tích ảnh...</p>
+                          </div>
+                        ) : documentFiles[field] ? (
                           <div className="mt-4 space-y-4">
                             <div className="aspect-[4/3] overflow-hidden rounded-2xl bg-[linear-gradient(180deg,#eef4ff_0%,#e5efff_100%)]">
                               <img
@@ -1631,10 +1838,176 @@ export default function RegistrationPage() {
                   </div>
                 </div>
 
-                <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-                  {accommodationFields.map(renderFormField)}
+                <div className="mt-6">
+                  <div className="flex items-center gap-2.5 rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-4 py-3">
+                    <Clock className="h-4 w-4 shrink-0 text-[#244CB8]" />
+                    <span className="text-sm text-[#324B76]">
+                      {stayInfo?.stay_start_date && stayInfo.stay_end_date
+                        ? <>Thời gian lưu trú: <span className="font-semibold">{formatDate(stayInfo.stay_start_date)}</span> — <span className="font-semibold">{formatDate(stayInfo.stay_end_date)}</span></>
+                        : "Thời gian lưu trú sẽ được thông báo sau"}
+                    </span>
+                  </div>
                 </div>
               </div>
+
+              {priorityCriteriaList.length > 0 && (
+                <div className="rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] transition-all duration-300 ease-out hover:border-[#aac3ea] hover:shadow-[0_22px_44px_rgba(36,76,184,0.14)] sm:p-7 xl:col-span-2">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-[#2d58c4] bg-[radial-gradient(circle_at_30%_30%,#2347a8_0%,#1b3e97_58%,#17347e_100%)] text-[#b7ccff] shadow-[inset_0_1px_0_rgba(132,166,244,0.30),0_12px_24px_rgba(36,76,184,0.18)]">
+                      <Star className="h-5 w-5 stroke-[2.2]" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-[#2F83C9]">Bước 4</span>
+                      <h2 className="text-lg font-semibold text-[#1F3152]">Tiêu chí ưu tiên</h2>
+                      <p className="mt-0.5 text-sm text-[#5C7094]">Chọn các tiêu chí phù hợp (không bắt buộc)</p>
+                    </div>
+                  </div>
+                  <div className="mt-6 space-y-3">
+                    {priorityCriteriaList.map((criteria) => {
+                      const isChecked = selectedCriteriaIds.includes(criteria.id);
+                      const files = evidenceFiles[criteria.id] ?? [];
+                      const evidenceError = evidenceErrors[criteria.id];
+                      const canAddMore = files.length < MAX_EVIDENCE_FILES;
+                      return (
+                        <div
+                          key={criteria.id}
+                          ref={(node) => { criteriaRefs.current[criteria.id] = node; }}
+                          className={`rounded-xl border bg-[#f7fbff] p-3 transition hover:border-[#a8c5ea] hover:bg-white ${
+                            evidenceError ? "border-red-300" : "border-[#dce9f7]"
+                          }`}
+                        >
+                          <label className="flex cursor-pointer items-start gap-3">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedCriteriaIds((prev) => [...prev, criteria.id]);
+                                } else {
+                                  setSelectedCriteriaIds((prev) => prev.filter((id) => id !== criteria.id));
+                                  setEvidenceFiles((prev) => {
+                                    const next = { ...prev };
+                                    delete next[criteria.id];
+                                    return next;
+                                  });
+                                  setEvidenceErrors((prev) => {
+                                    const next = { ...prev };
+                                    delete next[criteria.id];
+                                    return next;
+                                  });
+                                  if (evidenceRefs.current[criteria.id]) {
+                                    evidenceRefs.current[criteria.id]!.value = "";
+                                  }
+                                }
+                              }}
+                              className="mt-0.5 h-4 w-4 flex-shrink-0 accent-[#244CB8]"
+                            />
+                            <div>
+                              <p className="text-sm font-semibold text-[#1F3152]">
+                                [{criteria.code}] {criteria.name}
+                              </p>
+                              {criteria.description ? (
+                                <p className="mt-0.5 text-xs text-[#5C7094]">{criteria.description}</p>
+                              ) : null}
+                            </div>
+                          </label>
+
+                          {isChecked && (
+                            <div className="mt-3 ml-7">
+                              <input
+                                type="file"
+                                id={`evidence-${criteria.id}`}
+                                ref={(node) => { evidenceRefs.current[criteria.id] = node; }}
+                                accept=".jpg,.jpeg,.png,.pdf"
+                                multiple
+                                className="sr-only"
+                                onChange={(e) => {
+                                  const picked = Array.from(e.target.files ?? []);
+                                  e.target.value = "";
+                                  if (picked.length === 0) return;
+
+                                  const oversize = picked.find((f) => f.size > 5 * 1024 * 1024);
+                                  if (oversize) {
+                                    setEvidenceErrors((prev) => ({ ...prev, [criteria.id]: "Mỗi ảnh tối đa 5MB" }));
+                                    return;
+                                  }
+
+                                  setEvidenceFiles((prev) => {
+                                    const current = prev[criteria.id] ?? [];
+                                    const merged = [...current, ...picked].slice(0, MAX_EVIDENCE_FILES);
+                                    const exceeded = current.length + picked.length > MAX_EVIDENCE_FILES;
+                                    setEvidenceErrors((errs) => {
+                                      const next = { ...errs };
+                                      if (exceeded) next[criteria.id] = `Tối đa ${MAX_EVIDENCE_FILES} ảnh`;
+                                      else delete next[criteria.id];
+                                      return next;
+                                    });
+                                    return { ...prev, [criteria.id]: merged };
+                                  });
+                                }}
+                              />
+
+                              {files.length > 0 && (
+                                <div className="mb-2 space-y-1.5">
+                                  {files.map((file, idx) => (
+                                    <div
+                                      key={`${file.name}-${idx}`}
+                                      className="flex items-center justify-between gap-2 rounded-lg border border-[#dce9f7] bg-white px-3 py-1.5"
+                                    >
+                                      <span className="flex items-center gap-1.5 truncate text-xs text-[#4a6fa5]">
+                                        <Paperclip className="h-3.5 w-3.5 flex-shrink-0" />
+                                        <span className="truncate">{file.name}</span>
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEvidenceFiles((prev) => {
+                                            const nextArr = (prev[criteria.id] ?? []).filter((_, i) => i !== idx);
+                                            const next = { ...prev };
+                                            if (nextArr.length > 0) next[criteria.id] = nextArr;
+                                            else delete next[criteria.id];
+                                            return next;
+                                          });
+                                          setEvidenceErrors((prev) => {
+                                            const next = { ...prev };
+                                            delete next[criteria.id];
+                                            return next;
+                                          });
+                                        }}
+                                        className="inline-flex flex-shrink-0 items-center gap-1 text-xs text-red-500 hover:underline"
+                                      >
+                                        <X className="h-3 w-3" /> Xóa
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {canAddMore && (
+                                <label
+                                  htmlFor={`evidence-${criteria.id}`}
+                                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-[#b5cef0] bg-white px-3 py-1.5 text-xs text-[#4a6fa5] transition hover:border-[#244CB8] hover:text-[#244CB8]"
+                                >
+                                  <Paperclip className="h-3.5 w-3.5 flex-shrink-0" />
+                                  {files.length > 0
+                                    ? `Thêm ảnh (${files.length}/${MAX_EVIDENCE_FILES})`
+                                    : `Tải lên minh chứng (JPG, PNG, PDF — tối đa 5MB, ${MAX_EVIDENCE_FILES} ảnh)`}
+                                </label>
+                              )}
+                              {!canAddMore && (
+                                <p className="text-xs text-[#5C7094]">Đã đạt tối đa {MAX_EVIDENCE_FILES} ảnh</p>
+                              )}
+                              {evidenceError && (
+                                <p className="mt-1 text-xs text-red-500">{evidenceError}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div className="rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] transition-all duration-300 ease-out hover:border-[#aac3ea] hover:shadow-[0_22px_44px_rgba(36,76,184,0.14)] sm:p-7 xl:col-span-2">
                 <div className="flex items-start gap-3">
@@ -1663,8 +2036,7 @@ export default function RegistrationPage() {
                 </div>
               </div>
 
-              {!isReviewingSubmittedForm ? (
-                <>
+              <>
                   <div className="xl:col-span-2 rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] transition-all duration-300 ease-out hover:border-[#aac3ea] hover:shadow-[0_22px_44px_rgba(36,76,184,0.14)] sm:p-7">
                     <div className="flex items-start gap-4">
                       <input
@@ -1687,7 +2059,16 @@ export default function RegistrationPage() {
                     )}
                   </div>
 
-                  <div className="xl:col-span-2 flex justify-end gap-3 border-t border-[#DFE8F4] pt-4">
+                  <div className="xl:col-span-2 flex items-center justify-between gap-3 border-t border-[#DFE8F4] pt-4">
+                    <button
+                      type="button"
+                      onClick={() => setStep('info')}
+                      className="auth-btn-gloss inline-flex items-center gap-2 rounded-2xl border border-[#c5d4f0] bg-[linear-gradient(135deg,#ffffff_0%,#f1f6ff_48%,#e8f0ff_100%)] px-5 py-2.5 text-sm font-semibold text-[#244CB8] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_22px_rgba(36,76,184,0.10)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#a9c0ea] hover:bg-[linear-gradient(135deg,#ffffff_0%,#edf4ff_40%,#dfeaff_100%)] hover:text-[#173D97] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_16px_28px_rgba(36,76,184,0.16)] active:scale-[0.98]"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                      <span className="auth-btn-gloss__content">Quay lại</span>
+                    </button>
+                    <div className="flex gap-3">
                     <button
                       type="button"
                       onClick={handleClearForm}
@@ -1702,13 +2083,61 @@ export default function RegistrationPage() {
                     >
                       <span className="auth-btn-gloss__content">{isSubmitting ? "Đang gửi..." : "Gửi đăng ký"}</span>
                     </button>
+                    </div>
                   </div>
                 </>
-              ) : null}
             </div>
           </form>
         </motion.div>
       ) : null}
+            </>
+          )}
+        </>
+      )}
+
+      {blurWarnField && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center gap-2 text-amber-600">
+              <AlertCircle className="h-5 w-5" />
+              <p className="font-semibold text-amber-900">Ảnh có thể hơi mờ</p>
+            </div>
+            <p className="mt-2 text-sm text-[#5C7094]">
+              Ảnh bạn vừa chọn có thể khó nhận dạng. Bạn có chắc muốn dùng ảnh này không?
+            </p>
+            <div className="mt-4 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (pendingBlurFile) {
+                    setDocumentFiles((prev) => ({ ...prev, [pendingBlurFile.field]: pendingBlurFile.file }));
+                  }
+                  setBlurWarnField(null);
+                  setPendingBlurFile(null);
+                }}
+                className="flex-1 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-700 transition hover:bg-amber-100"
+              >
+                Dùng ảnh này
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (pendingBlurFile) {
+                    setBlurStatus((prev) => ({ ...prev, [pendingBlurFile.field]: null }));
+                    if (documentRefs.current[pendingBlurFile.field])
+                      documentRefs.current[pendingBlurFile.field]!.value = '';
+                  }
+                  setBlurWarnField(null);
+                  setPendingBlurFile(null);
+                }}
+                className="flex-1 rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_100%)] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-110"
+              >
+                Chọn ảnh khác
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </motion.section>
   );
 }

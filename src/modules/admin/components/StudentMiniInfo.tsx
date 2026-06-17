@@ -1,5 +1,6 @@
 import { CalendarDays } from "lucide-react";
 import type { BedStudent } from "../../../api/roomApi";
+import { formatDate } from "../../../utils/dateFormat";
 
 function getInitials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -7,13 +8,6 @@ function getInitials(name: string) {
   const last = parts[parts.length - 1];
   const first = parts[0];
   return `${first[0] ?? ""}${last[0] ?? ""}`.toUpperCase();
-}
-
-function formatDate(value?: string | null) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 function formatOccupancyDate(value?: string | null) {

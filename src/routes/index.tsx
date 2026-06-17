@@ -5,6 +5,7 @@ import StudentLayout from "../layouts/StudentLayout";
 import AdminDashboardPage from "../modules/admin/pages/AdminDashboardPage";
 import AdminRegistrationDetailPage from "../modules/admin/pages/AdminRegistrationDetailPage";
 import AdminRegistrationsPage from "../modules/admin/pages/AdminRegistrationsPage";
+import AdminRegistrationPeriodsPage from "../modules/admin/pages/AdminRegistrationPeriodsPage";
 import BedManagementPage from "../modules/admin/pages/BedManagementPage";
 import AdminRoomManagement from "../modules/admin/pages/AdminRoomManagement";
 import AdminBuildingManagement from "../modules/admin/pages/AdminBuildingManagement";
@@ -23,8 +24,10 @@ import AboutPage from "../modules/public/pages/AboutPage";
 import ContactPage from "../modules/public/pages/ContactPage";
 import HomePage from "../modules/public/pages/HomePage";
 import RegistrationPage from "../modules/registration/pages/RegistrationPage";
+import RoomStatusPage from "../modules/registration/pages/RoomStatusPage";
 import StudentDashboardPage from "../modules/student/pages/StudentDashboardPage";
 import SelectBedPage from "../modules/student/pages/SelectBedPage";
+import BedSelectionPage from "../modules/student/pages/BedSelectionPage";
 import MyRoomPage from "../modules/student/pages/MyRoomPage";
 import PaymentPage from "../modules/student/pages/PaymentPage";
 import ProtectedRoute from "./ProtectedRoute";
@@ -54,6 +57,7 @@ export default function AppRoutes() {
           <Route path="dashboard" element={<AdminDashboardPage />} />
           <Route path="registrations" element={<AdminRegistrationsPage />} />
           <Route path="registrations/:registrationId" element={<AdminRegistrationDetailPage />} />
+          <Route path="registration-periods" element={<AdminRegistrationPeriodsPage />} />
           <Route path="assign-room" element={<AssignRoomPage />} />
           <Route path="assign-room/:requestId" element={<AssignRoomDetailPage />} />
           <Route path="bed-management" element={<BedManagementPage />} />
@@ -79,9 +83,11 @@ export default function AppRoutes() {
         >
           <Route path="dashboard" element={<StudentDashboardPage />} />
           <Route path="registration" element={<RegistrationPage />} />
+          <Route path="room-status" element={<RoomStatusPage />} />
           <Route path="room" element={<MyRoomPage />} />
           <Route path="payment" element={<PaymentPage />} />
           <Route path="select-bed" element={<SelectBedPage />} />
+          <Route path="bed-selection" element={<BedSelectionPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

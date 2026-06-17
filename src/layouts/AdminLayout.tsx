@@ -19,7 +19,9 @@ export default function AdminLayout() {
   const user = getStoredAuth()?.user ?? null;
   const userName = user?.fullName || user?.email || "Admin User";
   const userEmail = user?.email || "admin@stu.edu.vn";
-  const isRegistrationsPage = location.pathname === "/admin/registrations";
+  const isRegistrationsPage =
+    location.pathname === "/admin/registrations" ||
+    location.pathname === "/admin/registration-periods";
   const isAssignRoomListPage = location.pathname === "/admin/assign-room";
   const isBedManagementPage = location.pathname === "/admin/bed-management";
   const isOccupancyManagementPage = location.pathname === "/admin/occupancies";

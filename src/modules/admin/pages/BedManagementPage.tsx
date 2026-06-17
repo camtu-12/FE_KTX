@@ -1,10 +1,7 @@
 import { motion } from "framer-motion";
-import { ArrowUp, CheckCircle2, CircleAlert, Clock3, Funnel } from "lucide-react";
+import { ArrowUp, CheckCircle2, Clock3, Funnel } from "lucide-react";
 import {
-  approveBedSelectionForRegistration,
-  getEffectiveBedApprovalStatus,
   getRegistrations,
-  rejectBedSelectionForRegistration,
 } from "../../../api/registrationService";
 import { listRooms, type RoomApi } from "../../../api/roomApi";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -75,15 +72,14 @@ const mapRoomApiToDormRoom = (room: RoomApi): DormRoom => ({
   }),
 });
 
-type BedSelectionFilter = "all" | "pending" | "approved" | "rejected";
+type BedSelectionFilter = "all" | "selected" | "not_selected";
 type BedSelectionSortOrder = "desc" | "asc";
 type GenderFilter = "all" | "male" | "female";
 
 const filterOptions: Array<{ value: BedSelectionFilter; label: string }> = [
   { value: "all", label: "Tất cả" },
-  { value: "pending", label: "Chờ duyệt" },
-  { value: "approved", label: "Đã duyệt" },
-  { value: "rejected", label: "Từ chối" },
+  { value: "selected", label: "Đã chọn" },
+  { value: "not_selected", label: "Chưa chọn" },
 ];
 
 const idSortOptions: Array<{ value: BedSelectionSortOrder; label: string }> = [
@@ -98,26 +94,16 @@ const genderFilterOptions: Array<{ value: GenderFilter; label: string }> = [
 ];
 
 const getSelectionMeta = (request: RegistrationRequest) => {
-  const bedApprovalStatus = getEffectiveBedApprovalStatus(request);
-
-  if (request.bedId && bedApprovalStatus === "approved") {
+  if (request.bedId) {
     return {
-      label: "Đã duyệt",
+      label: "Đã chọn",
       badgeClassName: "border border-emerald-200 bg-emerald-50 text-emerald-700",
       Icon: CheckCircle2,
     };
   }
 
-  if (request.bedId && bedApprovalStatus === "rejected") {
-    return {
-      label: "Từ chối",
-      badgeClassName: "border border-rose-200 bg-rose-50 text-rose-700",
-      Icon: CircleAlert,
-    };
-  }
-
   return {
-    label: "Chờ duyệt",
+    label: "Chưa chọn",
     badgeClassName: "border border-amber-200 bg-amber-50 text-amber-700",
     Icon: Clock3,
   };
@@ -337,28 +323,6 @@ export default function BedManagementPage() {
     setIsGenderFilterOpen(false);
   };
 
-  const handleApproveBed = async (request: RegistrationRequest) => {
-    if (!request.bedId) {
-      return;
-    }
-
-    const updated = await approveBedSelectionForRegistration(request.id);
-    if (updated) {
-      setRequests((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-    }
-  };
-
-  const handleRejectBed = async (request: RegistrationRequest) => {
-    if (!request.bedId) {
-      return;
-    }
-
-    const updated = await rejectBedSelectionForRegistration(request.id);
-    if (updated) {
-      setRequests((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-    }
-  };
-
   const visibleStudents = useMemo(() => {
     const normalized = headerSearchValue.trim().toLowerCase();
 
@@ -381,18 +345,12 @@ export default function BedManagementPage() {
           return false;
         }
 
-        const bedApprovalStatus = getEffectiveBedApprovalStatus(request);
-
-        if (selectionFilter === "pending") {
-          return bedApprovalStatus === "pending";
+        if (selectionFilter === "selected") {
+          return Boolean(request.bedId);
         }
 
-        if (selectionFilter === "approved") {
-          return bedApprovalStatus === "approved";
-        }
-
-        if (selectionFilter === "rejected") {
-          return bedApprovalStatus === "rejected";
+        if (selectionFilter === "not_selected") {
+          return !request.bedId;
         }
 
         return true;
@@ -403,38 +361,25 @@ export default function BedManagementPage() {
     });
   }, [genderFilter, headerSearchValue, latestRequests, selectionFilter, sortOrder]);
 
-  const bedApprovalRequests = useMemo(() => {
+  const roomAssignedRequests = useMemo(() => {
     return latestRequests
       .filter((request) => request.status === "approved")
-      .filter((request) => Boolean(request.assigned_room_id))
-      .filter((request) => Boolean(request.bedId));
+      .filter((request) => Boolean(request.assigned_room_id));
   }, [latestRequests]);
 
-  const pendingApprovalCount = bedApprovalRequests.filter((request) => {
-    return getEffectiveBedApprovalStatus(request) === "pending";
-  }).length;
-  const approvedApprovalCount = bedApprovalRequests.filter((request) => {
-    return getEffectiveBedApprovalStatus(request) === "approved";
-  }).length;
-  const rejectedApprovalCount = bedApprovalRequests.filter((request) => {
-    return getEffectiveBedApprovalStatus(request) === "rejected";
-  }).length;
+  const selectedCount = roomAssignedRequests.filter((request) => Boolean(request.bedId)).length;
+  const notSelectedCount = roomAssignedRequests.filter((request) => !request.bedId).length;
 
   const summaryCards = [
     {
-      label: "Chờ duyệt",
-      value: pendingApprovalCount,
-      valueClassName: "text-[#9b6b00]",
-    },
-    {
-      label: "Đã duyệt",
-      value: approvedApprovalCount,
+      label: "Đã chọn",
+      value: selectedCount,
       valueClassName: "text-[#16784b]",
     },
     {
-      label: "Từ chối",
-      value: rejectedApprovalCount,
-      valueClassName: "text-[#bf3e53]",
+      label: "Chưa chọn",
+      value: notSelectedCount,
+      valueClassName: "text-[#9b6b00]",
     },
   ];
 
@@ -447,7 +392,7 @@ export default function BedManagementPage() {
         className="flex min-h-[calc(100vh-8rem)] flex-col gap-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
       >
         <div className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
-          <h1 className="text-[28px] font-bold tracking-tight text-[#1a2d52]">Phân giường</h1>
+          <h1 className="text-[28px] font-bold tracking-tight text-[#1a2d52]">Quản lý giường</h1>
           <p className="mt-1 text-sm text-[#62789f]">
             Đang tải danh sách sinh viên đã được phân phòng và trạng thái chọn giường.
           </p>
@@ -468,13 +413,13 @@ export default function BedManagementPage() {
       className="flex min-h-[calc(100vh-8rem)] flex-col gap-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
     >
       <div className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
-        <h1 className="text-[28px] font-bold tracking-tight text-[#1a2d52]">Phân giường</h1>
+        <h1 className="text-[28px] font-bold tracking-tight text-[#1a2d52]">Quản lý giường</h1>
         <p className="mt-1 text-sm text-[#62789f]">
           Danh sách sinh viên đã được phân phòng và trạng thái chọn giường.
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         {summaryCards.map((card) => (
           <motion.article
             key={card.label}
@@ -496,13 +441,12 @@ export default function BedManagementPage() {
       <div className="relative mt-1 min-h-[360px] flex-1 overflow-x-auto rounded-[14px] border border-[#d6e2f1] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
         <table className="w-full table-fixed border-separate border-spacing-0">
           <colgroup>
-            <col className="w-[12%]" />
-            <col className="w-[17%]" />
-            <col className="w-[12%]" />
-            <col className="w-[11%]" />
-            <col className="w-[11%]" />
-            <col className="w-[17%]" />
-            <col className="w-[20%]" />
+            <col className="w-[14%]" />
+            <col className="w-[22%]" />
+            <col className="w-[14%]" />
+            <col className="w-[14%]" />
+            <col className="w-[14%]" />
+            <col className="w-[22%]" />
           </colgroup>
           <thead>
             <tr className="bg-[linear-gradient(180deg,#f7fbff_0%,#edf4ff_100%)]">
@@ -558,9 +502,6 @@ export default function BedManagementPage() {
                   </button>
                 </div>
               </th>
-              <th className="px-4 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
-                Xử lý
-              </th>
             </tr>
           </thead>
           <tbody>
@@ -574,7 +515,6 @@ export default function BedManagementPage() {
                   : "Chưa chọn";
                 const meta = getSelectionMeta(request);
                 const StatusIcon = meta.Icon;
-                const bedApprovalStatus = getEffectiveBedApprovalStatus(request);
 
                 return (
                   <tr key={request.id} className="transition duration-200 hover:bg-[#f8fbff]">
@@ -601,46 +541,12 @@ export default function BedManagementPage() {
                         {meta.label}
                       </span>
                     </td>
-                    <td className="border-t border-[#e8eef8] px-4 py-4 text-center">
-                      <div className="flex flex-nowrap items-center justify-center gap-1.5">
-                        {!request.bedId ? (
-                          <span className="rounded-xl border border-[#d1daea] bg-[#f6f8fc] px-4 py-2 text-sm font-semibold text-[#7f8da8]">
-                            Chờ chọn
-                          </span>
-                        ) : bedApprovalStatus === "approved" ? (
-                          <span className="auth-btn-gloss inline-flex min-w-[118px] flex-nowrap items-center justify-center whitespace-nowrap rounded-full bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)]">
-                            <span className="auth-btn-gloss__content">Đã duyệt</span>
-                          </span>
-                        ) : bedApprovalStatus === "rejected" ? (
-                          <span className="rounded-xl border border-[#d1daea] bg-[#f6f8fc] px-4 py-2 text-sm font-semibold text-[#7f8da8]">
-                            Chờ gửi lại
-                          </span>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handleApproveBed(request)}
-                              className="auth-btn-gloss min-w-[68px] rounded-xl bg-[linear-gradient(135deg,#1f9a60_0%,#35bf7a_100%)] px-2.5 py-2 text-[12px] font-semibold text-white shadow-[0_10px_18px_rgba(31,154,96,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110"
-                            >
-                              <span className="auth-btn-gloss__content">Duyệt</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleRejectBed(request)}
-                              className="auth-btn-gloss min-w-[68px] rounded-xl bg-[linear-gradient(135deg,#e25569_0%,#cc3c4f_100%)] px-2.5 py-2 text-[12px] font-semibold text-white shadow-[0_10px_18px_rgba(204,60,79,0.20)] transition duration-200 hover:-translate-y-0.5 hover:brightness-105"
-                            >
-                              <span className="auth-btn-gloss__content">Từ chối</span>
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
                   </tr>
                 );
               })
             ) : (
               <tr>
-                <td colSpan={7} className="border-t border-[#e8eef8] px-4 py-14 text-center text-sm font-semibold text-[#5c7094]">
+                <td colSpan={6} className="border-t border-[#e8eef8] px-4 py-14 text-center text-sm font-semibold text-[#5c7094]">
                   Không có dữ liệu phù hợp với bộ lọc/từ khóa tìm kiếm.
                 </td>
               </tr>

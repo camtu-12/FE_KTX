@@ -14,6 +14,7 @@ import {
   type RoomFeeBill as ApiRoomFeeBill,
   updatePaymentSettings,
 } from "../../../api/paymentApi";
+import { formatDate } from "../../../utils/dateFormat";
 
 type StatusFilter = PaymentStatus | "all";
 type FilterMenuType = "month" | "year" | "status";
@@ -70,20 +71,6 @@ const statusMeta: Record<PaymentStatus, { label: string; className: string }> = 
     label: "Quá hạn",
     className: "border border-rose-200 bg-rose-50 text-rose-700",
   },
-};
-
-const formatDate = (value: string) => {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value || "-";
-  }
-
-  return date.toLocaleDateString("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
 };
 
 const formatRoomName = (bill: ApiRoomFeeBill) =>

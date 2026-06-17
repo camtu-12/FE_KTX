@@ -11,24 +11,16 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { Link } from "react-router-dom";
 import { type MyRoom, type MyRoomBed, type MyRoomStatus } from "../../../mocks/myRoom";
 import { useAuthStore } from "../../auth/store";
-import { requestCheckoutForRegistration } from "../../../api/registrationService";
+import { getMyRegistration, getRooms, requestCheckoutForRegistration } from "../../../api/registrationService";
+import type { RegistrationRequest } from "../../admin/data/registrationRequests";
+import type { DormRoom } from "../../../types/dormRoom";
 import { getMyOccupancyFromBackend } from "../services/occupancyService";
+import ProgressStep from "../../registration/components/ProgressStep";
 
-const formatDate = (iso: string) => {
-  const date = new Date(iso);
-
-  if (Number.isNaN(date.getTime())) {
-    return iso;
-  }
-
-  return date.toLocaleDateString("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-};
+import { formatDate } from "../../../utils/dateFormat";
 
 const getBedLevelLong = (bedNumber: number) => (bedNumber % 2 === 1 ? "Tầng trên" : "Tầng dưới");
 
@@ -221,6 +213,8 @@ function AccessNotice({ message }: { message: string }) {
 
 export default function MyRoomPage() {
   const studentEmail = useAuthStore((state) => state.user?.email ?? "");
+  const [registration, setRegistration] = useState<RegistrationRequest | null>(null);
+  const [assignedRoom, setAssignedRoom] = useState<DormRoom | null>(null);
   const [occupancy, setOccupancy] = useState<MyRoom | null>(null);
   const [isLoadingOccupancy, setIsLoadingOccupancy] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -237,14 +231,28 @@ export default function MyRoomPage() {
       setLoadError("");
 
       try {
-        const nextOccupancy = await getMyOccupancyFromBackend(studentEmail);
+        const [reg, nextOccupancy] = await Promise.all([
+          getMyRegistration(studentEmail) as Promise<RegistrationRequest | null>,
+          getMyOccupancyFromBackend(studentEmail),
+        ]);
 
         if (isActive) {
+          setRegistration(reg);
           setOccupancy(nextOccupancy);
+
+          if (reg?.assigned_room_id && !nextOccupancy) {
+            const rooms = await getRooms();
+            const room = rooms.find((r) => r.id === reg.assigned_room_id) ?? null;
+            if (isActive) setAssignedRoom(room as DormRoom | null);
+          } else {
+            setAssignedRoom(null);
+          }
         }
       } catch (error) {
         if (isActive) {
+          setRegistration(null);
           setOccupancy(null);
+          setAssignedRoom(null);
           setLoadError(error instanceof Error ? error.message : "Không thể tải thông tin phòng.");
         }
       } finally {
@@ -278,14 +286,122 @@ export default function MyRoomPage() {
     return <AccessNotice message="Đang tải thông tin phòng..." />;
   }
 
-  if (!occupancy) {
+  if (!registration || registration.status !== "approved") {
     return <AccessNotice message={loadError || "Bạn chưa đăng ký nội trú, xin mời hoàn thành đầy đủ"} />;
+  }
+
+  if (registration.occupancy_status === "PROPOSED") {
+    return (
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="relative isolate flex min-h-[calc(100vh-5rem-28px)] flex-col space-y-6 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
+      >
+        <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-[24px]">
+          <div className="absolute -left-24 -top-24 h-56 w-56 rounded-full bg-[#244CB8]/14 blur-3xl" />
+          <div className="absolute -bottom-28 right-0 h-60 w-60 rounded-full bg-[#4F7FF1]/14 blur-3xl" />
+        </div>
+        <motion.div
+          transition={{ duration: 0.2 }}
+          className="auth-reveal is-visible rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm sm:px-8"
+        >
+          <h1 className="text-[30px] font-bold tracking-tight text-[#1A2D52]">Phòng của tôi</h1>
+          <p className="mt-1.5 text-sm text-[#5C7094]">Theo dõi tiến trình phân phòng và chọn giường nội trú.</p>
+        </motion.div>
+        <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-amber-200 bg-amber-50/95 p-5 text-center shadow-[0_12px_24px_rgba(180,120,0,0.12)] backdrop-blur-sm">
+          <div className="flex items-center justify-center gap-2 text-amber-700">
+            <Clock3 className="h-5 w-5" />
+            <p className="font-semibold text-amber-900">Đơn của bạn đang được xử lý</p>
+          </div>
+          <p className="mt-1.5 text-sm text-amber-800/90">
+            Vui lòng chờ thông báo xác nhận phòng từ quản lý.
+          </p>
+        </div>
+      </motion.section>
+    );
+  }
+
+  if (!registration.assigned_room_id) {
+    return (
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="relative isolate flex min-h-[calc(100vh-5rem-28px)] flex-col space-y-6 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
+      >
+        <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-[24px]">
+          <div className="absolute -left-24 -top-24 h-56 w-56 rounded-full bg-[#244CB8]/14 blur-3xl" />
+          <div className="absolute -bottom-28 right-0 h-60 w-60 rounded-full bg-[#4F7FF1]/14 blur-3xl" />
+        </div>
+        <motion.div
+          transition={{ duration: 0.2 }}
+          className="auth-reveal is-visible rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm sm:px-8"
+        >
+          <h1 className="text-[30px] font-bold tracking-tight text-[#1A2D52]">Phòng của tôi</h1>
+          <p className="mt-1.5 text-sm text-[#5C7094]">Theo dõi tiến trình phân phòng và chọn giường nội trú.</p>
+        </motion.div>
+        <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-emerald-200 bg-emerald-50/95 p-5 text-center shadow-[0_12px_24px_rgba(16,185,129,0.16)] backdrop-blur-sm">
+          <div className="flex items-center justify-center gap-2 text-emerald-700">
+            <CheckCircle2 className="h-5 w-5" />
+            <p className="font-semibold text-emerald-900">Đơn đã được duyệt</p>
+          </div>
+          <p className="mt-1.5 text-sm text-emerald-800/90">
+            Đang chờ quản lý xếp phòng. Kết quả sẽ có trong vòng 1–2 ngày làm việc.
+          </p>
+        </div>
+      </motion.section>
+    );
+  }
+
+  if (!occupancy) {
+    const roomName = assignedRoom
+      ? `${assignedRoom.building_code}${assignedRoom.room_number}`
+      : "Đang tải...";
+
+    return (
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="relative isolate flex min-h-[calc(100vh-5rem-28px)] flex-col space-y-6 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
+      >
+        <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-[24px]">
+          <div className="absolute -left-24 -top-24 h-56 w-56 rounded-full bg-[#244CB8]/14 blur-3xl" />
+          <div className="absolute -bottom-28 right-0 h-60 w-60 rounded-full bg-[#4F7FF1]/14 blur-3xl" />
+        </div>
+        <motion.div
+          transition={{ duration: 0.2 }}
+          className="auth-reveal is-visible rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm sm:px-8"
+        >
+          <h1 className="text-[30px] font-bold tracking-tight text-[#1A2D52]">Phòng của tôi</h1>
+          <p className="mt-1.5 text-sm text-[#5C7094]">Theo dõi tiến trình phân phòng và chọn giường nội trú.</p>
+        </motion.div>
+        <ProgressStep variant="room" currentStep={2} />
+        <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-[#b7ccef] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-5 text-center shadow-[0_12px_24px_rgba(36,76,184,0.10)] backdrop-blur-sm">
+          <div className="flex items-center justify-center gap-2 text-[#2f63da]">
+            <BedSingle className="h-5 w-5" />
+            <p className="font-semibold text-[#1F3152]">
+              Bạn được phân vào phòng <span className="text-[#244CB8]">{roomName}</span>
+            </p>
+          </div>
+          <p className="mt-1.5 text-sm text-[#5C7094]">
+            Vui lòng chọn giường để hoàn tất đăng ký nội trú.
+          </p>
+          <Link
+            to="/student/bed-selection"
+            className="auth-btn-gloss mx-auto mt-4 inline-flex h-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-5 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.98]"
+          >
+            <span className="auth-btn-gloss__content">Chọn giường</span>
+          </Link>
+        </div>
+      </motion.section>
+    );
   }
 
   const StatusIcon = statusMeta[occupancy.status].Icon;
   const myBed = getBedByNumber(occupancy.beds, occupancy.bedNumber);
   const isLiving = occupancy.status === "ACTIVE" || occupancy.status === "LEAVE_REQUESTED";
-
   const closeLeaveModal = () => {
     setIsLeaveModalOpen(false);
     setLeaveReason("");

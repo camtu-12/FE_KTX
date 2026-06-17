@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { createVnpayPayment, getStudentPayments, verifyVnpayPayment, type PaymentStatus, type StudentPaymentItem, type StudentPayments } from "../../../api/paymentApi";
 import { useAuthStore } from "../../auth/store";
+import { formatDate } from "../../../utils/dateFormat";
 
 const moneyFormatter = new Intl.NumberFormat("vi-VN", {
   style: "currency",
@@ -27,13 +28,6 @@ const statusMeta: Record<PaymentStatus, { label: string; className: string }> = 
 };
 
 type PaymentTab = "room_fee" | "electricity";
-
-const formatDate = (value: string) => {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
-};
 
 const formatPeriodMonth = (value: string) => {
   const [year, month] = value.split("-");

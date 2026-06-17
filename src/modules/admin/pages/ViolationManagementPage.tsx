@@ -20,6 +20,7 @@ import { useOutletContext } from "react-router-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import { listViolations, processViolation, type ViolationRecord } from "../../../api/violationApi";
 import type { ViolationLevel } from "../../../api/violationTypeApi";
+import { formatDate } from "../../../utils/dateFormat";
 
 type LevelFilter = ViolationLevel | "ALL";
 type ViolationStatus = "PENDING" | "RESOLVED";
@@ -111,20 +112,6 @@ const actionMeta: Record<ViolationAction, { label: string; badgeClassName: strin
     badgeClassName: "border border-rose-200 bg-rose-50 text-rose-700",
     Icon: Gavel,
   },
-};
-
-const formatDate = (iso: string) => {
-  const date = new Date(iso);
-
-  if (Number.isNaN(date.getTime())) {
-    return iso;
-  }
-
-  return date.toLocaleDateString("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
 };
 
 const createRows = (records: ViolationRecord[]): ViolationRow[] =>

@@ -1,5 +1,6 @@
 import { CheckCircle2, X } from "lucide-react";
 import type { BedMaintenancePlan, MaintenanceBedOption, RoomMaintenancePlan } from "../../../api/maintenanceApi";
+import { formatDate } from "../../../utils/dateFormat";
 
 export type MaintenanceWizardState =
   | {
@@ -102,13 +103,6 @@ function getPrioritySummary(option: MaintenanceBedOption) {
   if (option.priority_labels?.length) return option.priority_labels.join(", ");
   const labels = ["Cùng giới tính", "Cùng tòa", "Cùng tầng", "Còn giường trống"];
   return labels.slice(0, Math.max(1, 4 - Math.min(option.priority, 3))).join(", ");
-}
-
-function formatDate(value?: string | null) {
-  if (!value) return "--";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 export default function MaintenanceWizardModal({
