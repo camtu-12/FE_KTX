@@ -1,32 +1,27 @@
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
-  CalendarDays,
   CheckCircle2,
   ClipboardCheck,
-  DoorOpen,
   Eye,
   Gavel,
-  MapPin,
-  NotebookText,
-  ShieldAlert,
+  Search,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useOutletContext } from "react-router-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
-import { listViolations, processViolation, type ViolationRecord } from "../../../api/violationApi";
-import type { ViolationLevel } from "../../../api/violationTypeApi";
+import { listViolations, type ViolationRecord } from "../../../api/violationApi";
+import type { ActivityCategory, ViolationLevel } from "../../../api/violationTypeApi";
 import { formatDate } from "../../../utils/dateFormat";
 
+type CategoryFilter = ActivityCategory | "ALL";
 type LevelFilter = ViolationLevel | "ALL";
+type ActionFilter = ViolationAction | "ALL";
 type ViolationStatus = "PENDING" | "RESOLVED";
-type ViolationAction = "WARNING" | "FORCED_CHECKOUT";
-type StatusFilter = ViolationStatus | "ALL";
-type ActionFilter = ViolationAction | "ALL" | "NONE";
+type ViolationAction = "reward_recorded" | "reminded" | "warned" | "force_evicted";
 
 type ViolationRow = {
   id: number;
@@ -39,6 +34,7 @@ type ViolationRow = {
   typeName: string;
   typeDescription: string;
   level: ViolationLevel;
+  category: ActivityCategory;
   studentCode: string;
   fullName: string;
   room: string;
@@ -53,38 +49,50 @@ type SummaryCard = {
 
 const emptyValue = "-";
 
-const levelOptions: Array<{ value: LevelFilter; label: string }> = [
-  { value: "ALL", label: "Tất cả mức độ" },
-  { value: "MINOR", label: "Nhẹ" },
-  { value: "MEDIUM", label: "Trung bình" },
-  { value: "SERIOUS", label: "Nghiêm trọng" },
+const categoryFilterOptions: Array<{ value: CategoryFilter; label: string }> = [
+  { value: "ALL", label: "Tất cả" },
+  { value: "positive", label: "Hoạt động tích cực" },
+  { value: "negative", label: "Vi phạm" },
 ];
 
-const statusOptions: Array<{ value: StatusFilter; label: string }> = [
-  { value: "ALL", label: "Tất cả trạng thái" },
-  { value: "PENDING", label: "Chờ xử lý" },
-  { value: "RESOLVED", label: "Đã xử lý" },
+const levelFilterOptions: Array<{ value: LevelFilter; label: string }> = [
+  { value: "ALL", label: "Tất cả" },
+  { value: "MINOR", label: "MINOR" },
+  { value: "MEDIUM", label: "MEDIUM" },
+  { value: "SERIOUS", label: "SERIOUS" },
 ];
 
-const actionOptions: Array<{ value: ActionFilter; label: string }> = [
-  { value: "ALL", label: "Tất cả kết quả" },
-  { value: "NONE", label: "Chưa xử lý" },
-  { value: "WARNING", label: "Nhắc nhở" },
-  { value: "FORCED_CHECKOUT", label: "Buộc thôi ở" },
+const actionFilterOptions: Array<{ value: ActionFilter; label: string }> = [
+  { value: "ALL", label: "Tất cả" },
+  { value: "reward_recorded", label: "Đã ghi nhận" },
+  { value: "reminded", label: "Nhắc nhở" },
+  { value: "warned", label: "Cảnh cáo" },
+  { value: "force_evicted", label: "Buộc thôi ở" },
 ];
 
 const levelMeta: Record<ViolationLevel, { label: string; badgeClassName: string }> = {
   MINOR: {
-    label: "Nhẹ",
-    badgeClassName: "text-yellow-700",
+    label: "MINOR",
+    badgeClassName: "border border-yellow-200 bg-yellow-50 text-yellow-700",
   },
   MEDIUM: {
-    label: "Trung bình",
-    badgeClassName: "text-orange-700",
+    label: "MEDIUM",
+    badgeClassName: "border border-orange-200 bg-orange-50 text-orange-700",
   },
   SERIOUS: {
-    label: "Nghiêm trọng",
-    badgeClassName: "text-red-700",
+    label: "SERIOUS",
+    badgeClassName: "border border-red-200 bg-red-50 text-red-700",
+  },
+};
+
+const categoryMeta: Record<ActivityCategory, { label: string; badgeClassName: string }> = {
+  positive: {
+    label: "Hoạt động tích cực",
+    badgeClassName: "border border-emerald-200 bg-emerald-50 text-emerald-700",
+  },
+  negative: {
+    label: "Vi phạm",
+    badgeClassName: "border border-rose-200 bg-rose-50 text-rose-700",
   },
 };
 
@@ -102,12 +110,22 @@ const statusMeta: Record<ViolationStatus, { label: string; badgeClassName: strin
 };
 
 const actionMeta: Record<ViolationAction, { label: string; badgeClassName: string; Icon: LucideIcon }> = {
-  WARNING: {
+  reward_recorded: {
+    label: "Đã ghi nhận",
+    badgeClassName: "border border-emerald-200 bg-emerald-50 text-emerald-700",
+    Icon: ClipboardCheck,
+  },
+  reminded: {
     label: "Nhắc nhở",
     badgeClassName: "border border-sky-200 bg-sky-50 text-sky-700",
     Icon: ClipboardCheck,
   },
-  FORCED_CHECKOUT: {
+  warned: {
+    label: "Cảnh cáo",
+    badgeClassName: "border border-amber-200 bg-amber-50 text-amber-700",
+    Icon: AlertTriangle,
+  },
+  force_evicted: {
     label: "Buộc thôi ở",
     badgeClassName: "border border-rose-200 bg-rose-50 text-rose-700",
     Icon: Gavel,
@@ -126,6 +144,7 @@ const createRows = (records: ViolationRecord[]): ViolationRow[] =>
     typeName: violation.type?.name ?? emptyValue,
     typeDescription: violation.type?.description ?? emptyValue,
     level: violation.type?.level ?? "MINOR",
+    category: violation.type?.category ?? "negative",
     studentCode: violation.student?.studentCode || emptyValue,
     fullName: violation.student?.fullName || emptyValue,
     room: violation.room.displayName || emptyValue,
@@ -142,7 +161,7 @@ function Badge({
   Icon?: LucideIcon;
 }) {
   return (
-    <span className={`inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold ${className}`}>
+    <span className={`inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold ${className}`}>
       {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
       {children}
     </span>
@@ -157,38 +176,14 @@ function InfoLine({ label, value }: { label: string; value: string }) {
   );
 }
 
-function CardInfoLine({
-  Icon,
-  label,
-  children,
-  alignTop = false,
-}: {
-  Icon: LucideIcon;
-  label: string;
-  children: ReactNode;
-  alignTop?: boolean;
-}) {
-  return (
-    <p className={`flex min-w-0 gap-2 text-sm text-slate-600 ${alignTop ? "items-start" : "items-center"}`}>
-      <Icon className={`h-4 w-4 shrink-0 text-slate-400 ${alignTop ? "mt-0.5" : ""}`} />
-      <span className={alignTop ? "w-[48px] shrink-0" : "shrink-0"}>{label}:</span>
-      <span className="min-w-0 flex-1 font-semibold text-slate-700">{children}</span>
-    </p>
-  );
-}
-
 export default function ViolationManagementPage() {
   const { headerSearchValue } = useOutletContext<AdminLayoutOutletContext>();
   const [rows, setRows] = useState<ViolationRow[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("ALL");
   const [levelFilter, setLevelFilter] = useState<LevelFilter>("ALL");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [actionFilter, setActionFilter] = useState<ActionFilter>("ALL");
+  const [tableSearch, setTableSearch] = useState("");
   const [selectedViolation, setSelectedViolation] = useState<ViolationRow | null>(null);
-  const [processingViolation, setProcessingViolation] = useState<ViolationRow | null>(null);
-  const [selectedAction, setSelectedAction] = useState<ViolationAction>("WARNING");
-  const [processNote, setProcessNote] = useState("");
-  const [forcedCheckoutReason, setForcedCheckoutReason] = useState("");
-  const [processError, setProcessError] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -224,42 +219,40 @@ export default function ViolationManagementPage() {
 
   const activeSearchValue = headerSearchValue.trim();
   const visibleRows = useMemo(() => {
-    const normalizedSearch = activeSearchValue.toLowerCase();
+    const normalizedSearch = [activeSearchValue, tableSearch].filter(Boolean).join(" ").toLowerCase();
 
     return rows.filter((item) => {
-      const matchesLevel = levelFilter === "ALL" || item.level === levelFilter;
-      const matchesStatus = statusFilter === "ALL" || item.status === statusFilter;
-      const matchesAction =
-        actionFilter === "ALL" ||
-        (actionFilter === "NONE" ? item.actionTaken === null : item.actionTaken === actionFilter);
+      const matchesCategory = categoryFilter === "ALL" || item.category === categoryFilter;
+      const matchesLevel = levelFilter === "ALL" || (item.category === "negative" && item.level === levelFilter);
+      const matchesAction = actionFilter === "ALL" || item.actionTaken === actionFilter;
       const matchesSearch =
         !normalizedSearch ||
-        [item.studentCode, item.fullName].join(" ").toLowerCase().includes(normalizedSearch);
+        [item.studentCode, item.fullName, item.typeName].join(" ").toLowerCase().includes(normalizedSearch);
 
-      return matchesLevel && matchesStatus && matchesAction && matchesSearch;
+      return matchesCategory && matchesLevel && matchesAction && matchesSearch;
     });
-  }, [actionFilter, activeSearchValue, levelFilter, rows, statusFilter]);
+  }, [activeSearchValue, actionFilter, categoryFilter, levelFilter, rows, tableSearch]);
 
   const totalCount = rows.length;
-  const pendingCount = rows.filter((item) => item.status === "PENDING").length;
-  const resolvedCount = rows.filter((item) => item.status === "RESOLVED").length;
-  const forcedCheckoutCount = rows.filter((item) => item.actionTaken === "FORCED_CHECKOUT").length;
+  const positiveCount = rows.filter((item) => item.category === "positive").length;
+  const negativeCount = rows.filter((item) => item.category === "negative").length;
+  const forcedCheckoutCount = rows.filter((item) => item.actionTaken === "force_evicted").length;
 
   const summaryCards: SummaryCard[] = [
     {
-      label: "Tổng vi phạm",
+      label: "Tổng hoạt động",
       value: totalCount,
       valueClassName: "text-[#244cb8]",
     },
     {
-      label: "Chờ xử lý",
-      value: pendingCount,
-      valueClassName: "text-[#9b6b00]",
+      label: "Hoạt động tích cực",
+      value: positiveCount,
+      valueClassName: "text-[#16784b]",
     },
     {
-      label: "Đã xử lý",
-      value: resolvedCount,
-      valueClassName: "text-[#16784b]",
+      label: "Vi phạm",
+      value: negativeCount,
+      valueClassName: "text-[#c4364f]",
     },
     {
       label: "Buộc thôi ở",
@@ -268,60 +261,11 @@ export default function ViolationManagementPage() {
     },
   ];
 
-  const closeProcessModal = () => {
-    setProcessingViolation(null);
-    setSelectedAction("WARNING");
-    setProcessNote("");
-    setForcedCheckoutReason("");
-    setProcessError("");
-  };
-
-  const openProcessModal = (violation: ViolationRow) => {
-    setProcessingViolation(violation);
-    setSelectedAction("WARNING");
-    setProcessNote("");
-    setForcedCheckoutReason("");
-    setProcessError("");
-  };
-
   const resetFilters = () => {
+    setCategoryFilter("ALL");
     setLevelFilter("ALL");
-    setStatusFilter("ALL");
     setActionFilter("ALL");
-  };
-
-  const handleConfirmProcess = async () => {
-    if (!processingViolation) {
-      return;
-    }
-
-    const trimmedProcessNote = processNote.trim();
-    const trimmedForcedReason = forcedCheckoutReason.trim();
-
-    if (selectedAction === "FORCED_CHECKOUT" && !trimmedForcedReason) {
-      setProcessError("Vui lòng nhập lý do buộc thôi ở.");
-      return;
-    }
-
-    try {
-      const updated = await processViolation(processingViolation.id, {
-        action_taken: selectedAction,
-        note: trimmedProcessNote || processingViolation.note,
-      });
-      const [nextViolation] = createRows([updated]);
-
-      setRows((current) => current.map((item) => (item.id === nextViolation.id ? nextViolation : item)));
-      setSelectedViolation((current) => (current?.id === nextViolation.id ? nextViolation : current));
-      closeProcessModal();
-
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new Event("ktx-violations-updated"));
-        window.dispatchEvent(new Event("ktx-registrations-updated"));
-        window.dispatchEvent(new Event("ktx-rooms-updated"));
-      }
-    } catch {
-      setProcessError("Không thể cập nhật xử lý vi phạm. Vui lòng thử lại.");
-    }
+    setTableSearch("");
   };
 
   return (
@@ -340,34 +284,34 @@ export default function ViolationManagementPage() {
         >
           <div className="flex flex-col gap-2">
             <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">
-              Quản lý vi phạm 
+              Lịch sử hoạt động
             </h1>
             <p className="max-w-3xl text-[13px] leading-6 text-[#62789f] sm:text-sm">
-              Theo dõi vi phạm nội trú, trạng thái xử lý và các trường hợp cần buộc thôi ở.
+              Theo dõi hoạt động tích cực, vi phạm và kết quả xử lý của sinh viên nội trú.
             </p>
           </div>
 
           <div className="mt-5 grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
             <select
-              value={levelFilter}
-              onChange={(event) => setLevelFilter(event.target.value as LevelFilter)}
+              value={categoryFilter}
+              onChange={(event) => setCategoryFilter(event.target.value as CategoryFilter)}
               className="h-11 rounded-2xl border border-[#d6e2f1] bg-[#f8fbff] px-3 text-sm font-semibold text-[#1f3152] outline-none transition focus:border-[#244cb8] focus:bg-white focus:ring-4 focus:ring-[#244cb8]/12"
             >
-              {levelOptions.map((option) => (
+              {categoryFilterOptions.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  Loại: {option.label}
                 </option>
               ))}
             </select>
 
             <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+              value={levelFilter}
+              onChange={(event) => setLevelFilter(event.target.value as LevelFilter)}
               className="h-11 rounded-2xl border border-[#d6e2f1] bg-[#f8fbff] px-3 text-sm font-semibold text-[#1f3152] outline-none transition focus:border-[#244cb8] focus:bg-white focus:ring-4 focus:ring-[#244cb8]/12"
             >
-              {statusOptions.map((option) => (
+              {levelFilterOptions.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  Mức độ: {option.label}
                 </option>
               ))}
             </select>
@@ -377,9 +321,9 @@ export default function ViolationManagementPage() {
               onChange={(event) => setActionFilter(event.target.value as ActionFilter)}
               className="h-11 rounded-2xl border border-[#d6e2f1] bg-[#f8fbff] px-3 text-sm font-semibold text-[#1f3152] outline-none transition focus:border-[#244cb8] focus:bg-white focus:ring-4 focus:ring-[#244cb8]/12"
             >
-              {actionOptions.map((option) => (
+              {actionFilterOptions.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  Kết quả: {option.label}
                 </option>
               ))}
             </select>
@@ -418,89 +362,130 @@ export default function ViolationManagementPage() {
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.42, delay: 0.16, ease: "easeOut" }}
-          className="mt-1"
+          className="mt-1 space-y-3"
         >
-          {visibleRows.length > 0 ? (
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3">
-              {visibleRows.map((item, index) => {
-                const CardStatusIcon = statusMeta[item.status].Icon;
+          <div className="rounded-[22px] border border-[#d6e2f1] bg-white p-3 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
+            <label className="relative block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6f84ad]" />
+              <input
+                value={tableSearch}
+                onChange={(event) => setTableSearch(event.target.value)}
+                placeholder="Tìm theo MSSV, họ tên hoặc hoạt động..."
+                className="h-11 w-full rounded-2xl border border-[#d6e2f1] bg-[#f8fbff] pl-9 pr-3 text-sm font-semibold text-[#1f3152] outline-none transition placeholder:text-[#8da0bf] focus:border-[#244cb8] focus:bg-white focus:ring-4 focus:ring-[#244cb8]/12"
+              />
+            </label>
+          </div>
 
-                return (
-                  <motion.article
-                    key={item.id}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    whileHover={{ y: -4 }}
-                    transition={{ duration: 0.2, delay: index * 0.03, ease: "easeOut" }}
-                    className="group flex min-h-[300px] flex-col rounded-3xl border border-[#cfdbef] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] p-5 shadow-[0_12px_28px_rgba(15,23,42,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_20px_38px_rgba(36,76,184,0.16)]"
-                  >
+          {visibleRows.length > 0 ? (
+            <>
+              <div className="hidden overflow-hidden rounded-[22px] border border-[#d6e2f1] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.10)] md:block">
+                <div className="overflow-hidden">
+                  <table className="w-full table-auto border-separate border-spacing-0">
+                    <colgroup>
+                      <col className="w-[10%]" />
+                      <col className="w-[12%]" />
+                      <col className="w-[17%]" />
+                      <col className="w-[24%]" />
+                      <col className="w-[15%]" />
+                      <col className="w-[15%] min-w-[160px]" />
+                      <col className="w-[7%] min-w-[100px]" />
+                    </colgroup>
+                    <thead>
+                      <tr className="bg-[linear-gradient(180deg,#f7faff_0%,#eef4ff_100%)]">
+                        {["Ngày", "MSSV", "Họ tên", "Hoạt động", "Phân loại", "Kết quả xử lý", "Thao tác"].map((heading) => (
+                          <th
+                            key={heading}
+                            className={`whitespace-nowrap px-4 py-4 text-center align-middle text-xs font-bold uppercase tracking-[0.1em] text-[#6f84ad] ${
+                              heading === "Thao tác" ? "min-w-[100px]" : heading === "Kết quả xử lý" ? "min-w-[160px]" : ""
+                            }`}
+                          >
+                            {heading}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleRows.map((item) => (
+                        <tr key={item.id} className="transition duration-200 hover:bg-[#f8fbff]">
+                          <td className="border-t border-[#e8eef8] px-4 py-4 text-center align-middle text-sm font-semibold text-[#1f3152]">{formatDate(item.violationDate)}</td>
+                          <td className="border-t border-[#e8eef8] px-4 py-4 text-center align-middle text-sm font-bold text-[#1f3152]">{item.studentCode}</td>
+                          <td className="border-t border-[#e8eef8] px-4 py-4 text-center align-middle text-sm font-semibold text-[#1f3152]">
+                            <span className="mx-auto block line-clamp-2 max-w-[180px]">{item.fullName}</span>
+                          </td>
+                          <td className="border-t border-[#e8eef8] px-4 py-4 text-center align-middle text-sm font-semibold text-[#1f3152]">
+                            <span className="mx-auto block line-clamp-2 max-w-[260px]">{item.typeName}</span>
+                          </td>
+                          <td className="border-t border-[#e8eef8] px-4 py-4 text-center align-middle">
+                            <Badge className={categoryMeta[item.category].badgeClassName}>{categoryMeta[item.category].label}</Badge>
+                          </td>
+                          <td className="border-t border-[#e8eef8] px-4 py-4 text-center align-middle">
+                            {item.actionTaken ? (
+                              <Badge Icon={actionMeta[item.actionTaken].Icon} className={actionMeta[item.actionTaken].badgeClassName}>
+                                {actionMeta[item.actionTaken].label}
+                              </Badge>
+                            ) : (
+                              <span className="text-sm font-semibold text-[#8a9abb]">-</span>
+                            )}
+                          </td>
+                          <td className="border-t border-[#e8eef8] px-4 py-4 text-center align-middle">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedViolation(item)}
+                              className="mx-auto inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#bfd2ec] bg-white text-sm font-semibold text-[#2a4f8f] transition duration-200 hover:-translate-y-0.5 hover:border-[#9ebce5] hover:bg-[#f3f8ff]"
+                              aria-label="Xem chi tiết"
+                              title="Xem chi tiết"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:hidden">
+                {visibleRows.map((item) => (
+                  <article key={item.id} className="rounded-2xl border border-[#d6e2f1] bg-white p-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <h2 className="truncate text-xl font-bold text-[#1a2d52]">{item.fullName}</h2>
-                        <p className="mt-1 truncate text-sm text-[#61779d]">{item.studentCode}</p>
+                        <h2 className="line-clamp-2 text-base font-bold text-[#1a2d52]">{item.typeName}</h2>
+                        <p className="mt-1 text-sm font-semibold text-[#62789f]">{formatDate(item.violationDate)}</p>
                       </div>
-
-                      <Badge Icon={CardStatusIcon} className={statusMeta[item.status].badgeClassName}>
-                        {statusMeta[item.status].label}
-                      </Badge>
-                    </div>
-
-                    <div className="mt-5 space-y-2.5">
-                      
-                      <CardInfoLine Icon={MapPin} label="Vị trí">
-                        <span className="block truncate">
-                          {item.room} - {item.bed}
-                        </span>
-                      </CardInfoLine>
-                      <CardInfoLine Icon={ShieldAlert} label="Loại">
-                        <span className="block truncate">{item.typeName}</span>
-                      </CardInfoLine>
-                      <CardInfoLine Icon={AlertTriangle} label="Mức độ">
-                        <span className={levelMeta[item.level].badgeClassName}>
-                          {levelMeta[item.level].label}
-                        </span>
-                      </CardInfoLine>
-                      <CardInfoLine Icon={NotebookText} label="Chi tiết" alignTop>
-                        <span className="block whitespace-normal break-all">{item.note || emptyValue}</span>
-                      </CardInfoLine>
-                      <CardInfoLine Icon={CalendarDays} label="Ngày">
-                        {formatDate(item.violationDate)}
-                      </CardInfoLine>
-                      <CardInfoLine Icon={DoorOpen} label="Kết quả">
-                        {item.actionTaken ? actionMeta[item.actionTaken].label : "Chưa xử lý"}
-                      </CardInfoLine>
-                    </div>
-
-                    <div className="mt-auto grid gap-2 pt-5 sm:grid-cols-2">
-                      {item.status === "PENDING" ? (
-                        <button
-                          type="button"
-                          onClick={() => openProcessModal(item)}
-                          className="auth-btn-gloss inline-flex h-10 items-center justify-center gap-1 rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_100%)] px-3 text-xs font-semibold text-white shadow-[0_10px_20px_rgba(36,76,184,0.20)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110"
-                        >
-                          <ClipboardCheck className="auth-btn-gloss__content h-4 w-4" />
-                          <span className="auth-btn-gloss__content">Xử lý</span>
-                        </button>
-                      ) : null}
                       <button
                         type="button"
                         onClick={() => setSelectedViolation(item)}
-                        className={`inline-flex h-10 items-center justify-center gap-1 rounded-xl border border-[#bfd2ec] bg-white px-3 text-xs font-semibold text-[#2a4f8f] transition duration-200 hover:-translate-y-0.5 hover:border-[#9ebce5] hover:bg-[#f3f8ff] ${
-                          item.status === "PENDING" ? "" : "sm:col-span-2"
-                        }`}
+                        className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-[#bfd2ec] bg-white text-[#2a4f8f]"
+                        aria-label="Xem chi tiết"
+                        title="Xem chi tiết"
                       >
                         <Eye className="h-4 w-4" />
-                        Xem
                       </button>
                     </div>
-                  </motion.article>
-                );
-              })}
-            </div>
+                    <div className="mt-3 grid gap-1 text-sm">
+                      <p className="font-semibold text-[#1f3152]">{item.studentCode} - {item.fullName}</p>
+                      <p className="text-[#5d7299]">{item.room} / {item.bed}</p>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Badge className={categoryMeta[item.category].badgeClassName}>{categoryMeta[item.category].label}</Badge>
+                      {item.category === "negative" ? (
+                        <Badge className={levelMeta[item.level].badgeClassName}>{levelMeta[item.level].label}</Badge>
+                      ) : null}
+                      {item.actionTaken ? (
+                        <Badge Icon={actionMeta[item.actionTaken].Icon} className={actionMeta[item.actionTaken].badgeClassName}>
+                          {actionMeta[item.actionTaken].label}
+                        </Badge>
+                      ) : null}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </>
           ) : (
             <div className="mx-auto flex max-w-md flex-col items-center justify-center rounded-[28px] border border-dashed border-[#cfdcf0] bg-[#f8fbff] px-6 py-10 text-center shadow-[0_14px_30px_rgba(15,23,42,0.06)]">
               <p className="text-sm font-semibold text-[#1a2d52]">
-                Không có dữ liệu vi phạm phù hợp với bộ lọc.
+                Không có dữ liệu hoạt động phù hợp với bộ lọc.
               </p>
             </div>
           )}
@@ -524,7 +509,7 @@ export default function ViolationManagementPage() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-2xl font-semibold uppercase  ">
-                      CHI TIẾT VI PHẠM
+                      CHI TIẾT HOẠT ĐỘNG
                     </p>
                   </div>
                   <button
@@ -553,21 +538,31 @@ export default function ViolationManagementPage() {
 
                   <div className="rounded-2xl border border-[#d3e0f2] bg-white/65 p-4">
                     <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
-                      THÔNG TIN VI PHẠM
+                      THÔNG TIN HOẠT ĐỘNG
                     </h3>
                     <div className="mt-4 grid gap-x-6 gap-y-3 md:grid-cols-2">
-                      <InfoLine label="Loại vi phạm" value={selectedViolation.typeName} />
+                      <InfoLine label="Hoạt động" value={selectedViolation.typeName} />
                       <div className="flex flex-wrap items-center gap-2 text-sm text-[#5570a0]">
-                        <span>Mức độ:</span>
-                        <span className={`font-semibold ${levelMeta[selectedViolation.level].badgeClassName}`}>
-                          {levelMeta[selectedViolation.level].label}
-                        </span>
+                        <span>Phân loại:</span>
+                        <Badge className={categoryMeta[selectedViolation.category].badgeClassName}>
+                          {categoryMeta[selectedViolation.category].label}
+                        </Badge>
                       </div>
-                      <InfoLine label="Ngày vi phạm" value={formatDate(selectedViolation.violationDate)} />
-                      <p className="text-sm text-[#5570a0]">
-                        Chi tiết vi phạm:{" "}
-                        <span className="font-semibold break-all text-[#1b3766]">{selectedViolation.note || emptyValue}</span>
-                      </p>
+                      {selectedViolation.category === "negative" ? (
+                        <div className="flex flex-wrap items-center gap-2 text-sm text-[#5570a0]">
+                          <span>Mức độ:</span>
+                          <Badge className={levelMeta[selectedViolation.level].badgeClassName}>
+                            {levelMeta[selectedViolation.level].label}
+                          </Badge>
+                        </div>
+                      ) : null}
+                      <InfoLine label="Ngày hoạt động" value={formatDate(selectedViolation.violationDate)} />
+                      {selectedViolation.note.trim() ? (
+                        <p className="text-sm text-[#5570a0] md:col-span-2">
+                          Ghi chú:{" "}
+                          <span className="break-all font-semibold text-[#1b3766]">{selectedViolation.note.trim()}</span>
+                        </p>
+                      ) : null}
                     </div>
                   </div>
 
@@ -600,15 +595,6 @@ export default function ViolationManagementPage() {
                 </div>
 
                 <div className="mt-6 flex flex-wrap justify-end gap-3">
-                  {selectedViolation.status === "PENDING" ? (
-                    <button
-                      type="button"
-                      onClick={() => openProcessModal(selectedViolation)}
-                      className="auth-btn-gloss rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(36,76,184,0.24)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110"
-                    >
-                      <span className="auth-btn-gloss__content">Xử lý</span>
-                    </button>
-                  ) : null}
                   <button
                     type="button"
                     onClick={() => setSelectedViolation(null)}
@@ -623,124 +609,6 @@ export default function ViolationManagementPage() {
           )
         : null}
 
-      {processingViolation
-        ? createPortal(
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.2, ease: "easeOut" }}
-              className="fixed inset-0 z-[82] flex items-center justify-center bg-[rgba(14,25,48,0.50)] px-4 backdrop-blur-sm"
-            >
-              <motion.div
-                initial={{ opacity: 0, y: 18, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ duration: 0.26, ease: "easeOut" }}
-                className="w-full max-w-[620px] rounded-[26px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f9fcff_0%,#eef5ff_100%)] p-6 shadow-[0_24px_62px_rgba(27,56,122,0.26)]"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7d90b5]">
-                      XỬ LÝ VI PHẠM
-                    </p>
-                    <h2 className="mt-2 text-2xl font-bold text-[#173a78]">{processingViolation.fullName}</h2>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={closeProcessModal}
-                    className="rounded-xl border border-[#bfd2ee] bg-[linear-gradient(180deg,#ffffff_0%,#edf4ff_100%)] p-2 text-[#6681b1] transition hover:border-[#97b8e8] hover:text-[#244cb8]"
-                    aria-label="Đóng"
-                    title="Đóng"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-
-                <div className="mt-5 space-y-4">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {(["WARNING", "FORCED_CHECKOUT"] as ViolationAction[]).map((action) => {
-                      const isSelected = selectedAction === action;
-                      const meta = actionMeta[action];
-                      const ActionIcon = meta.Icon;
-
-                      return (
-                        <button
-                          key={action}
-                          type="button"
-                          onClick={() => {
-                            setSelectedAction(action);
-                            setProcessError("");
-                          }}
-                          className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-left transition duration-200 ${
-                            isSelected
-                              ? "border-[#244cb8] bg-[#eef5ff] shadow-[0_12px_24px_rgba(36,76,184,0.12)]"
-                              : "border-[#d3e0f2] bg-white/72 hover:border-[#aac2ea] hover:bg-white"
-                          }`}
-                        >
-                          <span
-                            className={`flex h-5 w-5 items-center justify-center rounded-full border ${
-                              isSelected ? "border-[#244cb8] bg-[#244cb8]/10" : "border-[#cfd9e8] bg-white"
-                            }`}
-                          >
-                            <span className={`h-2.5 w-2.5 rounded-full ${isSelected ? "bg-[#244cb8]" : "bg-transparent"}`} />
-                          </span>
-                          <ActionIcon className={`h-5 w-5 ${action === "FORCED_CHECKOUT" ? "text-rose-600" : "text-sky-600"}`} />
-                          <span className="text-sm font-bold text-[#1b3766]">{meta.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <label className="block">
-                    <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Ghi chú xử lý</span>
-                    <textarea
-                      value={processNote}
-                      onChange={(event) => setProcessNote(event.target.value)}
-                      rows={4}
-                      className="mt-2 w-full resize-none rounded-2xl border border-[#d3e0f2] bg-white/80 px-4 py-3 text-sm font-semibold text-[#1b3766] outline-none transition placeholder:text-[#9aabc9] focus:border-[#244cb8] focus:bg-white focus:ring-4 focus:ring-[#244cb8]/12"
-                      placeholder="Nhập ghi chú xử lý..."
-                    />
-                  </label>
-
-                  {selectedAction === "FORCED_CHECKOUT" ? (
-                    <label className="block">
-                      <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Lý do buộc thôi ở *</span>
-                      <textarea
-                        value={forcedCheckoutReason}
-                        onChange={(event) => {
-                          setForcedCheckoutReason(event.target.value);
-                          setProcessError("");
-                        }}
-                        rows={4}
-                        className="mt-2 w-full resize-none rounded-2xl border border-[#d3e0f2] bg-white/80 px-4 py-3 text-sm font-semibold text-[#1b3766] outline-none transition placeholder:text-[#9aabc9] focus:border-[#244cb8] focus:bg-white focus:ring-4 focus:ring-[#244cb8]/12"
-                        placeholder="Nhập lý do để sau này lưu vào occupancy.reason..."
-                      />
-                    </label>
-                  ) : null}
-
-                  {processError ? <p className="text-sm font-semibold text-[#cc3c4f]">{processError}</p> : null}
-                </div>
-
-                <div className="mt-6 flex flex-wrap justify-end gap-3">
-                  <button
-                    type="button"
-                    onClick={closeProcessModal}
-                    className="rounded-2xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-5 py-2.5 text-sm font-semibold text-[#24407f] shadow-[0_8px_18px_rgba(36,76,184,0.10)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white"
-                  >
-                    Hủy
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleConfirmProcess}
-                    className="auth-btn-gloss rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(36,76,184,0.24)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110"
-                  >
-                    <span className="auth-btn-gloss__content">Xác nhận</span>
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>,
-            document.body,
-          )
-        : null}
     </>
   );
 }

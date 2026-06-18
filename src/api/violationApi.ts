@@ -1,5 +1,5 @@
 import axios from "axios";
-import type { ViolationLevel } from "./violationTypeApi";
+import type { ActivityCategory, ViolationLevel } from "./violationTypeApi";
 
 const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
 const API_ROOT = API_BASE.endsWith("/api") ? API_BASE : `${API_BASE}/api`;
@@ -14,7 +14,7 @@ export type ViolationRecord = {
   typeId: number;
   violationDate: string;
   status: "PENDING" | "RESOLVED";
-  actionTaken: "WARNING" | "FORCED_CHECKOUT" | null;
+  actionTaken: "reward_recorded" | "reminded" | "warned" | "force_evicted" | null;
   note: string;
   student: {
     id: number;
@@ -34,6 +34,8 @@ export type ViolationRecord = {
     id: number;
     name: string;
     level: ViolationLevel;
+    category: ActivityCategory;
+    points: number;
     description: string;
   } | null;
 };
@@ -43,6 +45,7 @@ export type ViolationPayload = {
   type_id: number;
   violation_date: string;
   note: string;
+  action_taken?: "reward_recorded" | "reminded" | "warned" | "force_evicted";
 };
 
 type ApiViolation = {
@@ -71,6 +74,8 @@ type ApiViolation = {
     id?: number;
     name?: string | null;
     level?: string | null;
+    category?: string | null;
+    points?: number | string | null;
     description?: string | null;
   } | null;
 };
@@ -87,10 +92,17 @@ const normalizeStatus = (status: string | null | undefined): ViolationRecord["st
 };
 
 const normalizeAction = (action: string | null | undefined): ViolationRecord["actionTaken"] => {
-  const value = (action ?? "").trim().toUpperCase();
-  if (value === "WARNING") return "WARNING";
-  if (value === "FORCED_CHECKOUT") return "FORCED_CHECKOUT";
+  const rawValue = (action ?? "").trim();
+  const value = rawValue.toUpperCase();
+  if (value === "REWARD_RECORDED") return "reward_recorded";
+  if (value === "REMINDED" || value === "WARNING") return "reminded";
+  if (value === "WARNED") return "warned";
+  if (value === "FORCE_EVICTED" || value === "FORCED_CHECKOUT") return "force_evicted";
   return null;
+};
+
+const normalizeCategory = (category: string | null | undefined): ActivityCategory => {
+  return (category ?? "").trim().toLowerCase() === "positive" ? "positive" : "negative";
 };
 
 const normalizeViolation = (item: ApiViolation): ViolationRecord => ({
@@ -122,6 +134,8 @@ const normalizeViolation = (item: ApiViolation): ViolationRecord => ({
         id: Number(item.type.id ?? item.type_id ?? 0),
         name: item.type.name ?? "",
         level: normalizeLevel(item.type.level),
+        category: normalizeCategory(item.type.category),
+        points: Number(item.type.points ?? 0),
         description: item.type.description ?? "",
       }
     : null,
@@ -129,6 +143,13 @@ const normalizeViolation = (item: ApiViolation): ViolationRecord => ({
 
 export const listViolations = async (): Promise<ViolationRecord[]> => {
   const response = await http.get<ApiViolation[]>("/violations");
+  return Array.isArray(response.data) ? response.data.map(normalizeViolation) : [];
+};
+
+export const listViolationsByStudentEmail = async (email: string): Promise<ViolationRecord[]> => {
+  const response = await http.get<ApiViolation[]>("/violations", {
+    params: { student_email: email },
+  });
   return Array.isArray(response.data) ? response.data.map(normalizeViolation) : [];
 };
 
@@ -151,7 +172,7 @@ export const updateViolation = async (id: number, payload: ViolationPayload): Pr
 
 export const processViolation = async (
   id: number,
-  payload: { action_taken: "WARNING" | "FORCED_CHECKOUT"; note: string },
+  payload: { action_taken: "reminded" | "warned" | "force_evicted"; note: string },
 ): Promise<ViolationRecord> => {
   const response = await http.put<ApiViolation>(`/violations/${id}/process`, payload);
   return normalizeViolation(response.data);

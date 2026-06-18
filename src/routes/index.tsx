@@ -30,6 +30,7 @@ import SelectBedPage from "../modules/student/pages/SelectBedPage";
 import BedSelectionPage from "../modules/student/pages/BedSelectionPage";
 import MyRoomPage from "../modules/student/pages/MyRoomPage";
 import PaymentPage from "../modules/student/pages/PaymentPage";
+import MyActivitiesPage from "../modules/student/pages/MyActivitiesPage";
 import ProtectedRoute from "./ProtectedRoute";
 import ForgotPassword from "../modules/auth/pages/ForgotPassword";
 
@@ -86,6 +87,7 @@ export default function AppRoutes() {
           <Route path="room-status" element={<RoomStatusPage />} />
           <Route path="room" element={<MyRoomPage />} />
           <Route path="payment" element={<PaymentPage />} />
+          <Route path="activities" element={<MyActivitiesPage />} />
           <Route path="select-bed" element={<SelectBedPage />} />
           <Route path="bed-selection" element={<BedSelectionPage />} />
         </Route>

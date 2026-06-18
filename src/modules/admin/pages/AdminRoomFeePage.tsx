@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+﻿import { motion } from "framer-motion";
 import { CircleDollarSign, Eye, Funnel, Plus, X } from "lucide-react";
 import type { ReactNode, WheelEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -17,7 +17,7 @@ import {
 import { formatDate } from "../../../utils/dateFormat";
 
 type StatusFilter = PaymentStatus | "all";
-type FilterMenuType = "month" | "year" | "status";
+type FilterMenuType = "room" | "month" | "year" | "status";
 
 type RoomFeeForm = {
   month: string;
@@ -109,6 +109,8 @@ function InfoLine({ label, value }: { label: string; value: ReactNode }) {
 export default function AdminRoomFeePage() {
   const { headerSearchValue } = useOutletContext<AdminLayoutOutletContext>();
   const [bills, setBills] = useState<RoomFeeBill[]>([]);
+  const [roomFilter, setRoomFilter] = useState("all");
+  const [draftRoomFilter, setDraftRoomFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [draftStatusFilter, setDraftStatusFilter] = useState<StatusFilter>("all");
   const [monthFilter, setMonthFilter] = useState(String(currentMonth));
@@ -117,6 +119,7 @@ export default function AdminRoomFeePage() {
   const [draftYearFilter, setDraftYearFilter] = useState(String(currentYear));
   const [openFilterMenu, setOpenFilterMenu] = useState<FilterMenuType | null>(null);
   const [filterMenuPosition, setFilterMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const roomFilterButtonRef = useRef<HTMLButtonElement | null>(null);
   const monthFilterButtonRef = useRef<HTMLButtonElement | null>(null);
   const yearFilterButtonRef = useRef<HTMLButtonElement | null>(null);
   const statusFilterButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -134,6 +137,13 @@ export default function AdminRoomFeePage() {
     dueDate: getTodayValue(),
   });
   const years = useMemo(() => Array.from(new Set([currentYear, ...bills.map((bill) => bill.year)])).sort((a, b) => b - a), [bills]);
+  const roomOptions = useMemo(
+    () =>
+      Array.from(new Set(bills.map((bill) => bill.room).filter((room) => room && room !== "-"))).sort((a, b) =>
+        a.localeCompare(b, "vi", { numeric: true }),
+      ),
+    [bills],
+  );
 
   const loadBills = async () => {
     const data = await listRoomFeeBills();
@@ -172,13 +182,14 @@ export default function AdminRoomFeePage() {
     return bills.filter((bill) => {
       const searchableText = [bill.studentCode, bill.fullName].join(" ").toLowerCase();
       const matchesHeaderSearch = !normalizedHeaderSearch || searchableText.includes(normalizedHeaderSearch);
+      const matchesRoom = roomFilter === "all" || bill.room === roomFilter;
       const matchesStatus = statusFilter === "all" || bill.status === statusFilter;
-      const matchesMonth = bill.month === Number(monthFilter);
-      const matchesYear = bill.year === Number(yearFilter);
+      const matchesMonth = monthFilter === "all" || bill.month === Number(monthFilter);
+      const matchesYear = yearFilter === "all" || bill.year === Number(yearFilter);
 
-      return matchesHeaderSearch && matchesStatus && matchesMonth && matchesYear;
+      return matchesHeaderSearch && matchesRoom && matchesStatus && matchesMonth && matchesYear;
     });
-  }, [bills, headerSearchValue, monthFilter, statusFilter, yearFilter]);
+  }, [bills, headerSearchValue, monthFilter, roomFilter, statusFilter, yearFilter]);
 
   const totalCount = visibleBills.length;
   const unpaidCount = visibleBills.filter((bill) => bill.status === "unpaid").length;
@@ -214,7 +225,13 @@ export default function AdminRoomFeePage() {
 
     const updateMenuPosition = () => {
       const currentButton =
-        openFilterMenu === "month" ? monthFilterButtonRef.current : openFilterMenu === "year" ? yearFilterButtonRef.current : statusFilterButtonRef.current;
+        openFilterMenu === "room"
+          ? roomFilterButtonRef.current
+          : openFilterMenu === "month"
+            ? monthFilterButtonRef.current
+            : openFilterMenu === "year"
+              ? yearFilterButtonRef.current
+              : statusFilterButtonRef.current;
       const buttonRect = currentButton?.getBoundingClientRect();
 
       if (!buttonRect) {
@@ -248,6 +265,7 @@ export default function AdminRoomFeePage() {
   }, [createResult]);
 
   const handleOpenFilter = (type: FilterMenuType) => {
+    setDraftRoomFilter(roomFilter);
     setDraftMonthFilter(monthFilter);
     setDraftYearFilter(yearFilter);
     setDraftStatusFilter(statusFilter);
@@ -255,14 +273,19 @@ export default function AdminRoomFeePage() {
   };
 
   const handleResetFilter = () => {
+    if (openFilterMenu === "room") {
+      setDraftRoomFilter("all");
+      setRoomFilter("all");
+    }
+
     if (openFilterMenu === "month") {
-      setDraftMonthFilter(String(currentMonth));
-      setMonthFilter(String(currentMonth));
+      setDraftMonthFilter("all");
+      setMonthFilter("all");
     }
 
     if (openFilterMenu === "year") {
-      setDraftYearFilter(String(currentYear));
-      setYearFilter(String(currentYear));
+      setDraftYearFilter("all");
+      setYearFilter("all");
     }
 
     if (openFilterMenu === "status") {
@@ -274,6 +297,10 @@ export default function AdminRoomFeePage() {
   };
 
   const handleApplyFilter = () => {
+    if (openFilterMenu === "room") {
+      setRoomFilter(draftRoomFilter);
+    }
+
     if (openFilterMenu === "month") {
       setMonthFilter(draftMonthFilter);
     }
@@ -373,6 +400,22 @@ export default function AdminRoomFeePage() {
     }
   };
 
+  const roomHeader = (
+    <div className="inline-flex items-center justify-center gap-2">
+      <span>Phòng</span>
+      <button
+        ref={roomFilterButtonRef}
+        type="button"
+        onClick={openFilterMenu === "room" ? () => setOpenFilterMenu(null) : () => handleOpenFilter("room")}
+        className={`flex items-center justify-center transition ${roomFilter !== "all" ? "text-[#244cb8]" : "text-[#6f84ad] hover:text-[#244cb8]"}`}
+        aria-label="Bật lọc phòng"
+        title="Bật lọc phòng"
+      >
+        <Funnel className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+
   const monthHeader = (
     <div className="inline-flex items-center justify-center gap-2">
       <span>Tháng</span>
@@ -422,14 +465,22 @@ export default function AdminRoomFeePage() {
   );
 
   const activeFilterOptions =
-    openFilterMenu === "month"
-      ? monthOptions.map((month) => ({ value: String(month), label: String(month).padStart(2, "0") }))
-      : openFilterMenu === "year"
-        ? years.map((year) => ({ value: String(year), label: String(year) }))
-        : statusOptions;
+    openFilterMenu === "room"
+      ? [{ value: "all", label: "Tất cả" }, ...roomOptions.map((room) => ({ value: room, label: room }))]
+      : openFilterMenu === "month"
+        ? [{ value: "all", label: "Tất cả" }, ...monthOptions.map((month) => ({ value: String(month), label: String(month).padStart(2, "0") }))]
+        : openFilterMenu === "year"
+          ? [{ value: "all", label: "Tất cả" }, ...years.map((year) => ({ value: String(year), label: String(year) }))]
+          : statusOptions;
 
-  const activeDraftFilter = openFilterMenu === "month" ? draftMonthFilter : openFilterMenu === "year" ? draftYearFilter : draftStatusFilter;
+  const activeDraftFilter =
+    openFilterMenu === "room" ? draftRoomFilter : openFilterMenu === "month" ? draftMonthFilter : openFilterMenu === "year" ? draftYearFilter : draftStatusFilter;
   const setActiveDraftFilter = (value: string) => {
+    if (openFilterMenu === "room") {
+      setDraftRoomFilter(value);
+      return;
+    }
+
     if (openFilterMenu === "month") {
       setDraftMonthFilter(value);
       return;
@@ -515,8 +566,7 @@ export default function AdminRoomFeePage() {
         </div>
 
         <PaymentTable
-          headings={["MSSV", "Họ tên", "Phòng", "Tháng", "Năm", "Hạn thanh toán", "Trạng thái", "Hành động"]}
-          headerContent={{ Tháng: monthHeader, Năm: yearHeader, "Trạng thái": statusHeader }}
+          headings={["MSSV", "Họ tên", roomHeader, monthHeader, yearHeader, "Hạn thanh toán", statusHeader, "Hành động"]}
           emptyMessage="Không có hóa đơn tiền phòng phù hợp với bộ lọc."
           rows={visibleBills.map((bill) => ({
             key: bill.id,
@@ -532,10 +582,11 @@ export default function AdminRoomFeePage() {
                 <button
                   type="button"
                   onClick={() => setSelectedBill(bill)}
-                  className="inline-flex items-center justify-center gap-1 rounded-xl border border-[#bfd2ec] bg-white px-2.5 py-2 text-xs font-semibold text-[#2a4f8f] transition duration-200 hover:-translate-y-0.5 hover:border-[#9ebce5] hover:bg-[#f3f8ff]"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#bfd2ec] bg-white text-[#2a4f8f] transition duration-200 hover:-translate-y-0.5 hover:border-[#9ebce5] hover:bg-[#f3f8ff]"
+                  aria-label="Xem chi tiết"
+                  title="Xem chi tiết"
                 >
                   <Eye className="h-4 w-4" />
-                  Xem chi tiết
                 </button>
               </div>,
             ],
@@ -798,21 +849,26 @@ function PaymentTable({
   headings,
   rows,
   emptyMessage,
-  headerContent,
 }: {
-  headings: string[];
+  headings: ReactNode[];
   rows: Array<{ key: number; cells: ReactNode[] }>;
   emptyMessage: string;
-  headerContent?: Partial<Record<string, ReactNode>>;
 }) {
+  const colWidths = ["15%", "20%", "10%", "8%", "8%", "15%", "14%", "10%"];
+
   return (
     <div className="overflow-x-auto rounded-[22px] border border-[#d6e2f1] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
-      <table className="min-w-[1040px] table-fixed border-separate border-spacing-0">
+      <table className="w-full min-w-[980px] table-fixed border-separate border-spacing-0">
+        <colgroup>
+          {headings.map((_, index) => (
+            <col key={index} style={{ width: colWidths[index] }} />
+          ))}
+        </colgroup>
         <thead>
           <tr className="bg-[linear-gradient(180deg,#f7faff_0%,#eef4ff_100%)]">
-            {headings.map((heading) => (
-              <th key={heading} className="px-3 py-3.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
-                {headerContent?.[heading] ?? heading}
+            {headings.map((heading, index) => (
+              <th key={index} className="whitespace-nowrap px-3 py-3.5 text-center align-middle text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                {heading}
               </th>
             ))}
           </tr>

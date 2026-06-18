@@ -90,6 +90,15 @@ export default function RoomStatusPage() {
           return;
         }
 
+        if (
+          data.blacklist ||
+          data.occupancy_status === "forced_checkout" ||
+          eligRes.reason_code === "blacklisted"
+        ) {
+          navigate("/student/room", { replace: true });
+          return;
+        }
+
         setRegistration(data);
         setEligibility(eligRes);
       } catch (err) {

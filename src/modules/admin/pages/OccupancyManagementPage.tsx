@@ -14,7 +14,7 @@ import {
 } from "../../../api/registrationService";
 import type { RegistrationRequest } from "../data/registrationRequests";
 import type { DormRoom } from "../../../types/dormRoom";
-import { listViolationTypes, type ViolationType } from "../../../api/violationTypeApi";
+import { listViolationTypes, type ActivityCategory, type ViolationType } from "../../../api/violationTypeApi";
 import { createViolation } from "../../../api/violationApi";
 import { formatDate } from "../../../utils/dateFormat";
 
@@ -82,6 +82,26 @@ const levelMeta = {
     badgeClassName: "border border-red-200 bg-red-50 text-red-700",
   },
 };
+
+const categoryMeta: Record<ActivityCategory, { label: string; badgeClassName: string }> = {
+  positive: {
+    label: "Hoạt động tích cực",
+    badgeClassName: "border border-emerald-200 bg-emerald-50 text-emerald-700",
+  },
+  negative: {
+    label: "Vi phạm",
+    badgeClassName: "border border-rose-200 bg-rose-50 text-rose-700",
+  },
+};
+
+const actionLabels = {
+  reward_recorded: "Ghi nhận khen thưởng",
+  reminded: "Nhắc nhở",
+  warned: "Cảnh cáo",
+  force_evicted: "Buộc thôi ở",
+} as const;
+
+type ActivityAction = keyof typeof actionLabels;
 
 const getTodayValue = () => new Date().toISOString().slice(0, 10);
 
@@ -220,6 +240,7 @@ export default function OccupancyManagementPage() {
   const [violationTypeId, setViolationTypeId] = useState("");
   const [violationDate, setViolationDate] = useState(getTodayValue);
   const [violationNote, setViolationNote] = useState("");
+  const [activityAction, setActivityAction] = useState<ActivityAction>("reminded");
   const [violationFormError, setViolationFormError] = useState("");
   const [isSavingViolation, setIsSavingViolation] = useState(false);
 
@@ -251,6 +272,22 @@ export default function OccupancyManagementPage() {
     () => violationTypes.find((item) => item.id === Number(violationTypeId)) ?? null,
     [violationTypeId, violationTypes],
   );
+
+  const availableActivityActions = useMemo<ActivityAction[]>(() => {
+    if (!selectedViolationType || selectedViolationType.category === "positive") {
+      return ["reward_recorded"];
+    }
+
+    if (selectedViolationType.level === "MINOR") {
+      return ["reminded"];
+    }
+
+    if (selectedViolationType.level === "MEDIUM") {
+      return ["warned"];
+    }
+
+    return ["warned", "force_evicted"];
+  }, [selectedViolationType]);
 
   const summaryCards = [
     {
@@ -374,6 +411,10 @@ export default function OccupancyManagementPage() {
     };
   }, [isStatusFilterOpen]);
 
+  useEffect(() => {
+    setActivityAction(availableActivityActions[0] ?? "reminded");
+  }, [availableActivityActions]);
+
   const handleOpenStatusFilter = () => {
     setDraftStatusFilter(statusFilter);
     setIsStatusFilterOpen(true);
@@ -452,6 +493,7 @@ export default function OccupancyManagementPage() {
     setViolationTypeId("");
     setViolationDate(getTodayValue());
     setViolationNote("");
+    setActivityAction("reminded");
     setViolationFormError("");
   };
 
@@ -476,22 +518,22 @@ export default function OccupancyManagementPage() {
     const typeId = Number(violationTypeId);
 
     if (!canAddViolation(violationTarget)) {
-      setViolationFormError("Sinh viên đã bị buộc thôi ở, không thể thêm vi phạm mới.");
+      setViolationFormError("Sinh viên không còn lưu trú tại KTX, không thể ghi nhận hoạt động mới.");
       return;
     }
 
     if (!occupancyId) {
-      setViolationFormError("Không tìm thấy mã lưu trú để ghi nhận vi phạm.");
+      setViolationFormError("Không tìm thấy mã lưu trú để ghi nhận hoạt động.");
       return;
     }
 
     if (!typeId) {
-      setViolationFormError("Vui lòng chọn loại vi phạm.");
+      setViolationFormError("Vui lòng chọn loại hoạt động.");
       return;
     }
 
     if (!violationDate) {
-      setViolationFormError("Vui lòng chọn ngày vi phạm.");
+      setViolationFormError("Vui lòng chọn ngày hoạt động.");
       return;
     }
 
@@ -503,6 +545,7 @@ export default function OccupancyManagementPage() {
       type_id: typeId,
       violation_date: violationDate,
       note: violationNote.trim(),
+      action_taken: activityAction,
     };
 
     try {
@@ -512,7 +555,7 @@ export default function OccupancyManagementPage() {
       }
       handleCloseViolations();
     } catch {
-      setViolationFormError("Không thể lưu vi phạm. Vui lòng thử lại.");
+      setViolationFormError("Không thể lưu hoạt động. Vui lòng thử lại.");
     } finally {
       setIsSavingViolation(false);
     }
@@ -706,11 +749,11 @@ export default function OccupancyManagementPage() {
                             type="button"
                             onClick={() => handleOpenViolations(item)}
                             disabled={!canAddViolation(item)}
-                            title={!canAddViolation(item) ? "Sinh viên không còn lưu trú tại KTX, không thể thêm vi phạm mới." : undefined}
+                            title={!canAddViolation(item) ? "Sinh viên không còn lưu trú tại KTX, không thể ghi nhận hoạt động mới." : undefined}
                             className="auth-btn-gloss inline-flex min-w-[76px] items-center justify-center gap-1 whitespace-nowrap rounded-xl border border-rose-200 bg-rose-50 px-2.5 py-2 text-[12px] font-semibold text-rose-700 shadow-[0_8px_18px_rgba(190,24,93,0.10)] transition duration-200 hover:-translate-y-0.5 hover:border-rose-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:border-rose-200 disabled:hover:bg-rose-50"
                           >
                             <ShieldAlert className="h-3.5 w-3.5" />
-                            <span className="auth-btn-gloss__content">Ghi nhận vi phạm</span>
+                            <span className="auth-btn-gloss__content">Ghi nhận hoạt động</span>
                           </button>
                         </div>
                       </td>
@@ -969,7 +1012,7 @@ export default function OccupancyManagementPage() {
                 <div className="flex items-start justify-between gap-4 border-b border-[#d3e0f2] px-6 py-5">
                   <div>
                     <p className="text-xl font-bold uppercase  text-[#7d90b5]">
-                      QUẢN LÝ VI PHẠM
+                      GHI NHẬN HOẠT ĐỘNG
                     </p>
                     <h2 className="mt-2 text-2xl font-bold text-[#173a78]">
                       {violationStudent?.fullName ?? emptyValue}
@@ -992,12 +1035,31 @@ export default function OccupancyManagementPage() {
                   <div className="mx-auto w-full max-w-[860px]">
                     <div className="rounded-2xl border border-[#d3e0f2] bg-white/75 p-4">
                       <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
-                        Thêm vi phạm
+                        Thông tin sinh viên
                       </h3>
+                      <div className="mt-4 grid gap-x-6 gap-y-3 text-sm md:grid-cols-2">
+                        <p className="text-[#5570a0]">
+                          MSSV: <span className="font-semibold text-[#1b3766]">{violationStudent?.studentCode ?? emptyValue}</span>
+                        </p>
+                        <p className="text-[#5570a0]">
+                          Họ tên: <span className="font-semibold text-[#1b3766]">{violationStudent?.fullName ?? emptyValue}</span>
+                        </p>
+                        <p className="text-[#5570a0]">
+                          Phòng: <span className="font-semibold text-[#1b3766]">{violationTarget.buildingCode}{violationTarget.roomNumber}</span>
+                        </p>
+                        <p className="text-[#5570a0]">
+                          Giường: <span className="font-semibold text-[#1b3766]">#{violationTarget.bedNumber}</span>
+                        </p>
+                      </div>
+                    </div>
 
+                    <div className="mt-4 rounded-2xl border border-[#d3e0f2] bg-white/75 p-4">
+                      <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                        Ghi nhận hoạt động
+                      </h3>
                       <div className="mt-4 grid gap-4 md:grid-cols-2">
                         <label className="block md:col-span-2">
-                          <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Loại vi phạm *</span>
+                          <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Loại hoạt động *</span>
                           <select
                             value={violationTypeId}
                             onChange={(event) => {
@@ -1006,7 +1068,7 @@ export default function OccupancyManagementPage() {
                             }}
                             className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none transition focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10"
                           >
-                            <option value="">Chọn loại vi phạm</option>
+                            <option value="">Chọn loại hoạt động</option>
                             {violationTypes.map((type) => (
                               <option key={type.id} value={type.id}>
                                 {type.name}
@@ -1016,9 +1078,26 @@ export default function OccupancyManagementPage() {
                         </label>
 
                         <label className="block">
-                          <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Mức độ</span>
+                          <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Phân loại</span>
                           <div className="mt-2 flex h-11 w-full items-center rounded-xl border border-slate-200 bg-white px-3.5 shadow-sm">
                             {selectedViolationType ? (
+                              <span
+                                className={`inline-flex items-center rounded-full px-3 py-1.5 text-xs font-bold ${
+                                  categoryMeta[selectedViolationType.category].badgeClassName
+                                }`}
+                              >
+                                {categoryMeta[selectedViolationType.category].label}
+                              </span>
+                            ) : (
+                              <span className="text-sm font-semibold text-[#8a9abb]">-</span>
+                            )}
+                          </div>
+                        </label>
+
+                        <label className="block">
+                          <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Mức độ</span>
+                          <div className="mt-2 flex h-11 w-full items-center rounded-xl border border-slate-200 bg-white px-3.5 shadow-sm">
+                            {selectedViolationType?.category === "negative" ? (
                               <span
                                 className={`inline-flex items-center rounded-full px-3 py-1.5 text-xs font-bold ${
                                   levelMeta[selectedViolationType.level].badgeClassName
@@ -1027,13 +1106,13 @@ export default function OccupancyManagementPage() {
                                 {levelMeta[selectedViolationType.level].label}
                               </span>
                             ) : (
-                              <span className="text-sm font-semibold text-[#8a9abb]" />
+                              <span className="text-sm font-semibold text-[#8a9abb]">-</span>
                             )}
                           </div>
                         </label>
 
                         <label className="block">
-                          <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Ngày vi phạm *</span>
+                          <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Ngày hoạt động *</span>
                           <input
                             type="date"
                             value={violationDate}
@@ -1046,15 +1125,37 @@ export default function OccupancyManagementPage() {
                         </label>
 
                         <label className="block">
-                          <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Chi tiết vi phạm </span>
+                          <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Ghi chú</span>
                           <textarea
                             value={violationNote}
                             onChange={(event) => setViolationNote(event.target.value)}
                             rows={3}
                             className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10"
-                            placeholder="Nhập mô tả vi phạm"
+                            placeholder="Nhập ghi chú hoạt động"
                           />
                         </label>
+
+                        {selectedViolationType?.category === "negative" ? (
+                          <div className="md:col-span-2">
+                            <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Hướng xử lý</span>
+                            <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                              {availableActivityActions.map((action) => (
+                                <button
+                                  key={action}
+                                  type="button"
+                                  onClick={() => setActivityAction(action)}
+                                  className={`rounded-xl border px-4 py-3 text-left text-sm font-bold transition ${
+                                    activityAction === action
+                                      ? "border-[#244cb8] bg-[#eef5ff] text-[#173a78] shadow-[0_10px_20px_rgba(36,76,184,0.12)]"
+                                      : "border-slate-200 bg-white text-slate-600 hover:border-[#aac2ea]"
+                                  }`}
+                                >
+                                  {actionLabels[action]}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
 
                         {violationFormError ? <p className="text-sm font-semibold text-[#cc3c4f] md:col-span-2">{violationFormError}</p> : null}
 

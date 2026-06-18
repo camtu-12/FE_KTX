@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   BedSingle,
   CheckCircle2,
+  Info,
   Clock3,
   DoorOpen,
   LogOut,
@@ -64,6 +65,162 @@ const violationLevelLabel: Record<"MINOR" | "MEDIUM" | "SERIOUS", string> = {
   MEDIUM: "Trung bình",
   SERIOUS: "Nghiêm trọng",
 };
+
+const hideSystemReason = (reason?: string | null) => {
+  const normalized = String(reason ?? "").trim();
+  return normalized && normalized !== "FORCE_EVICTED" ? normalized : "";
+};
+
+const getForcedLeaveReason = (registration: RegistrationRequest, occupancy: MyRoom) =>
+  hideSystemReason(registration.blacklist?.reason) ||
+  hideSystemReason(occupancy.forcedLeave?.reason) ||
+  "Nợ quá hạn kéo dài";
+
+function InfoRow({ label, value }: { label: string; value?: string | number | null }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#6d7fa6]">{label}</p>
+      <p className="mt-1 break-words text-sm font-semibold text-[#1b3766]">{value || "-"}</p>
+    </div>
+  );
+}
+
+function ForcedEvictionHistory({
+  occupancy,
+  registration,
+  studentCode,
+  studentName,
+}: {
+  occupancy: MyRoom;
+  registration: RegistrationRequest;
+  studentCode?: string;
+  studentName?: string;
+}) {
+  const reason = getForcedLeaveReason(registration, occupancy);
+  const decisionDate = registration.blacklist?.created_at || occupancy.forcedLeave?.decidedAt || occupancy.leftDate;
+  const statusBadge = "Buộc thôi ở";
+  const blacklistCreatedAt = registration.blacklist?.created_at || decisionDate;
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
+      className="space-y-5 rounded-[24px] bg-[#eef3f8] p-4 sm:p-6"
+    >
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.42, ease: "easeOut" }}
+        className="rounded-[24px] border border-[#c9d7ea] bg-white px-5 py-5 shadow-[0_14px_34px_rgba(15,23,42,0.08)] sm:px-6"
+      >
+        <div className="flex flex-col gap-2">
+          <div>
+            <p className="text-sm font-semibold text-[#5C7094]">Phòng của tôi</p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight text-[#1A2D52] sm:text-[30px]">Lưu trú gần nhất</h1>
+          </div>
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-[#5f739b] sm:text-base">
+            <DoorOpen className="h-4 w-4 text-[#6d86b2]" />
+            <span>Phòng {occupancy.roomCode}</span>
+            <span className="text-[#9aacca]">•</span>
+            <span>Tòa {occupancy.buildingCode}</span>
+            <span className="text-[#9aacca]">•</span>
+            <span>Tầng {occupancy.floorNumber}</span>
+            <span className="text-[#9aacca]">•</span>
+            <span className="inline-flex items-center gap-1">
+              <BedSingle className="h-4 w-4 text-[#6d86b2]" />
+              Giường {occupancy.bedNumber}
+            </span>
+          </p>
+        </div>
+      </motion.div>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.36, delay: 0.04, ease: "easeOut" }}
+          className="rounded-[22px] border border-[#d8e3f1] bg-white p-5 shadow-[0_14px_30px_rgba(15,23,42,0.07)]"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-bold text-[#1a2d52]">Trạng thái lưu trú</h2>
+            <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-700">
+              {statusBadge}
+            </span>
+          </div>
+          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <InfoRow label="MSSV" value={studentCode} />
+            <InfoRow label="Họ tên" value={studentName} />
+            <InfoRow label="Ngày bắt đầu lưu trú" value={formatDate(occupancy.startDate)} />
+            <InfoRow label="Ngày kết thúc lưu trú" value={formatDate(occupancy.leftDate || occupancy.endDate)} />
+            <InfoRow label="Trạng thái" value="Đã bị buộc thôi ở" />
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.36, delay: 0.08, ease: "easeOut" }}
+          className="rounded-[22px] border border-amber-200 bg-amber-50 p-5 text-[#5d4212] shadow-[0_14px_30px_rgba(120,78,0,0.08)]"
+        >
+          <h2 className="text-lg font-bold text-amber-900">Quyết định buộc thôi ở</h2>
+          <p className="mt-3 text-sm font-medium leading-6">
+            Sinh viên đã bị buộc thôi ở và không còn quyền lưu trú tại ký túc xá.
+          </p>
+          <div className="mt-4 space-y-3">
+            <InfoRow label="Lý do" value={reason} />
+            <InfoRow label="Ngày quyết định" value={decisionDate ? formatDate(decisionDate) : "-"} />
+          </div>
+        </motion.div>
+      </div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.36, delay: 0.12, ease: "easeOut" }}
+        className="rounded-[22px] border border-[#d8e3f1] bg-white p-5 shadow-[0_14px_30px_rgba(15,23,42,0.07)]"
+      >
+        <h2 className="text-lg font-bold text-[#1a2d52]">Trạng thái đăng ký nội trú</h2>
+        <p className="mt-3 text-sm font-medium leading-6 text-[#526985]">
+          Bạn hiện đang thuộc danh sách không được đăng ký nội trú tại ký túc xá.
+        </p>
+        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          <InfoRow label="Trạng thái" value="Không được đăng ký nội trú" />
+          <InfoRow label="Lý do" value={reason} />
+          <InfoRow label="Ngày thêm vào danh sách" value={blacklistCreatedAt ? formatDate(blacklistCreatedAt) : "-"} />
+        </div>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.36, delay: 0.16, ease: "easeOut" }}
+        className="rounded-[22px] border border-sky-200 bg-sky-50 p-5 text-[#1f4967] shadow-[0_14px_30px_rgba(14,116,144,0.08)]"
+      >
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-sky-200 bg-white text-sky-700">
+            <Info className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 className="text-lg font-bold text-sky-950">Bạn vẫn có thể sử dụng hệ thống</h2>
+            <ul className="mt-3 space-y-2 text-sm font-medium leading-6">
+              <li>Bạn vẫn có thể đăng nhập tài khoản.</li>
+              <li>Bạn vẫn có thể xem các hóa đơn còn nợ.</li>
+              <li>Bạn vẫn có thể thanh toán các khoản công nợ còn tồn đọng.</li>
+              <li>Sau khi hoàn thành nghĩa vụ tài chính, việc xem xét đăng ký lại nếu được phép theo quy định của KTX sẽ do Ban quản lý quyết định.</li>
+            </ul>
+            <Link
+              to="/student/payment"
+              className="auth-btn-gloss mt-5 inline-flex w-full items-center justify-center rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_56%,#31b7d4_100%)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(36,76,184,0.22)] transition-all duration-200 hover:-translate-y-0.5 hover:brightness-105 active:scale-[0.98] sm:w-auto"
+            >
+              <span className="auth-btn-gloss__content">Đi đến trang thanh toán</span>
+            </Link>
+          </div>
+        </div>
+      </motion.div>
+    </motion.section>
+  );
+}
 
 function createRoomAisles(beds: MyRoomBed[]): RoomAisle[] {
   const bedNumbers = beds
@@ -402,6 +559,7 @@ export default function MyRoomPage() {
   const StatusIcon = statusMeta[occupancy.status].Icon;
   const myBed = getBedByNumber(occupancy.beds, occupancy.bedNumber);
   const isLiving = occupancy.status === "ACTIVE" || occupancy.status === "LEAVE_REQUESTED";
+  const isBlacklistedForcedLeave = occupancy.status === "FORCED_LEFT" && Boolean(registration.blacklist);
   const closeLeaveModal = () => {
     setIsLeaveModalOpen(false);
     setLeaveReason("");
@@ -441,6 +599,17 @@ export default function MyRoomPage() {
       });
     }
   };
+
+  if (isBlacklistedForcedLeave) {
+    return (
+      <ForcedEvictionHistory
+        occupancy={occupancy}
+        registration={registration}
+        studentCode={myBed?.studentCode || registration.formData.mssv}
+        studentName={myBed?.occupantName || registration.formData.fullName}
+      />
+    );
+  }
 
   return (
     <motion.section
@@ -531,7 +700,7 @@ export default function MyRoomPage() {
           className="rounded-[24px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-semibold text-amber-700 shadow-[0_14px_30px_rgba(180,116,0,0.10)]"
         >
           <h3 className="text-lg font-bold text-amber-800">Bạn đã bị nhắc nhở.</h3>
-          <p className="mt-2">Loại vi phạm: {occupancy.warningNotice.violationTypeName || "-"}</p>
+          <p className="mt-2">Hoạt động: {occupancy.warningNotice.violationTypeName || "-"}</p>
           <p className="mt-2">
             Mức độ:{" "}
             {occupancy.warningNotice.violationTypeLevel
@@ -551,7 +720,7 @@ export default function MyRoomPage() {
           className="rounded-[24px] border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-semibold text-rose-700 shadow-[0_14px_30px_rgba(190,52,85,0.10)]"
         >
           <h3 className="text-lg font-bold text-rose-800">Bạn đã bị buộc thôi ở.</h3>
-          <p className="mt-2">Loại vi phạm: {occupancy.forcedLeave?.violationTypeName || "-"}</p>
+          <p className="mt-2">Hoạt động: {occupancy.forcedLeave?.violationTypeName || "-"}</p>
           <p className="mt-2">
             Mức độ:{" "}
             {occupancy.forcedLeave?.violationTypeLevel

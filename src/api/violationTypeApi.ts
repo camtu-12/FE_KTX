@@ -8,17 +8,22 @@ const http = axios.create({
 });
 
 export type ViolationLevel = "MINOR" | "MEDIUM" | "SERIOUS";
+export type ActivityCategory = "positive" | "negative";
 
 export type ViolationType = {
   id: number;
   name: string;
   level: ViolationLevel;
+  category: ActivityCategory;
+  points: number;
   description: string;
 };
 
 export type ViolationTypePayload = {
   name: string;
-  level: ViolationLevel;
+  category: ActivityCategory;
+  level?: ViolationLevel;
+  points: number;
   description: string;
 };
 
@@ -36,6 +41,8 @@ type ApiViolationType = {
   id: number;
   name?: string | null;
   level?: string | null;
+  category?: string | null;
+  points?: number | string | null;
   description?: string | null;
 };
 
@@ -46,10 +53,16 @@ const normalizeLevel = (level: string | null | undefined): ViolationLevel => {
   return "MINOR";
 };
 
+const normalizeCategory = (category: string | null | undefined): ActivityCategory => {
+  return (category ?? "").trim().toLowerCase() === "positive" ? "positive" : "negative";
+};
+
 const normalizeViolationType = (item: ApiViolationType): ViolationType => ({
   id: Number(item.id),
   name: item.name ?? "",
   level: normalizeLevel(item.level),
+  category: normalizeCategory(item.category),
+  points: Number(item.points ?? 0),
   description: item.description ?? "",
 });
 

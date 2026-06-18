@@ -292,6 +292,7 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
 
   const rawCommitment = registration.commitmentConfirmed ?? registration.commitment_confirmed ?? registration.commitment_confirm;
   const commitmentConfirmed = rawCommitment === true || rawCommitment === 1 || rawCommitment === "1" || rawCommitment === "true";
+  const blacklist = readRecord(registration.blacklist, rawRecord?.blacklist, dataRecord?.blacklist);
 
   return {
     id: toNumberOrNull(registration.id) ?? 0,
@@ -325,6 +326,13 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
     registration_period_id: toNumberOrNull(registration.registration_period_id) ?? null,
     bed_selection_days: toNumberOrNull(registration.bed_selection_days ?? registrationPeriod.bed_selection_days) ?? null,
     room_assigned_at: firstDefinedString(registration.room_assigned_at, registration.occupancy_created_at) || null,
+    blacklist: blacklist
+      ? {
+          reason: firstDefinedString(blacklist.reason) || null,
+          source: firstDefinedString(blacklist.source) || null,
+          created_at: firstDefinedString(blacklist.created_at, blacklist.createdAt) || null,
+        }
+      : null,
     channel: (registration.channel as 'main' | 'rolling' | null) ?? null,
     period_name: firstDefinedString(registration.period_name) || null,
     period_status: firstDefinedString(registration.period_status) || null,

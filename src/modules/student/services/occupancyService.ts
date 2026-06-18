@@ -88,11 +88,14 @@ export async function getMyOccupancyFromBackend(email: string): Promise<MyRoom |
       ]
     : registrations;
 
+  const ENDED_STATUSES = ["checked_out", "forced_checkout"];
+
   roomRegistrations.forEach((registration) => {
     if (
       registration.status !== "approved" ||
       registration.assigned_room_id !== room.id ||
-      !registration.bedId
+      !registration.bedId ||
+      ENDED_STATUSES.includes((registration.occupancy_status ?? "").toLowerCase())
     ) {
       return;
     }
@@ -125,10 +128,16 @@ export async function getMyOccupancyFromBackend(email: string): Promise<MyRoom |
         return null;
       }
 
+      const isMyBed = bed.id === myRegistration.bedId;
       const nextBed: MyRoomBed = {
         bedNumber,
         status: bed.status === "maintenance" ? "MAINTENANCE" : "ACTIVE",
-        ...occupantByBedNumber.get(bedNumber),
+        ...(isMyBed
+          ? {
+              occupantName: normalizeText(myRegistration.formData.fullName) || "-",
+              studentCode: normalizeText(myRegistration.formData.mssv) || "-",
+            }
+          : occupantByBedNumber.get(bedNumber)),
       };
 
       return nextBed;
@@ -142,12 +151,12 @@ export async function getMyOccupancyFromBackend(email: string): Promise<MyRoom |
 
   const forcedViolation = myRegistration.occupancy_status === "forced_checkout"
     ? occupancyViolations
-        .filter((violation) => violation.actionTaken === "FORCED_CHECKOUT")
+        .filter((violation) => violation.actionTaken === "force_evicted")
         .sort((a, b) => b.id - a.id)[0]
     : undefined;
 
   const warningViolation = occupancyViolations
-    .filter((violation) => violation.actionTaken === "WARNING")
+    .filter((violation) => violation.actionTaken === "reminded" || violation.actionTaken === "warned")
     .sort((a, b) => b.id - a.id)[0];
 
   return {

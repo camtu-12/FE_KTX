@@ -4,6 +4,12 @@ export type AutoDecision = "approve" | "reject" | "review" | null;
 export type RegistrationDocumentField = "portraitPhoto" | "cccdFrontPhoto" | "cccdBackPhoto";
 export type BedApprovalStatus = "pending" | "approved" | "rejected";
 
+export type BlacklistInfo = {
+  reason?: string | null;
+  source?: string | null;
+  created_at?: string | null;
+};
+
 export type RegistrationFormData = {
   mssv: string;
   fullName: string;
@@ -74,6 +80,7 @@ export type RegistrationRequest = {
   registration_period_id?: number | null;
   bed_selection_days?: number | null;
   room_assigned_at?: string | null;
+  blacklist?: BlacklistInfo | null;
   channel?: 'main' | 'rolling' | null;
   period_name?: string | null;
   period_status?: string | null;
