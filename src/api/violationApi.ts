@@ -153,6 +153,13 @@ export const listViolationsByStudentEmail = async (email: string): Promise<Viola
   return Array.isArray(response.data) ? response.data.map(normalizeViolation) : [];
 };
 
+export const listViolationsByStudentId = async (studentId: number): Promise<ViolationRecord[]> => {
+  const response = await http.get<ApiViolation[]>("/violations", {
+    params: { student_id: studentId },
+  });
+  return Array.isArray(response.data) ? response.data.map(normalizeViolation) : [];
+};
+
 export const listViolationsByOccupancy = async (occupancyId: number): Promise<ViolationRecord[]> => {
   const response = await http.get<ApiViolation[]>("/violations", {
     params: { occupancy_id: occupancyId },

@@ -27,6 +27,10 @@ export default function AdminLayout() {
   const isOccupancyManagementPage = location.pathname === "/admin/occupancies";
   const isViolationManagementPage = location.pathname === "/admin/violations";
   const isPaymentManagementPage = location.pathname.startsWith("/admin/payments");
+  const isSupportRequestPage = location.pathname === "/admin/support-requests";
+  const isExtensionPage =
+    location.pathname === "/admin/extensions" ||
+    location.pathname === "/admin/occupancy-periods";
   const isRoomManagementPage = location.pathname === "/admin/rooms";
   const isBuildingManagementPage = location.pathname === "/admin/buildings";
   const isSearchEnabled =
@@ -36,13 +40,15 @@ export default function AdminLayout() {
     isOccupancyManagementPage ||
     isViolationManagementPage ||
     isPaymentManagementPage ||
+    isSupportRequestPage ||
+    isExtensionPage ||
     isRoomManagementPage ||
     isBuildingManagementPage;
   const searchPlaceholder = isRoomManagementPage
     ? "Tìm theo số phòng..."
     : isBuildingManagementPage
       ? "Tìm theo mã, tên hoặc địa chỉ tòa..."
-      : isAssignRoomListPage || isBedManagementPage || isOccupancyManagementPage || isViolationManagementPage || isPaymentManagementPage
+      : isAssignRoomListPage || isBedManagementPage || isOccupancyManagementPage || isViolationManagementPage || isPaymentManagementPage || isSupportRequestPage || isExtensionPage
         ? "Tìm theo MSSV hoặc họ tên"
         : "Tìm theo MSSV, họ tên hoặc email";
 

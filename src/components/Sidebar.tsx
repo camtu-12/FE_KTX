@@ -1,6 +1,7 @@
 import {
   BedSingle,
   Building2,
+  CalendarRange,
   ChevronDown,
   ChevronUp,
   ClipboardList,
@@ -10,6 +11,7 @@ import {
   History,
   Hotel,
   LayoutDashboard,
+  LifeBuoy,
   School,
   ShieldAlert,
   type LucideIcon,
@@ -37,11 +39,6 @@ type MenuItem = {
 };
 
 const adminMenu: MenuItem[] = [
-  {
-    label: "Dashboard",
-    to: "/admin/dashboard",
-    icon: LayoutDashboard,
-  },
   {
     label: "Quản lý đăng ký",
     icon: ClipboardList,
@@ -99,6 +96,19 @@ const adminMenu: MenuItem[] = [
     icon: School,
   },
   {
+    label: "Hỗ trợ sinh viên",
+    to: "/admin/support-requests",
+    icon: LifeBuoy,
+  },
+  {
+    label: "Gia hạn lưu trú",
+    icon: CalendarRange,
+    children: [
+      { label: "Đợt gia hạn", to: "/admin/occupancy-periods" },
+      { label: "Yêu cầu gia hạn", to: "/admin/extensions" },
+    ],
+  },
+  {
     label: "Quản lý tòa",
     to: "/admin/buildings",
     icon: Building2,
@@ -133,6 +143,16 @@ const studentMenu: MenuItem[] = [
     to: "/student/activities",
     icon: History,
   },
+  {
+    label: "Hỗ trợ sinh viên",
+    to: "/student/support",
+    icon: LifeBuoy,
+  },
+  {
+    label: "Gia hạn lưu trú",
+    to: "/student/extension",
+    icon: CalendarRange,
+  },
 ];
 
 export default function Sidebar({ role }: SidebarProps) {
@@ -147,9 +167,12 @@ export default function Sidebar({ role }: SidebarProps) {
   const isViolationGroupActive =
     location.pathname === "/admin/violations" || location.pathname === "/admin/violation-types";
   const isPaymentGroupActive = location.pathname.startsWith("/admin/payments");
+  const isExtensionGroupActive =
+    location.pathname === "/admin/extensions" || location.pathname === "/admin/occupancy-periods";
   const [isRegistrationGroupOpen, setIsRegistrationGroupOpen] = useState(isRegistrationGroupActive);
   const [isViolationGroupOpen, setIsViolationGroupOpen] = useState(isViolationGroupActive);
   const [isPaymentGroupOpen, setIsPaymentGroupOpen] = useState(isPaymentGroupActive);
+  const [isExtensionGroupOpen, setIsExtensionGroupOpen] = useState(isExtensionGroupActive);
 
   useEffect(() => {
     if (role !== "student") {
@@ -218,13 +241,16 @@ export default function Sidebar({ role }: SidebarProps) {
               const isRegistrationGroup = item.label === "Quản lý đăng ký";
               const isPaymentGroup = item.label === "Quản lý thanh toán";
               const isViolationGroup = item.label === "Quản lý hoạt động";
+              const isExtensionGroup = item.label === "Gia hạn lưu trú";
               const isOpen = isRegistrationGroup
                 ? isRegistrationGroupOpen || isRegistrationGroupActive
                 : isViolationGroup
                   ? isViolationGroupOpen || isViolationGroupActive
                   : isPaymentGroup
                     ? isPaymentGroupOpen || isPaymentGroupActive
-                    : false;
+                    : isExtensionGroup
+                      ? isExtensionGroupOpen || isExtensionGroupActive
+                      : false;
               const isGroupActive =
                 item.children.some((child) => child.to === location.pathname) ||
                 (isPaymentGroup && isPaymentGroupActive);
@@ -243,6 +269,9 @@ export default function Sidebar({ role }: SidebarProps) {
                       }
                       if (isPaymentGroup) {
                         setIsPaymentGroupOpen((current) => !current);
+                      }
+                      if (isExtensionGroup) {
+                        setIsExtensionGroupOpen((current) => !current);
                       }
                     }}
                     className={[

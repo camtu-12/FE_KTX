@@ -289,8 +289,8 @@ export default function AssignRoomDetailPage() {
       return;
     }
 
-    if (request.assigned_room_id) {
-      handleBack({ kind: "success", message: "Sinh viên đã được phân phòng." });
+    if (request.assigned_room_id === room.id) {
+      setToast({ kind: "error", message: "Sinh viên đang ở phòng này. Vui lòng chọn phòng khác." });
       return;
     }
 
@@ -312,7 +312,7 @@ export default function AssignRoomDetailPage() {
       }
 
       setRequest(updatedRequest);
-      handleBack({ kind: "success", message: "Phân phòng thành công" });
+      handleBack({ kind: "success", message: request.assigned_room_id ? "Đổi phòng thành công" : "Phân phòng thành công" });
     } catch (error) {
       setToast({
         kind: "error",
@@ -404,9 +404,11 @@ export default function AssignRoomDetailPage() {
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
               <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">
-                Chọn phòng
+                {request?.assigned_room_id ? "Đổi phòng" : "Chọn phòng"}
               </h1>
-              <p className="mt-1 text-sm text-[#62789f]">Chọn phòng cho sinh viên đã được duyệt đơn đăng ký.</p>
+              <p className="mt-1 text-sm text-[#62789f]">
+                {request?.assigned_room_id ? "Chọn phòng mới cho sinh viên đã được phân phòng." : "Chọn phòng cho sinh viên đã được duyệt đơn đăng ký."}
+              </p>
             </div>
           </div>
 
@@ -511,7 +513,8 @@ export default function AssignRoomDetailPage() {
             <tbody>
               {visibleRooms.map((room) => {
                 const isRoomFull = room.availableBeds <= 0;
-                const disableChoose = isAssigning || !request || Boolean(request.assigned_room_id) || isRoomFull;
+                const isCurrentRoom = request?.assigned_room_id === room.id;
+                const disableChoose = isAssigning || !request || isCurrentRoom || isRoomFull;
                 const isRecommended = recommendedRoomId === room.id;
                 const label = isRoomFull ? "Hết chỗ" : isRecommended ? "Chọn ngay" : "Chọn";
 
@@ -540,7 +543,7 @@ export default function AssignRoomDetailPage() {
                         disabled={disableChoose}
                         onClick={() => void handleChooseRoom(room)}
                         className={`auth-btn-gloss inline-flex min-w-[118px] flex-nowrap items-center justify-center whitespace-nowrap rounded-full px-5 py-2.5 text-sm font-semibold transition duration-200 ${
-                          isRoomFull
+                          isRoomFull || isCurrentRoom
                             ? "border border-[#d2def0] bg-[linear-gradient(135deg,#edf4ff_0%,#dfeaff_100%)] text-[#7f8da8] shadow-[0_10px_18px_rgba(36,76,184,0.10)] disabled:opacity-100"
                             : isRecommended
                               ? "bg-[linear-gradient(135deg,#1f5fd1_0%,#244cb8_42%,#31b7d4_100%)] text-white shadow-[0_18px_34px_rgba(36,76,184,0.30)] ring-2 ring-[#d9e7ff] hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
@@ -549,7 +552,7 @@ export default function AssignRoomDetailPage() {
                       >
                         <span className="auth-btn-gloss__content inline-flex items-center justify-center gap-2">
                           {isRecommended ? <Star className="h-4 w-4 fill-[#facc15] text-[#facc15]" /> : null}
-                          {label}
+                          {isCurrentRoom ? "Phòng hiện tại" : label}
                         </span>
                       </button>
                     </td>

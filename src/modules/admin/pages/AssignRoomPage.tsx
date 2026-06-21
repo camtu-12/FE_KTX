@@ -300,7 +300,10 @@ export default function AssignRoomPage() {
 
   const approvedStudents = useMemo(() => {
     if (!requests) return [];
-    return requests.filter((request) => request.status === "approved");
+    const terminatedStatuses = new Set(["forced_checkout", "checked_out", "TERMINATED", "COMPLETED", "CANCELLED"]);
+    return requests.filter(
+      (request) => request.status === "approved" && !terminatedStatuses.has(request.occupancy_status ?? ""),
+    );
   }, [requests]);
 
   const visibleStudents = useMemo(() => {

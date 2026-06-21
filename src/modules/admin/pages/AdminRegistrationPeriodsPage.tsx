@@ -32,6 +32,8 @@ import { formatDate } from "../../../utils/dateFormat";
 type PeriodStatus = "pending" | "active" | "closed" | "processing";
 type PeriodChannel = "main" | "rolling";
 
+
+
 const statusLabel: Record<PeriodStatus, string> = {
   pending: "Chưa mở",
   active: "Đang mở",
@@ -209,7 +211,7 @@ function validate(
 
   if (!form.name.trim()) errors.name = "Vui lòng nhập tên đợt.";
 
-  if (!form.school_year.trim()) {
+  if (!form.school_year?.trim()) {
     errors.school_year = "Vui lòng nhập năm học.";
   } else {
     const syMatch = form.school_year.trim().match(/^(\d{4})-(\d{4})$/);
@@ -219,6 +221,7 @@ function validate(
 
   if (!form.semester || !["1", "2", "3"].includes(form.semester))
     errors.semester = "Vui lòng chọn học kỳ.";
+
   if (!form.start_date) errors.start_date = "Vui lòng chọn ngày bắt đầu.";
   else if (startDate === null) errors.start_date = "Vui lòng nhập ngày theo định dạng dd/mm/yyyy.";
   if (!form.end_date) errors.end_date = "Vui lòng chọn ngày kết thúc.";
@@ -233,7 +236,7 @@ function validate(
   // Rule 1: Mỗi năm học chỉ được có 1 đợt chính
   if (form.channel === "main" && !errors.school_year) {
     const duplicate = periods.find(
-      (p) => p.channel === "main" && p.school_year === form.school_year.trim() && p.id !== editingId,
+      (p) => p.channel === "main" && p.school_year === form.school_year?.trim() && p.id !== editingId,
     );
     if (duplicate)
       errors.channel = `Năm học ${form.school_year} đã có đợt chính rồi, không thể tạo thêm.`;
@@ -242,13 +245,13 @@ function validate(
   // Rule 2: Kênh quanh năm chỉ được mở sau khi đợt chính đã đóng
   if (form.channel === "rolling" && !errors.school_year) {
     const mainClosed = periods.some(
-      (p) => p.channel === "main" && p.school_year === form.school_year.trim() && p.status === "closed",
+      (p) => p.channel === "main" && p.school_year === form.school_year?.trim() && p.status === "closed",
     );
     if (!mainClosed)
       errors.channel = "Kênh quanh năm chỉ được mở sau khi đợt chính đã đóng.";
   }
 
-  // Rule 3: Thời gian nhận đơn không được trùng với đợt đang active/pending
+  // Rule 3: Thời gian nhận đơn không được trùng
   if (startDate && endDate && !errors.start_date && !errors.end_date) {
     const overlap = periods.find((p) => {
       if (p.id === editingId) return false;
@@ -335,10 +338,10 @@ export default function AdminRegistrationPeriodsPage() {
     setEditingId(period.id);
     setForm({
       name: period.name,
-      channel: period.channel as PeriodChannel,
+      channel: (period.channel as PeriodChannel) ?? "main",
       status: period.status as PeriodStatus,
-      school_year: period.school_year,
-      semester: period.semester,
+      school_year: period.school_year ?? "",
+      semester: period.semester ?? "",
       start_date: initialStartDate,
       end_date: toDateInputValue(period.end_date) || "",
       stay_start_date: toDateInputValue(period.stay_start_date) || "",
@@ -823,7 +826,7 @@ export default function AdminRegistrationPeriodsPage() {
                       const noRegs = totalRegistrations === 0;
                       const pendingCriteria = period.pending_criteria_count ?? 0;
                       const today = new Date(); today.setHours(0, 0, 0, 0);
-                      const endDay = new Date(period.end_date); endDay.setHours(0, 0, 0, 0);
+                      const endDay = new Date(period.end_date ?? ""); endDay.setHours(0, 0, 0, 0);
                       const notEnded = today < endDay;
                       const rankDisabled = processingId === period.id || noRegs || pendingCriteria > 0;
                       const rankTitle = noRegs
@@ -955,47 +958,49 @@ export default function AdminRegistrationPeriodsPage() {
               <div className="space-y-2.5">
                 {field("name", "Tên đợt")}
 
-                {/* Channel */}
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-[#324B76]">Kênh</label>
-                  <div className="relative">
-                    <select
-                      value={form.channel}
-                      onChange={(e) => setForm((prev) => ({ ...prev, channel: e.target.value as PeriodChannel }))}
-                      className="w-full appearance-none rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-3 py-1.5 pr-7 text-sm text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
-                    >
-                      <option value="main">Đợt chính</option>
-                      <option value="rolling">Quanh năm</option>
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8fb5]" />
-                  </div>
-                  {formErrors.channel && <p className="mt-1 text-xs text-rose-600">{formErrors.channel}</p>}
-                </div>
-
-                {/* School year & Semester */}
-                <div className="grid grid-cols-2 gap-2.5">
-                  {field("school_year", "Năm học (vd: 2025-2026)")}
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold text-[#324B76]">Học kỳ</label>
-                    <div className="relative">
-                      <select
-                        value={form.semester}
-                        onChange={(e) => {
-                          setForm((prev) => ({ ...prev, semester: e.target.value }));
-                          setFormErrors((prev) => ({ ...prev, semester: undefined }));
-                        }}
-                        className="w-full appearance-none rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-3 py-1.5 pr-7 text-sm text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
-                      >
-                        <option value="">Chọn học kỳ</option>
-                        <option value="1">Học kỳ 1</option>
-                        <option value="2">Học kỳ 2</option>
-                        <option value="3">Học kỳ 3</option>
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8fb5]" />
+                <>
+                    {/* Channel */}
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-[#324B76]">Kênh</label>
+                      <div className="relative">
+                        <select
+                          value={form.channel}
+                          onChange={(e) => setForm((prev) => ({ ...prev, channel: e.target.value as PeriodChannel }))}
+                          className="w-full appearance-none rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-3 py-1.5 pr-7 text-sm text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
+                        >
+                          <option value="main">Đợt chính</option>
+                          <option value="rolling">Quanh năm</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8fb5]" />
+                      </div>
+                      {formErrors.channel && <p className="mt-1 text-xs text-rose-600">{formErrors.channel}</p>}
                     </div>
-                    {formErrors.semester && <p className="mt-1 text-xs text-rose-600">{formErrors.semester}</p>}
-                  </div>
-                </div>
+
+                    {/* School year & Semester */}
+                    <div className="grid grid-cols-2 gap-2.5">
+                      {field("school_year", "Năm học (vd: 2025-2026)")}
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold text-[#324B76]">Học kỳ</label>
+                        <div className="relative">
+                          <select
+                            value={form.semester}
+                            onChange={(e) => {
+                              setForm((prev) => ({ ...prev, semester: e.target.value }));
+                              setFormErrors((prev) => ({ ...prev, semester: undefined }));
+                            }}
+                            className="w-full appearance-none rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-3 py-1.5 pr-7 text-sm text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
+                          >
+                            <option value="">Chọn học kỳ</option>
+                            <option value="1">Học kỳ 1</option>
+                            <option value="2">Học kỳ 2</option>
+                            <option value="3">Học kỳ 3</option>
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8fb5]" />
+                        </div>
+                        {formErrors.semester && <p className="mt-1 text-xs text-rose-600">{formErrors.semester}</p>}
+                      </div>
+                    </div>
+                  </>
 
                 {/* Intake dates */}
                 <div className="grid grid-cols-2 gap-2.5">
@@ -1007,61 +1012,64 @@ export default function AdminRegistrationPeriodsPage() {
                   })())}
                 </div>
 
-                {/* Processing days */}
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-[#324B76]">Số ngày xử lý đơn & phân phòng</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={form.processing_days ?? ""}
-                    onChange={(e) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        processing_days: e.target.value === "" ? null : Number(e.target.value),
-                      }))
-                    }
-                    className="w-full rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-3 py-1.5 text-sm text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
-                    placeholder="Nhập số ngày"
-                  />
-                  {formErrors.processing_days && <p className="mt-1 text-xs text-rose-600">{formErrors.processing_days}</p>}
-                </div>
+                {/* Processing days, stay dates, bed selection */}
+                <>
+                    {/* Processing days */}
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-[#324B76]">Số ngày xử lý đơn & phân phòng</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={form.processing_days ?? ""}
+                        onChange={(e) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            processing_days: e.target.value === "" ? null : Number(e.target.value),
+                          }))
+                        }
+                        className="w-full rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-3 py-1.5 text-sm text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
+                        placeholder="Nhập số ngày"
+                      />
+                      {formErrors.processing_days && <p className="mt-1 text-xs text-rose-600">{formErrors.processing_days}</p>}
+                    </div>
 
-                {/* Stay dates */}
-                <div className="rounded-xl border border-[#cfdcf0] bg-[#f7faff] p-2.5">
-                  <p className="mb-2 text-xs font-semibold text-[#324B76]">Thời gian lưu trú (tuỳ chọn)</p>
-                  <div className="grid grid-cols-2 gap-2.5">
-                    {field("stay_start_date", "Bắt đầu lưu trú", "date", undefined, (() => {
-                      const endVal = toDateInputValue(form.end_date);
-                      const gap = form.processing_days ?? 0;
-                      if (endVal && gap > 0) { const d = new Date(endVal); d.setDate(d.getDate() + gap); return d; }
-                      if (endVal) { const d = new Date(endVal); d.setDate(d.getDate() + 1); return d; }
-                      const d = new Date(); d.setHours(0,0,0,0); return d;
-                    })())}
-                    {field("stay_end_date", "Kết thúc lưu trú", "date", undefined, (() => {
-                      const stayStartVal = toDateInputValue(form.stay_start_date);
-                      if (stayStartVal) { const d = new Date(stayStartVal); d.setDate(d.getDate() + 1); return d; }
-                      const d = new Date(); d.setHours(0,0,0,0); return d;
-                    })())}
-                  </div>
-                </div>
+                    {/* Stay dates */}
+                    <div className="rounded-xl border border-[#cfdcf0] bg-[#f7faff] p-2.5">
+                      <p className="mb-2 text-xs font-semibold text-[#324B76]">Thời gian lưu trú (tuỳ chọn)</p>
+                      <div className="grid grid-cols-2 gap-2.5">
+                        {field("stay_start_date", "Bắt đầu lưu trú", "date", undefined, (() => {
+                          const endVal = toDateInputValue(form.end_date);
+                          const gap = form.processing_days ?? 0;
+                          if (endVal && gap > 0) { const d = new Date(endVal); d.setDate(d.getDate() + gap); return d; }
+                          if (endVal) { const d = new Date(endVal); d.setDate(d.getDate() + 1); return d; }
+                          const d = new Date(); d.setHours(0,0,0,0); return d;
+                        })())}
+                        {field("stay_end_date", "Kết thúc lưu trú", "date", undefined, (() => {
+                          const stayStartVal = toDateInputValue(form.stay_start_date);
+                          if (stayStartVal) { const d = new Date(stayStartVal); d.setDate(d.getDate() + 1); return d; }
+                          const d = new Date(); d.setHours(0,0,0,0); return d;
+                        })())}
+                      </div>
+                    </div>
 
-                {/* Bed selection days */}
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-[#324B76]">Số ngày chọn giường (tuỳ chọn)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={form.bed_selection_days ?? ""}
-                    onChange={(e) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        bed_selection_days: e.target.value === "" ? null : Number(e.target.value),
-                      }))
-                    }
-                    className="w-full rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-3 py-1.5 text-sm text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
-                    placeholder="Để trống nếu không giới hạn"
-                  />
-                </div>
+                    {/* Bed selection days */}
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-[#324B76]">Số ngày chọn giường (tuỳ chọn)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={form.bed_selection_days ?? ""}
+                        onChange={(e) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            bed_selection_days: e.target.value === "" ? null : Number(e.target.value),
+                          }))
+                        }
+                        className="w-full rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-3 py-1.5 text-sm text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
+                        placeholder="Để trống nếu không giới hạn"
+                      />
+                    </div>
+                  </>
               </div>
 
               </div>

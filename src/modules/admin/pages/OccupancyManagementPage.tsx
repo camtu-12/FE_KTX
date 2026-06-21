@@ -211,7 +211,11 @@ const createOccupancyRowsFromApi = (
               reason: registration.occupancy_reason || "",
             }
           : undefined,
-        forcedCheckoutReason: occupancyStatus === "FORCED_CHECKOUT" ? registration.occupancy_reason || "" : undefined,
+        forcedCheckoutReason: occupancyStatus === "FORCED_CHECKOUT"
+          ? (registration.occupancy_reason === "FORCE_EVICTED"
+              ? (registration.blacklist?.reason || "Nợ quá hạn")
+              : registration.occupancy_reason || "")
+          : undefined,
       } satisfies Occupancy;
     });
 

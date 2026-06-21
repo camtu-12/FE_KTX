@@ -112,10 +112,11 @@ export const getPriorityCriteria = () => {
 // ================== ĐỢT ĐĂNG KÝ ==================
 export type RegistrationPeriodPayload = {
   name: string;
-  channel: "main" | "rolling";
+  period_type?: "registration" | "extension";
+  channel?: "main" | "rolling";
   status?: "pending" | "active" | "closed" | "processing";
-  school_year: string;
-  semester: string;
+  school_year?: string;
+  semester?: string;
   start_date: string;
   end_date: string;
   stay_start_date?: string | null;
@@ -126,6 +127,7 @@ export type RegistrationPeriodPayload = {
 
 export type RegistrationPeriodData = RegistrationPeriodPayload & {
   id: number;
+  period_type: "registration" | "extension";
   registrations_count?: number;
   approved_count?: number;
   rejected_count?: number;

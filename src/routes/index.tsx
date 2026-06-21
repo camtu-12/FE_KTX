@@ -16,6 +16,9 @@ import AdminStudentsPage from "../modules/admin/pages/AdminStudentsPage";
 import OccupancyManagementPage from "../modules/admin/pages/OccupancyManagementPage";
 import ViolationManagementPage from "../modules/admin/pages/ViolationManagementPage";
 import ViolationTypeManagementPage from "../modules/admin/pages/ViolationTypeManagementPage";
+import AdminSupportRequestsPage from "../modules/admin/pages/AdminSupportRequestsPage";
+import AdminExtensionRequestsPage from "../modules/admin/pages/AdminExtensionRequestsPage";
+import AdminOccupancyPeriodsPage from "../modules/admin/pages/AdminOccupancyPeriodsPage";
 import AdminElectricityPage from "../modules/admin/pages/AdminElectricityPage";
 import AdminRoomFeePage from "../modules/admin/pages/AdminRoomFeePage";
 import LoginPage from "../modules/auth/pages/LoginPage";
@@ -31,6 +34,8 @@ import BedSelectionPage from "../modules/student/pages/BedSelectionPage";
 import MyRoomPage from "../modules/student/pages/MyRoomPage";
 import PaymentPage from "../modules/student/pages/PaymentPage";
 import MyActivitiesPage from "../modules/student/pages/MyActivitiesPage";
+import StudentSupportPage from "../modules/student/pages/StudentSupportPage";
+import StudentExtensionPage from "../modules/student/pages/StudentExtensionPage";
 import ProtectedRoute from "./ProtectedRoute";
 import ForgotPassword from "../modules/auth/pages/ForgotPassword";
 
@@ -65,6 +70,9 @@ export default function AppRoutes() {
           <Route path="occupancies" element={<OccupancyManagementPage />} />
           <Route path="violations" element={<ViolationManagementPage />} />
           <Route path="violation-types" element={<ViolationTypeManagementPage />} />
+          <Route path="support-requests" element={<AdminSupportRequestsPage />} />
+          <Route path="extensions" element={<AdminExtensionRequestsPage />} />
+          <Route path="occupancy-periods" element={<AdminOccupancyPeriodsPage />} />
           <Route path="payments" element={<Navigate to="/admin/payments/room-fees" replace />} />
           <Route path="payments/room-fees" element={<AdminRoomFeePage />} />
           <Route path="payments/electricity" element={<AdminElectricityPage />} />
@@ -88,6 +96,8 @@ export default function AppRoutes() {
           <Route path="room" element={<MyRoomPage />} />
           <Route path="payment" element={<PaymentPage />} />
           <Route path="activities" element={<MyActivitiesPage />} />
+          <Route path="support" element={<StudentSupportPage />} />
+          <Route path="extension" element={<StudentExtensionPage />} />
           <Route path="select-bed" element={<SelectBedPage />} />
           <Route path="bed-selection" element={<BedSelectionPage />} />
         </Route>
