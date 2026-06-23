@@ -5,7 +5,6 @@ import {
   ClipboardCheck,
   Eye,
   Gavel,
-  Search,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -50,20 +49,20 @@ type SummaryCard = {
 const emptyValue = "-";
 
 const categoryFilterOptions: Array<{ value: CategoryFilter; label: string }> = [
-  { value: "ALL", label: "Tất cả" },
+  { value: "ALL", label: "Tất cả loại" },
   { value: "positive", label: "Hoạt động tích cực" },
   { value: "negative", label: "Vi phạm" },
 ];
 
 const levelFilterOptions: Array<{ value: LevelFilter; label: string }> = [
-  { value: "ALL", label: "Tất cả" },
+  { value: "ALL", label: "Tất cả mức độ" },
   { value: "MINOR", label: "MINOR" },
   { value: "MEDIUM", label: "MEDIUM" },
   { value: "SERIOUS", label: "SERIOUS" },
 ];
 
 const actionFilterOptions: Array<{ value: ActionFilter; label: string }> = [
-  { value: "ALL", label: "Tất cả" },
+  { value: "ALL", label: "Tất cả kết quả" },
   { value: "reward_recorded", label: "Đã ghi nhận" },
   { value: "reminded", label: "Nhắc nhở" },
   { value: "warned", label: "Cảnh cáo" },
@@ -85,14 +84,12 @@ const levelMeta: Record<ViolationLevel, { label: string; badgeClassName: string 
   },
 };
 
-const categoryMeta: Record<ActivityCategory, { label: string; badgeClassName: string }> = {
+const categoryMeta: Record<ActivityCategory, { label: string }> = {
   positive: {
     label: "Hoạt động tích cực",
-    badgeClassName: "border border-emerald-200 bg-emerald-50 text-emerald-700",
   },
   negative: {
     label: "Vi phạm",
-    badgeClassName: "border border-rose-200 bg-rose-50 text-rose-700",
   },
 };
 
@@ -182,7 +179,6 @@ export default function ViolationManagementPage() {
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("ALL");
   const [levelFilter, setLevelFilter] = useState<LevelFilter>("ALL");
   const [actionFilter, setActionFilter] = useState<ActionFilter>("ALL");
-  const [tableSearch, setTableSearch] = useState("");
   const [selectedViolation, setSelectedViolation] = useState<ViolationRow | null>(null);
 
   useEffect(() => {
@@ -219,7 +215,7 @@ export default function ViolationManagementPage() {
 
   const activeSearchValue = headerSearchValue.trim();
   const visibleRows = useMemo(() => {
-    const normalizedSearch = [activeSearchValue, tableSearch].filter(Boolean).join(" ").toLowerCase();
+    const normalizedSearch = activeSearchValue.toLowerCase();
 
     return rows.filter((item) => {
       const matchesCategory = categoryFilter === "ALL" || item.category === categoryFilter;
@@ -231,19 +227,13 @@ export default function ViolationManagementPage() {
 
       return matchesCategory && matchesLevel && matchesAction && matchesSearch;
     });
-  }, [activeSearchValue, actionFilter, categoryFilter, levelFilter, rows, tableSearch]);
+  }, [activeSearchValue, actionFilter, categoryFilter, levelFilter, rows]);
 
-  const totalCount = rows.length;
   const positiveCount = rows.filter((item) => item.category === "positive").length;
   const negativeCount = rows.filter((item) => item.category === "negative").length;
   const forcedCheckoutCount = rows.filter((item) => item.actionTaken === "force_evicted").length;
 
   const summaryCards: SummaryCard[] = [
-    {
-      label: "Tổng hoạt động",
-      value: totalCount,
-      valueClassName: "text-[#244cb8]",
-    },
     {
       label: "Hoạt động tích cực",
       value: positiveCount,
@@ -265,7 +255,6 @@ export default function ViolationManagementPage() {
     setCategoryFilter("ALL");
     setLevelFilter("ALL");
     setActionFilter("ALL");
-    setTableSearch("");
   };
 
   return (
@@ -299,7 +288,7 @@ export default function ViolationManagementPage() {
             >
               {categoryFilterOptions.map((option) => (
                 <option key={option.value} value={option.value}>
-                  Loại: {option.label}
+                  {option.label}
                 </option>
               ))}
             </select>
@@ -311,7 +300,7 @@ export default function ViolationManagementPage() {
             >
               {levelFilterOptions.map((option) => (
                 <option key={option.value} value={option.value}>
-                  Mức độ: {option.label}
+                  {option.label}
                 </option>
               ))}
             </select>
@@ -323,7 +312,7 @@ export default function ViolationManagementPage() {
             >
               {actionFilterOptions.map((option) => (
                 <option key={option.value} value={option.value}>
-                  Kết quả: {option.label}
+                  {option.label}
                 </option>
               ))}
             </select>
@@ -338,7 +327,7 @@ export default function ViolationManagementPage() {
           </div>
         </motion.div>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-3">
           {summaryCards.map((card, index) => (
               <motion.article
                 key={card.label}
@@ -364,18 +353,6 @@ export default function ViolationManagementPage() {
           transition={{ duration: 0.42, delay: 0.16, ease: "easeOut" }}
           className="mt-1 space-y-3"
         >
-          <div className="rounded-[22px] border border-[#d6e2f1] bg-white p-3 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
-            <label className="relative block">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6f84ad]" />
-              <input
-                value={tableSearch}
-                onChange={(event) => setTableSearch(event.target.value)}
-                placeholder="Tìm theo MSSV, họ tên hoặc hoạt động..."
-                className="h-11 w-full rounded-2xl border border-[#d6e2f1] bg-[#f8fbff] pl-9 pr-3 text-sm font-semibold text-[#1f3152] outline-none transition placeholder:text-[#8da0bf] focus:border-[#244cb8] focus:bg-white focus:ring-4 focus:ring-[#244cb8]/12"
-              />
-            </label>
-          </div>
-
           {visibleRows.length > 0 ? (
             <>
               <div className="hidden overflow-hidden rounded-[22px] border border-[#d6e2f1] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.10)] md:block">
@@ -386,9 +363,9 @@ export default function ViolationManagementPage() {
                       <col className="w-[12%]" />
                       <col className="w-[17%]" />
                       <col className="w-[24%]" />
-                      <col className="w-[15%]" />
+                      <col className="w-[16%]" />
                       <col className="w-[15%] min-w-[160px]" />
-                      <col className="w-[7%] min-w-[100px]" />
+                      <col className="w-[6%] min-w-[100px]" />
                     </colgroup>
                     <thead>
                       <tr className="bg-[linear-gradient(180deg,#f7faff_0%,#eef4ff_100%)]">
@@ -415,8 +392,8 @@ export default function ViolationManagementPage() {
                           <td className="border-t border-[#e8eef8] px-4 py-4 text-center align-middle text-sm font-semibold text-[#1f3152]">
                             <span className="mx-auto block line-clamp-2 max-w-[260px]">{item.typeName}</span>
                           </td>
-                          <td className="border-t border-[#e8eef8] px-4 py-4 text-center align-middle">
-                            <Badge className={categoryMeta[item.category].badgeClassName}>{categoryMeta[item.category].label}</Badge>
+                          <td className="whitespace-nowrap border-t border-[#e8eef8] px-4 py-4 text-center align-middle text-sm font-semibold text-[#1f3152]">
+                            {categoryMeta[item.category].label}
                           </td>
                           <td className="border-t border-[#e8eef8] px-4 py-4 text-center align-middle">
                             {item.actionTaken ? (
@@ -468,7 +445,7 @@ export default function ViolationManagementPage() {
                       <p className="text-[#5d7299]">{item.room} / {item.bed}</p>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Badge className={categoryMeta[item.category].badgeClassName}>{categoryMeta[item.category].label}</Badge>
+                      <span className="whitespace-nowrap text-sm font-semibold text-[#1f3152]">{categoryMeta[item.category].label}</span>
                       {item.category === "negative" ? (
                         <Badge className={levelMeta[item.level].badgeClassName}>{levelMeta[item.level].label}</Badge>
                       ) : null}
@@ -542,12 +519,7 @@ export default function ViolationManagementPage() {
                     </h3>
                     <div className="mt-4 grid gap-x-6 gap-y-3 md:grid-cols-2">
                       <InfoLine label="Hoạt động" value={selectedViolation.typeName} />
-                      <div className="flex flex-wrap items-center gap-2 text-sm text-[#5570a0]">
-                        <span>Phân loại:</span>
-                        <Badge className={categoryMeta[selectedViolation.category].badgeClassName}>
-                          {categoryMeta[selectedViolation.category].label}
-                        </Badge>
-                      </div>
+                      <InfoLine label="Phân loại" value={categoryMeta[selectedViolation.category].label} />
                       {selectedViolation.category === "negative" ? (
                         <div className="flex flex-wrap items-center gap-2 text-sm text-[#5570a0]">
                           <span>Mức độ:</span>

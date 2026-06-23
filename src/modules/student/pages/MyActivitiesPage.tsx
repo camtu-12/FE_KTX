@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { CalendarDays, ClipboardCheck, Filter, NotebookText } from "lucide-react";
+import { CalendarDays, ClipboardCheck, NotebookText } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { listViolationsByStudentEmail, type ViolationRecord } from "../../../api/violationApi";
 import type { ActivityCategory, ViolationLevel } from "../../../api/violationTypeApi";
@@ -21,15 +21,15 @@ const categoryMeta: Record<ActivityCategory, { label: string; className: string 
 
 const levelMeta: Record<ViolationLevel, { label: string; className: string }> = {
   MINOR: {
-    label: "MINOR",
+    label: "Nhẹ",
     className: "border-yellow-200 bg-yellow-50 text-yellow-700",
   },
   MEDIUM: {
-    label: "MEDIUM",
+    label: "Trung bình",
     className: "border-orange-200 bg-orange-50 text-orange-700",
   },
   SERIOUS: {
-    label: "SERIOUS",
+    label: "Nghiêm trọng",
     className: "border-red-200 bg-red-50 text-red-700",
   },
 };
@@ -120,11 +120,10 @@ export default function MyActivitiesPage() {
             <p className="mt-1 text-sm text-[#62789f]">Theo dõi lịch sử hoạt động tích cực và vi phạm trong thời gian lưu trú.</p>
           </div>
           <label className="relative block w-full md:w-[260px]">
-            <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6f84ad]" />
             <select
               value={filter}
               onChange={(event) => setFilter(event.target.value as ActivityFilter)}
-              className="h-11 w-full rounded-2xl border border-[#d6e2f1] bg-white pl-9 pr-3 text-sm font-semibold text-[#1f3152] outline-none transition focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/12"
+              className="h-11 w-full rounded-2xl border border-[#d6e2f1] bg-white px-4 text-sm font-semibold text-[#1f3152] outline-none transition focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/12"
             >
               <option value="all">Tất cả</option>
               <option value="positive">Hoạt động tích cực</option>

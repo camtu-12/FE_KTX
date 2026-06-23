@@ -444,16 +444,18 @@ export default function RegistrationPage() {
   }, [loadStudentData, studentCodeFromAuth]);
 
   useEffect(() => {
+    let ignore = false;
+
     const syncRegistrationState = async () => {
-      setHasLoadedRegistration(false);
-      setFormData({ ...initialFormData });
-      setDocumentFiles({ ...initialDocumentFiles });
-      setErrors({});
-      setDocumentErrors({});
-      setRegistration(null);
-      setStatus("unregistered");
-      setSubmitError("");
-      setReviewDocumentUrls(initialDocumentPreviewUrls);
+      if (!ignore) setHasLoadedRegistration(false);
+      if (!ignore) setFormData({ ...initialFormData });
+      if (!ignore) setDocumentFiles({ ...initialDocumentFiles });
+      if (!ignore) setErrors({});
+      if (!ignore) setDocumentErrors({});
+      if (!ignore) setRegistration(null);
+      if (!ignore) setStatus("unregistered");
+      if (!ignore) setSubmitError("");
+      if (!ignore) setReviewDocumentUrls(initialDocumentPreviewUrls);
 
       documentFieldConfigs.forEach(({ field }) => {
         if (documentRefs.current[field]) {
@@ -462,7 +464,7 @@ export default function RegistrationPage() {
       });
 
       if (!studentEmail) {
-        setHasLoadedRegistration(true);
+        if (!ignore) setHasLoadedRegistration(true);
         return;
       }
 
@@ -471,6 +473,8 @@ export default function RegistrationPage() {
           getLatestRegistrationByEmail(studentEmail),
           checkEligibility(studentEmail).catch(() => ({ eligible: true } as EligibilityResult)),
         ]);
+        if (ignore) return;
+
         setEligibility(eligRes);
 
         if (eligRes.reason_code === 'no_open_channel') {
@@ -490,7 +494,7 @@ export default function RegistrationPage() {
         // Exception: ?resubmit=true from room-status "Gửi lại đơn" button
         //   → only allowed for rejected registrations, show form prefilled
         if (!isResubmit || data.status !== "rejected") {
-          navigate("/student/room-status", { replace: true });
+          navigate("/student/room-status", { replace: true, state: { registration: data, eligibility: eligRes } });
           return;
         }
 
@@ -505,13 +509,14 @@ export default function RegistrationPage() {
         });
       } catch (error) {
         console.error('[RegistrationPage] Error loading registration:', error);
-        setEligibility({ eligible: true });
+        if (!ignore) setEligibility({ eligible: true });
       } finally {
-        setHasLoadedRegistration(true);
+        if (!ignore) setHasLoadedRegistration(true);
       }
     };
 
     void syncRegistrationState();
+    return () => { ignore = true; };
   }, [studentEmail, isResubmit]);
 
 

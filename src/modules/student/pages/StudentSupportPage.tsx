@@ -17,6 +17,7 @@ import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { createPortal } from "react-dom";
+import { useSearchParams } from "react-router-dom";
 import {
   createSupportRequest,
   getRoommateTargetInfo,
@@ -34,6 +35,7 @@ import { getMyOccupancyFromBackend } from "../services/occupancyService";
 import type { DormRoom } from "../../../types/dormRoom";
 
 type SupportCategory = "room-change" | "bed-change" | "roommate" | "other";
+type StatusFilter = "all" | SupportRequestStatus;
 
 type FormState = {
   title: string;
@@ -53,7 +55,7 @@ type FormState = {
 type FormProps = {
   form: FormState;
   updateField: (field: keyof FormState) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => void;
-  roommateLookupStatus: "idle" | "loading" | "found" | "missing";
+  roommateLookupStatus: "idle" | "loading" | "found" | "missing" | "same_room";
   roomOptions: SelectOption[];
   bedOptions: SelectOption[];
   targetRoomBedOptions: SelectOption[];
@@ -149,8 +151,14 @@ const statusMeta: Record<SupportRequestStatus, { label: string; className: strin
   processing: { label: "Đang xử lý", className: "border-sky-200 bg-sky-50 text-sky-700", Icon: LifeBuoy },
   approved: { label: "Đã duyệt", className: "border-emerald-200 bg-emerald-50 text-emerald-700", Icon: CheckCircle2 },
   rejected: { label: "Từ chối", className: "border-rose-200 bg-rose-50 text-rose-700", Icon: XCircle },
-  completed: { label: "Hoàn thành", className: "border-emerald-200 bg-emerald-50 text-emerald-700", Icon: CheckCircle2 },
+  completed: { label: "Hoàn tất", className: "border-emerald-200 bg-emerald-50 text-emerald-700", Icon: CheckCircle2 },
 };
+
+const statusFilterValues: StatusFilter[] = ["all", "pending", "processing", "approved", "rejected", "completed"];
+
+function normalizeStatusFilter(value: string | null): StatusFilter {
+  return statusFilterValues.includes(value as StatusFilter) ? (value as StatusFilter) : "all";
+}
 
 const inferTypeLabel = (item: StudentSupportRequest) => {
   if (item.requestType in requestTypeLabels) {
@@ -186,6 +194,7 @@ function StudentSupportTableCell({ children }: { children: React.ReactNode }) {
 
 export default function StudentSupportPage() {
   const email = useAuthStore((state) => state.user?.email ?? "");
+  const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState<StudentSupportRequest[]>([]);
   const [selected, setSelected] = useState<StudentSupportRequest | null>(null);
   const [isTypeDialogOpen, setIsTypeDialogOpen] = useState(false);
@@ -194,7 +203,7 @@ export default function StudentSupportPage() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
-  const [roommateLookupStatus, setRoommateLookupStatus] = useState<"idle" | "loading" | "found" | "missing">("idle");
+  const [roommateLookupStatus, setRoommateLookupStatus] = useState<"idle" | "loading" | "found" | "missing" | "same_room">("idle");
   const [roommateTargetInfo, setRoommateTargetInfo] = useState<RoommateTargetInfo | null>(null);
   const [currentOccupancy, setCurrentOccupancy] = useState<MyRoom | null>(null);
   const [isLoadingOccupancy, setIsLoadingOccupancy] = useState(true);
@@ -292,7 +301,7 @@ export default function StudentSupportPage() {
           targetRoomId: String(result.room.id),
           targetBedId: "",
         }));
-        setRoommateLookupStatus("found");
+        setRoommateLookupStatus(roomName === currentOccupancy?.roomCode ? "same_room" : "found");
       } catch {
         if (mounted) {
           setRoommateTargetInfo(null);
@@ -318,12 +327,34 @@ export default function StudentSupportPage() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => normalizeStatusFilter(searchParams.get("status")));
+
+  useEffect(() => {
+    setStatusFilter(normalizeStatusFilter(searchParams.get("status")));
+  }, [searchParams]);
+
+  const handleStatusFilterChange = (value: StatusFilter) => {
+    setStatusFilter(value);
+    const nextParams = new URLSearchParams(searchParams);
+    if (value === "all") {
+      nextParams.delete("status");
+    } else {
+      nextParams.set("status", value);
+    }
+    setSearchParams(nextParams, { replace: true });
+  };
+
   const summary = useMemo(() => ({
     total: items.length,
     pending: items.filter((i) => i.status === "pending").length,
     processing: items.filter((i) => i.status === "processing").length,
     completed: items.filter((i) => i.status === "completed").length,
   }), [items]);
+
+  const filteredItems = useMemo(
+    () => statusFilter === "all" ? items : items.filter((i) => i.status === statusFilter),
+    [items, statusFilter],
+  );
 
   // Rooms available for room-change (other rooms with empty beds)
   const roomOptions = useMemo<SelectOption[]>(() => {
@@ -451,6 +482,7 @@ export default function StudentSupportPage() {
     if (createType === "room-change") return Boolean(form.targetRoomId && form.targetBedId && form.roomChangeReason.trim());
     if (createType === "bed-change") return Boolean(form.targetBedId && form.bedChangeReason.trim());
     if (createType === "roommate") {
+      if (roommateLookupStatus === "same_room") return false;
       return Boolean(
         form.roommateCode.trim() &&
         form.roommateStudentId &&
@@ -506,9 +538,12 @@ export default function StudentSupportPage() {
       setRoommateTargetInfo(null);
       await loadItems();
       setToast({ type: "success", message: "Đã gửi yêu cầu hỗ trợ thành công." });
-    } catch {
-      setFormError("Không thể gửi yêu cầu hỗ trợ lúc này.");
-      setToast({ type: "error", message: "Không thể gửi yêu cầu hỗ trợ lúc này." });
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+        ?? "Không thể gửi yêu cầu hỗ trợ lúc này.";
+      setFormError(msg);
+      setToast({ type: "error", message: msg });
     } finally {
       setIsSubmitting(false);
     }
@@ -534,7 +569,7 @@ export default function StudentSupportPage() {
       <div className="rounded-[22px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_100%)] px-6 py-5 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">Hỗ trợ sinh viên</h1>
+            <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">Yêu cầu hỗ trợ</h1>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-[#62789f]">
               Gửi yêu cầu đổi phòng, đổi giường, gia hạn lưu trú hoặc các hỗ trợ khác.
             </p>
@@ -549,29 +584,45 @@ export default function StudentSupportPage() {
             Tạo yêu cầu mới
           </button>
         </div>
-
-        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[
-            ["Tổng yêu cầu", summary.total],
-            ["Chờ xử lý", summary.pending],
-            ["Đang xử lý", summary.processing],
-            ["Hoàn thành", summary.completed],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-2xl border border-[#d8e3f1] bg-white px-4 py-3 text-center shadow-[0_8px_18px_rgba(36,76,184,0.06)]">
-              <p className="text-2xl font-extrabold leading-none text-[#244cb8]">{value}</p>
-              <p className="mt-1 text-xs font-bold text-[#6f84ad]">{label}</p>
-            </div>
-          ))}
-        </div>
       </div>
 
       <section className="rounded-[22px] border border-[#cbdcf2] bg-white p-5 shadow-[0_16px_34px_rgba(15,23,42,0.09)]">
-        <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-[#244cb8]" />
-            <h2 className="text-lg font-bold text-[#1a2d52]">Lịch sử yêu cầu</h2>
+        <div className="mb-4 flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-[#244cb8]" />
+              <h2 className="text-lg font-bold text-[#1a2d52]">Lịch sử yêu cầu</h2>
+            </div>
+            <p className="text-sm font-semibold text-[#6f84ad]">{filteredItems.length}/{items.length} ticket</p>
           </div>
-          <p className="text-sm font-semibold text-[#6f84ad]">{items.length} ticket</p>
+          <div className="flex flex-wrap gap-2">
+            {([
+              { value: "all",        label: "Tất cả",      count: items.length },
+              { value: "pending",    label: "Chờ xử lý",   count: summary.pending },
+              { value: "processing", label: "Đang xử lý",  count: summary.processing },
+              { value: "completed",  label: "Hoàn tất",    count: summary.completed },
+              { value: "approved",   label: "Đã duyệt",    count: items.filter((i) => i.status === "approved").length },
+              { value: "rejected",   label: "Từ chối",     count: items.filter((i) => i.status === "rejected").length },
+            ] as Array<{ value: StatusFilter; label: string; count: number }>)
+              .filter((opt) => opt.value === "all" || opt.value === "rejected" || opt.count > 0)
+              .map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => handleStatusFilterChange(opt.value)}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold transition ${
+                    statusFilter === opt.value
+                      ? "border-[#244cb8] bg-[#244cb8] text-white shadow-[0_4px_10px_rgba(36,76,184,0.2)]"
+                      : "border-[#c8d8ef] bg-white text-[#5570a0] hover:border-[#9eb9e6] hover:bg-[#f0f6ff]"
+                  }`}
+                >
+                  {opt.label}
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-extrabold ${statusFilter === opt.value ? "bg-white/20 text-white" : "bg-[#eef3fb] text-[#244cb8]"}`}>
+                    {opt.count}
+                  </span>
+                </button>
+              ))}
+          </div>
         </div>
 
         {isLoading ? (
@@ -608,7 +659,13 @@ export default function StudentSupportPage() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => (
+                {filteredItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-8 text-center text-sm font-semibold text-[#6f84ad]">
+                      Không có yêu cầu nào ở trạng thái này.
+                    </td>
+                  </tr>
+                ) : filteredItems.map((item) => (
                     <tr key={item.id} className="transition hover:bg-[#f8fbff]">
                       <StudentSupportTableCell>
                         <span className="mx-auto line-clamp-2 max-w-[220px] text-sm font-bold leading-5 text-[#1f3152]">{inferTypeLabel(item)}</span>
@@ -927,7 +984,8 @@ function RoommateForm(props: FormProps) {
           placeholder={props.roommateLookupStatus === "loading" ? "Đang tìm..." : "Tự động tìm theo MSSV"}
           className="mt-1.5 h-11 w-full rounded-2xl border border-[#d6e2f1] bg-[#eef4fb] px-3 text-sm font-semibold text-[#1f3152] outline-none"
         />
-        {props.roommateLookupStatus === "missing" ? <p className="mt-1 text-xs font-semibold text-[#c4364f]">Không tìm thấy sinh viên.</p> : null}
+        {props.roommateLookupStatus === "missing" && <p className="mt-1 text-xs font-semibold text-[#c4364f]">Không tìm thấy sinh viên.</p>}
+        {props.roommateLookupStatus === "same_room" && <p className="mt-1 text-xs font-semibold text-[#c4364f]">Sinh viên này đã ở cùng phòng với bạn. Dùng yêu cầu đổi giường nếu cần.</p>}
       </label>
       {props.roommateLookupStatus === "found" ? (
         <>

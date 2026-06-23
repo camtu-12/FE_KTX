@@ -6,7 +6,7 @@ import {
 import { listRooms, type RoomApi } from "../../../api/roomApi";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DormRoom } from "../../../types/dormRoom";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useSearchParams } from "react-router-dom";
 import { createPortal } from "react-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import type { RegistrationRequest } from "../data/registrationRequests";
@@ -111,12 +111,14 @@ const getSelectionMeta = (request: RegistrationRequest) => {
 
 export default function BedManagementPage() {
   const { headerSearchValue } = useOutletContext<AdminLayoutOutletContext>();
+  const [searchParams] = useSearchParams();
+  const initialFilter = (searchParams.get("status") ?? "all") as BedSelectionFilter;
   const [requests, setRequests] = useState<RegistrationRequest[]>([]);
   const [rooms, setRooms] = useState<DormRoom[]>([]);
-  const [selectionFilter, setSelectionFilter] = useState<BedSelectionFilter>("all");
+  const [selectionFilter, setSelectionFilter] = useState<BedSelectionFilter>(initialFilter);
   const [genderFilter, setGenderFilter] = useState<GenderFilter>("all");
   const [sortOrder, setSortOrder] = useState<BedSelectionSortOrder>("desc");
-  const [draftSelectionFilter, setDraftSelectionFilter] = useState<BedSelectionFilter>("all");
+  const [draftSelectionFilter, setDraftSelectionFilter] = useState<BedSelectionFilter>(initialFilter);
   const [draftGenderFilter, setDraftGenderFilter] = useState<GenderFilter>("all");
   const [draftSortOrder, setDraftSortOrder] = useState<BedSelectionSortOrder>("desc");
   const [isFilterOpen, setIsFilterOpen] = useState(false);

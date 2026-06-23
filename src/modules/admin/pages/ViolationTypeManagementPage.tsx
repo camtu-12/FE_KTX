@@ -403,17 +403,17 @@ export default function ViolationTypeManagementPage() {
             <table className="w-full min-w-[920px] border-separate border-spacing-0">
               <colgroup>
                 <col className="w-[20%]" />
-                <col className="w-[16%]" />
+                <col className="w-[30%]" />
                 <col className="w-[14%]" />
-                <col className="w-[10%]" />
-                <col className="w-[28%]" />
                 <col className="w-[12%]" />
+                <col className="w-[10%]" />
+                <col className="w-[14%]" />
               </colgroup>
               <thead>
                 <tr className="bg-[linear-gradient(180deg,#f7faff_0%,#eef4ff_100%)]">
-                  {["Tên hoạt động", "Phân loại", "Mức độ", "Điểm", "Mô tả", "Hành động"].map((heading, headingIndex) => (
+                  {["Tên hoạt động", "Mô tả", "Phân loại", "Mức độ", "Điểm", "Hành động"].map((heading, headingIndex) => (
                     <th key={heading} className="px-4 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
-                      {headingIndex === 1 ? (
+                      {headingIndex === 2 ? (
                         <div className="inline-flex items-center justify-center gap-2">
                           <span>{heading}</span>
                           <button
@@ -437,11 +437,14 @@ export default function ViolationTypeManagementPage() {
               <tbody>
                 {sortedItems.map((item) => (
                   <tr key={item.id} className="transition duration-200 hover:bg-[#f8fbff]">
-                    <td className="border-t border-[#e8eef8] px-4 py-4 text-center text-sm font-bold text-[#1f3152]">
+                    <td className="border-t border-[#e8eef8] px-4 py-4 text-center text-sm font-medium text-[#1f3152]">
                       {item.name}
                     </td>
-                    <td className="border-t border-[#e8eef8] px-4 py-4 text-center">
-                      <Badge className={categoryMeta[item.category].badgeClassName}>{categoryMeta[item.category].label}</Badge>
+                    <td className="border-t border-[#e8eef8] px-4 py-4 text-center text-sm leading-6 text-[#1f3152]">
+                      <span className="line-clamp-2">{item.description || "-"}</span>
+                    </td>
+                    <td className="whitespace-nowrap border-t border-[#e8eef8] px-4 py-4 text-center text-sm text-[#1f3152]">
+                      {categoryMeta[item.category].label}
                     </td>
                     <td className="border-t border-[#e8eef8] px-4 py-4 text-center">
                       {item.category === "negative" ? (
@@ -452,9 +455,6 @@ export default function ViolationTypeManagementPage() {
                     </td>
                     <td className="border-t border-[#e8eef8] px-4 py-4 text-center text-sm font-bold text-[#1f3152]">
                       {item.points}
-                    </td>
-                    <td className="border-t border-[#e8eef8] px-4 py-4 text-center text-sm font-medium leading-6 text-[#5d7299]">
-                      <span className="line-clamp-2">{item.description || "-"}</span>
                     </td>
                     <td className="border-t border-[#e8eef8] px-4 py-4 text-center">
                       <div className="flex flex-nowrap items-center justify-center gap-2">

@@ -894,7 +894,6 @@ export function HistoryModal({
     <ModalShell onClose={onClose} maxWidth="max-w-5xl">
       <div className="flex items-start justify-between gap-4 border-b border-[#dbe6f5] px-6 py-5">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#7d90b5]">Lịch sử</p>
           <h3 className="mt-1 text-2xl font-bold text-[#1a2d52]">Lịch sử yêu cầu gia hạn</h3>
         </div>
         <CloseButton onClick={onClose} />
@@ -928,7 +927,6 @@ function EligibilityModal({
     <ModalShell onClose={onClose} maxWidth="max-w-2xl">
       <div className="flex items-start justify-between gap-4 border-b border-[#dbe6f5] px-6 py-5">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#7d90b5]">Điều kiện gia hạn</p>
           <h3 className="mt-1 text-2xl font-bold text-[#1a2d52]">
             {eligible ? "Đủ điều kiện gia hạn" : "Chưa đủ điều kiện gia hạn"}
           </h3>
@@ -1072,9 +1070,9 @@ function buildConditionRows(eligibility: ExtensionEligibility | null): Condition
       };
     })(),
     {
-      label: "Chưa lên năm cuối",
+      label: "Không vượt quá năm 4 sau gia hạn",
       passed: eligibility.conditions.not_final_year,
-      detail: "Sinh viên năm cuối không được gia hạn lưu trú.",
+      detail: "Sau khi gia hạn, sinh viên không được vượt quá năm học thứ 4.",
     },
   ];
 }

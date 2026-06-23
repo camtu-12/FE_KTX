@@ -63,8 +63,8 @@ type ElectricityRecord = {
 };
 const ELECTRICITY_PRICE_PER_KWH = 2900;
 const recordTableColumnWidths = ["10%", "12%", "10%", "10%", "13%", "13%", "15%", "18%"];
-const billTableColumnWidths = ["11%", "17%", "10%", "8%", "15%", "12%", "14%", "13%"];
-const currentMonth = new Date().getMonth() + 1;
+const billTableColumnWidths = ["10%", "16%", "9%", "8%", "8%", "14%", "12%", "13%", "10%"];
+const currentYear = new Date().getFullYear();
 const monthOptions = Array.from({ length: 12 }, (_, index) => index + 1);
 
 const moneyFormatter = new Intl.NumberFormat("vi-VN", {
@@ -210,11 +210,16 @@ export default function AdminElectricityPage() {
   const [records, setRecords] = useState<ElectricityRecord[]>([]);
   const [bills, setBills] = useState<ElectricityBill[]>([]);
   const [rooms, setRooms] = useState<DormRoom[]>([]);
-  const [monthFilter, setMonthFilter] = useState(String(currentMonth));
-  const [draftMonthFilter, setDraftMonthFilter] = useState(String(currentMonth));
+  const [monthFilter, setMonthFilter] = useState("all");
+  const [draftMonthFilter, setDraftMonthFilter] = useState("all");
   const [isMonthFilterOpen, setIsMonthFilterOpen] = useState(false);
   const [monthFilterMenuPosition, setMonthFilterMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const monthFilterButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [yearFilter, setYearFilter] = useState("all");
+  const [draftYearFilter, setDraftYearFilter] = useState("all");
+  const [isYearFilterOpen, setIsYearFilterOpen] = useState(false);
+  const [yearFilterMenuPosition, setYearFilterMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const yearFilterButtonRef = useRef<HTMLButtonElement | null>(null);
   const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
   const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
   const [selectedBill, setSelectedBill] = useState<ElectricityBill | null>(null);
@@ -231,6 +236,19 @@ export default function AdminElectricityPage() {
   });
 
   const roomOptions = useMemo(() => rooms.map((room) => ({ id: room.id, name: formatDormRoomName(room) })), [rooms]);
+  const years = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          currentYear,
+          ...records.map((record) => Number(record.month.split("-")[0])),
+          ...bills.map((bill) => Number(bill.month.split("-")[0])),
+        ]),
+      )
+        .filter((year) => Number.isInteger(year))
+        .sort((a, b) => b - a),
+    [bills, records],
+  );
   const latestElectricityMonth = useMemo(() => getLatestElectricityMonth(records, form.room), [form.room, records]);
   const nextAvailableElectricityMonth = useMemo(() => getNextMonthValue(latestElectricityMonth), [latestElectricityMonth]);
   const effectiveFormMonth = latestElectricityMonth && nextAvailableElectricityMonth && form.month <= latestElectricityMonth ? nextAvailableElectricityMonth : form.month;
@@ -283,20 +301,33 @@ export default function AdminElectricityPage() {
   const unitPricePreview = parseMoneyValue(form.unitPrice);
   const totalPreview = usagePreview * unitPricePreview;
   const selectedMonthNumber = Number(monthFilter);
+  const selectedYearNumber = Number(yearFilter);
 
-  const visibleRecords = useMemo(() => records.filter((record) => Number(record.month.split("-")[1]) === selectedMonthNumber), [records, selectedMonthNumber]);
+  const visibleRecords = useMemo(
+    () =>
+      records.filter((record) => {
+        const [recordYear, recordMonth] = record.month.split("-").map(Number);
+        const matchesMonth = monthFilter === "all" || Number(recordMonth) === selectedMonthNumber;
+        const matchesYear = yearFilter === "all" || recordYear === selectedYearNumber;
+
+        return matchesMonth && matchesYear;
+      }),
+    [monthFilter, records, selectedMonthNumber, selectedYearNumber, yearFilter],
+  );
 
   const visibleBills = useMemo(() => {
     const normalizedHeaderSearch = headerSearchValue.trim().toLowerCase();
 
     return bills.filter((bill) => {
+      const [billYear, billMonth] = bill.month.split("-").map(Number);
       const searchableText = [bill.studentCode, bill.fullName].join(" ").toLowerCase();
       const matchesHeaderSearch = !normalizedHeaderSearch || searchableText.includes(normalizedHeaderSearch);
-      const matchesMonth = Number(bill.month.split("-")[1]) === selectedMonthNumber;
+      const matchesMonth = monthFilter === "all" || Number(billMonth) === selectedMonthNumber;
+      const matchesYear = yearFilter === "all" || billYear === selectedYearNumber;
 
-      return matchesHeaderSearch && matchesMonth;
+      return matchesHeaderSearch && matchesMonth && matchesYear;
     });
-  }, [bills, headerSearchValue, selectedMonthNumber]);
+  }, [bills, headerSearchValue, monthFilter, selectedMonthNumber, selectedYearNumber, yearFilter]);
 
   const recordSummaryCards = useMemo<SummaryCard[]>(() => {
     const roomStudentCountMap = visibleRecords.reduce<Map<string, number>>((roomMap, record) => {
@@ -484,18 +515,64 @@ export default function AdminElectricityPage() {
 
   const openMonthFilter = () => {
     setDraftMonthFilter(monthFilter);
+    setIsYearFilterOpen(false);
     setIsMonthFilterOpen(true);
   };
 
   const resetMonthFilter = () => {
-    setDraftMonthFilter(String(currentMonth));
-    setMonthFilter(String(currentMonth));
+    setDraftMonthFilter("all");
+    setMonthFilter("all");
     setIsMonthFilterOpen(false);
   };
 
   const applyMonthFilter = () => {
     setMonthFilter(draftMonthFilter);
     setIsMonthFilterOpen(false);
+  };
+
+  useEffect(() => {
+    if (!isYearFilterOpen) {
+      return;
+    }
+
+    const updateMenuPosition = () => {
+      const buttonRect = yearFilterButtonRef.current?.getBoundingClientRect();
+
+      if (!buttonRect) {
+        return;
+      }
+
+      setYearFilterMenuPosition({
+        top: buttonRect.bottom + 10,
+        left: buttonRect.left + buttonRect.width / 2,
+      });
+    };
+
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [isYearFilterOpen]);
+
+  const openYearFilter = () => {
+    setDraftYearFilter(yearFilter);
+    setIsMonthFilterOpen(false);
+    setIsYearFilterOpen(true);
+  };
+
+  const resetYearFilter = () => {
+    setDraftYearFilter("all");
+    setYearFilter("all");
+    setIsYearFilterOpen(false);
+  };
+
+  const applyYearFilter = () => {
+    setYearFilter(draftYearFilter);
+    setIsYearFilterOpen(false);
   };
 
   const handleFilterOverlayWheel = (event: WheelEvent<HTMLDivElement>) => {
@@ -520,6 +597,22 @@ export default function AdminElectricityPage() {
         className="flex items-center justify-center text-[#244cb8] transition"
         aria-label="Bật lọc tháng"
         title="Bật lọc tháng"
+      >
+        <Funnel className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+
+  const yearHeader = (
+    <div className="inline-flex items-center justify-center gap-2">
+      <span>Năm</span>
+      <button
+        ref={yearFilterButtonRef}
+        type="button"
+        onClick={isYearFilterOpen ? () => setIsYearFilterOpen(false) : openYearFilter}
+        className={`flex items-center justify-center transition ${yearFilter !== "all" ? "text-[#244cb8]" : "text-[#6f84ad] hover:text-[#244cb8]"}`}
+        aria-label="Bật lọc năm"
+        title="Bật lọc năm"
       >
         <Funnel className="h-3.5 w-3.5" />
       </button>
@@ -612,7 +705,7 @@ export default function AdminElectricityPage() {
         {activeTab === "records" ? (
           <PaymentTable
             headings={["Phòng", "Số sinh viên", "Tháng", "Năm", "Chỉ số cũ", "Chỉ số mới", "Số điện", "Tổng tiền"]}
-            headerContentByIndex={{ 2: monthHeader }}
+            headerContentByIndex={{ 2: monthHeader, 3: yearHeader }}
             columnWidths={recordTableColumnWidths}
             emptyMessage="Không có chỉ số điện phù hợp với bộ lọc."
             rows={visibleRecords.map((record) => ({
@@ -631,8 +724,8 @@ export default function AdminElectricityPage() {
           />
         ) : (
           <PaymentTable
-            headings={["MSSV", "Họ tên", "Phòng", "Tháng", "Tiền điện", "Hạn thanh toán", "Trạng thái", "Hành động"]}
-            headerContentByIndex={{ 3: monthHeader }}
+            headings={["MSSV", "Họ tên", "Phòng", "Tháng", "Năm", "Tiền điện", "Hạn thanh toán", "Trạng thái", "Hành động"]}
+            headerContentByIndex={{ 3: monthHeader, 4: yearHeader }}
             columnWidths={billTableColumnWidths}
             emptyMessage="Không có hóa đơn điện phù hợp với bộ lọc."
             rows={visibleBills.map((bill) => ({
@@ -641,7 +734,8 @@ export default function AdminElectricityPage() {
                 <span className="text-[15px] font-semibold text-[#24407f]">{bill.studentCode}</span>,
                 <span className="line-clamp-2 text-sm font-semibold text-[#1f3152]">{bill.fullName}</span>,
                 <span className="text-sm font-semibold text-[#6d7fa6]">{bill.room}</span>,
-                formatMonth(bill.month),
+                bill.month.split("-")[1] ?? bill.month,
+                bill.month.split("-")[0] ?? "",
                 moneyFormatter.format(bill.amount),
                 formatDate(bill.dueDate),
                 <StatusBadge status={bill.status} />,
@@ -674,8 +768,8 @@ export default function AdminElectricityPage() {
                 onClick={(event) => event.stopPropagation()}
               >
                 <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 p-2.5">
-                  {monthOptions.map((month) => {
-                    const value = String(month);
+                  {[{ value: "all", label: "Tất cả" }, ...monthOptions.map((month) => ({ value: String(month), label: String(month).padStart(2, "0") }))].map((option) => {
+                    const value = option.value;
                     const isSelected = draftMonthFilter === value;
 
                     return (
@@ -692,7 +786,7 @@ export default function AdminElectricityPage() {
                         >
                           <span className={`h-2 w-2 rounded-full ${isSelected ? "bg-[#244cb8]" : "bg-transparent"}`} />
                         </span>
-                        <span>{value.padStart(2, "0")}</span>
+                        <span>{option.label}</span>
                       </button>
                     );
                   })}
@@ -709,6 +803,64 @@ export default function AdminElectricityPage() {
                   <button
                     type="button"
                     onClick={applyMonthFilter}
+                    className="rounded-xl bg-[#0c4f97] px-3 py-1.5 text-[10px] font-semibold tracking-normal text-white shadow-[0_8px_16px_rgba(12,79,151,0.22)] transition hover:brightness-110"
+                  >
+                    OK
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {isYearFilterOpen && yearFilterMenuPosition
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[68]"
+              onClick={() => setIsYearFilterOpen(false)}
+              onWheel={handleFilterOverlayWheel}
+            >
+              <div
+                className="absolute w-[230px] -translate-x-1/2 overflow-hidden rounded-[22px] border border-[#d7e2f2] bg-white text-left shadow-[0_18px_38px_rgba(15,23,42,0.18)]"
+                style={{ top: yearFilterMenuPosition.top, left: yearFilterMenuPosition.left }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="space-y-0.5 p-2.5">
+                  {[{ value: "all", label: "Tất cả" }, ...years.map((year) => ({ value: String(year), label: String(year) }))].map((option) => {
+                    const isSelected = draftYearFilter === option.value;
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setDraftYearFilter(option.value)}
+                        className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-[10px] font-medium tracking-normal text-[#1f4a8d] transition hover:bg-[#f5f9ff]"
+                      >
+                        <span
+                          className={`flex h-4 w-4 items-center justify-center rounded-full border ${
+                            isSelected ? "border-[#244cb8] bg-[#244cb8]/10" : "border-[#cfd9e8] bg-white"
+                          }`}
+                        >
+                          <span className={`h-2 w-2 rounded-full ${isSelected ? "bg-[#244cb8]" : "bg-transparent"}`} />
+                        </span>
+                        <span>{option.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center justify-between border-t border-[#dbe5f3] px-2.5 py-2">
+                  <button
+                    type="button"
+                    onClick={resetYearFilter}
+                    className="text-[10px] font-medium tracking-normal text-[#b2b8c3] transition hover:text-[#7c8799]"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyYearFilter}
                     className="rounded-xl bg-[#0c4f97] px-3 py-1.5 text-[10px] font-semibold tracking-normal text-white shadow-[0_8px_16px_rgba(12,79,151,0.22)] transition hover:brightness-110"
                   >
                     OK

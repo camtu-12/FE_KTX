@@ -740,14 +740,27 @@ export default function AdminRegistrationPeriodsPage() {
                 );
               })()}
               {period.status === "active" && (() => {
-                const today = new Date(); today.setHours(0, 0, 0, 0);
-                const end = new Date(period.end_date); end.setHours(0, 0, 0, 0);
-                if (today <= end) {
-                  const daysRemain = Math.ceil((end.getTime() - today.getTime()) / 86400000);
+                const now = new Date();
+                const end = new Date(period.end_date);
+                // Nếu backend trả date-only (UTC midnight), treat là cuối ngày giờ local
+                if (end.getUTCHours() === 0 && end.getUTCMinutes() === 0 && end.getUTCSeconds() === 0) {
+                  end.setHours(23, 59, 59, 999);
+                }
+                const diffMs = end.getTime() - now.getTime();
+                if (diffMs > 0) {
+                  const totalHours = Math.floor(diffMs / 3600000);
+                  const minutes = Math.floor((diffMs % 3600000) / 60000);
+                  const days = Math.floor(totalHours / 24);
+                  const hours = totalHours % 24;
+                  const label = days > 0
+                    ? `${days} ngày`
+                    : hours > 0
+                      ? `${hours} giờ ${minutes} phút`
+                      : `${minutes} phút`;
                   return (
                     <div className="mt-3 inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-1.5 text-sm font-semibold text-emerald-700">
                       <CheckCircle2 className="h-4 w-4" />
-                      Đang nhận đơn — còn <strong className="text-[15px]">{daysRemain} ngày</strong>
+                      Đang nhận đơn — còn <strong className="text-[15px]">{label.trim()}</strong>
                     </div>
                   );
                 } else {

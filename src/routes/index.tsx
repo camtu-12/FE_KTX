@@ -1,4 +1,11 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { useEffect } from "react";
+
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+  return null;
+}
 import AdminLayout from "../layouts/AdminLayout";
 import PublicLayout from "../layouts/PublicLayout";
 import StudentLayout from "../layouts/StudentLayout";
@@ -24,8 +31,11 @@ import AdminRoomFeePage from "../modules/admin/pages/AdminRoomFeePage";
 import LoginPage from "../modules/auth/pages/LoginPage";
 import RegisterPage from "../modules/auth/pages/RegisterPage";
 import AboutPage from "../modules/public/pages/AboutPage";
+import ApplicationDocumentsPage from "../modules/public/pages/ApplicationDocumentsPage";
 import ContactPage from "../modules/public/pages/ContactPage";
+import EligibilityPage from "../modules/public/pages/EligibilityPage";
 import HomePage from "../modules/public/pages/HomePage";
+import RegistrationProcessPage from "../modules/public/pages/RegistrationProcessPage";
 import RegistrationPage from "../modules/registration/pages/RegistrationPage";
 import RoomStatusPage from "../modules/registration/pages/RoomStatusPage";
 import StudentDashboardPage from "../modules/student/pages/StudentDashboardPage";
@@ -42,11 +52,15 @@ import ForgotPassword from "../modules/auth/pages/ForgotPassword";
 export default function AppRoutes() {
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <Routes>
         <Route path="/" element={<PublicLayout />}>
           <Route index element={<HomePage />} />
           <Route path="about" element={<AboutPage />} />
           <Route path="contact" element={<ContactPage />} />
+          <Route path="dieu-kien-noi-tru" element={<EligibilityPage />} />
+          <Route path="ho-so-can-chuan-bi" element={<ApplicationDocumentsPage />} />
+          <Route path="quy-trinh-xet-duyet" element={<RegistrationProcessPage />} />
         </Route>
 
         <Route path="/login" element={<LoginPage />} />

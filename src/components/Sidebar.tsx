@@ -40,6 +40,11 @@ type MenuItem = {
 
 const adminMenu: MenuItem[] = [
   {
+    label: "Dashboard",
+    to: "/admin/dashboard",
+    icon: LayoutDashboard,
+  },
+  {
     label: "Quản lý đăng ký",
     icon: ClipboardList,
     children: [
@@ -61,6 +66,14 @@ const adminMenu: MenuItem[] = [
     label: "Quản lý lưu trú",
     to: "/admin/occupancies",
     icon: Hotel,
+  },
+   {
+    label: "Gia hạn lưu trú",
+    icon: CalendarRange,
+    children: [
+      { label: "Đợt gia hạn", to: "/admin/occupancy-periods" },
+      { label: "Yêu cầu gia hạn", to: "/admin/extensions" },
+    ],
   },
   {
     label: "Quản lý thanh toán",
@@ -90,28 +103,22 @@ const adminMenu: MenuItem[] = [
       },
     ],
   },
+  
   {
-    label: "Quản lý phòng",
-    to: "/admin/rooms",
-    icon: School,
-  },
-  {
-    label: "Hỗ trợ sinh viên",
+    label: "Yêu cầu hỗ trợ",
     to: "/admin/support-requests",
     icon: LifeBuoy,
   },
-  {
-    label: "Gia hạn lưu trú",
-    icon: CalendarRange,
-    children: [
-      { label: "Đợt gia hạn", to: "/admin/occupancy-periods" },
-      { label: "Yêu cầu gia hạn", to: "/admin/extensions" },
-    ],
-  },
+ 
   {
     label: "Quản lý tòa",
     to: "/admin/buildings",
     icon: Building2,
+  },
+  {
+    label: "Quản lý phòng",
+    to: "/admin/rooms",
+    icon: School,
   },
   
   
@@ -144,7 +151,7 @@ const studentMenu: MenuItem[] = [
     icon: History,
   },
   {
-    label: "Hỗ trợ sinh viên",
+    label: "Yêu cầu hỗ trợ",
     to: "/student/support",
     icon: LifeBuoy,
   },
@@ -159,9 +166,11 @@ export default function Sidebar({ role }: SidebarProps) {
   const items = role === "admin" ? adminMenu : studentMenu;
   const location = useLocation();
   const navigate = useNavigate();
-  const [registrationAccess, setRegistrationAccess] = useState<"checking" | "allowed" | "blocked">(
-    role === "student" ? "checking" : "allowed",
-  );
+  const [registrationAccess, setRegistrationAccess] = useState<"checking" | "allowed" | "blocked">(() => {
+    if (role !== "student") return "allowed";
+    const email = getStoredAuth()?.user?.email ?? "";
+    return email ? "checking" : "allowed";
+  });
   const isRegistrationGroupActive =
     location.pathname === "/admin/registrations" || location.pathname === "/admin/registration-periods";
   const isViolationGroupActive =
@@ -176,18 +185,13 @@ export default function Sidebar({ role }: SidebarProps) {
 
   useEffect(() => {
     if (role !== "student") {
-      setRegistrationAccess("allowed");
       return;
     }
 
     const email = getStoredAuth()?.user?.email ?? "";
-    if (!email) {
-      setRegistrationAccess("allowed");
-      return;
-    }
+    if (!email) return;
 
     let mounted = true;
-    setRegistrationAccess("checking");
 
     Promise.allSettled([
       getMyRegistration(email),
@@ -276,7 +280,7 @@ export default function Sidebar({ role }: SidebarProps) {
                     }}
                     className={[
                       "group relative flex w-full items-center gap-3 rounded-[22px] px-4 py-3 text-left text-sm font-semibold text-[#d6e7ff] transition-all duration-300",
-                      isGroupActive ? "bg-white/10 text-white" : "hover:bg-white/15 hover:text-white",
+                      isGroupActive ? "bg-[#2563eb] text-white shadow-[0_14px_26px_rgba(37,99,235,0.26)]" : "hover:bg-white/15 hover:text-white",
                     ].join(" ")}
                   >
                     <span
@@ -309,7 +313,7 @@ export default function Sidebar({ role }: SidebarProps) {
                               [
                                 "group relative flex w-full items-center gap-3 rounded-[18px] px-4 py-2.5 text-left text-sm font-semibold text-[#d6e7ff] transition-all duration-300",
                                 isActive
-                                  ? "bg-[linear-gradient(135deg,#5d83d8_0%,#7fe1d7_100%)] text-white shadow-[0_12px_24px_rgba(26,132,217,0.24)]"
+                                  ? "bg-[#2563eb] text-white shadow-[0_12px_24px_rgba(37,99,235,0.24)]"
                                   : "hover:bg-white/15 hover:text-white",
                               ].join(" ")
                             }
@@ -366,7 +370,7 @@ export default function Sidebar({ role }: SidebarProps) {
                   [
                     "group relative flex w-full items-center gap-3 rounded-[22px] px-4 py-3 text-left text-sm font-semibold text-[#d6e7ff] transition-all duration-300",
                     isActive
-                      ? "border-l-4 border-white bg-[linear-gradient(135deg,#5d83d8_0%,#7fe1d7_100%)] text-white shadow-[0_16px_30px_rgba(26,132,217,0.30)]"
+                      ? "border-l-4 border-white bg-[#2563eb] text-white shadow-[0_16px_30px_rgba(37,99,235,0.30)]"
                       : "hover:bg-white/15 hover:text-white",
                   ].join(" ")
                 }

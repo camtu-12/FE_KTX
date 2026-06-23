@@ -14,9 +14,9 @@ import {
   ShieldX,
   X,
 } from "lucide-react";
+import AppBrand from "./AppBrand";
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
-import AppBrand from "./AppBrand";
 import {
   getAdminNotifications,
   getAdminUnreadCount,

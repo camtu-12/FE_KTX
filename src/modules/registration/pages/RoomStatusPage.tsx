@@ -1,5 +1,5 @@
-import { Fragment, useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { AlertCircle, CheckCircle, Clock, LoaderCircle, RefreshCw } from "lucide-react";
 import { getLatestRegistrationByEmail } from "../../../api/registrationService";
@@ -62,11 +62,14 @@ function StatusTimeline({ status }: { status: RegistrationRequest["status"] }) {
 
 export default function RoomStatusPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const prefetched = (location.state as { registration?: RegistrationRequest; eligibility?: EligibilityResult } | null);
   const studentEmail = useAuthStore((state) => state.user?.email ?? "");
-  const [registration, setRegistration] = useState<RegistrationRequest | null>(null);
-  const [eligibility, setEligibility] = useState<EligibilityResult | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [registration, setRegistration] = useState<RegistrationRequest | null>(prefetched?.registration ?? null);
+  const [eligibility, setEligibility] = useState<EligibilityResult | null>(prefetched?.eligibility ?? null);
+  const [loading, setLoading] = useState(!prefetched?.registration);
   const [error, setError] = useState("");
+  const skipFirstFetch = useRef(!!prefetched?.registration);
 
   const loadRegistration = useCallback(
     async (isMounted: () => boolean = () => true) => {
@@ -118,13 +121,14 @@ export default function RoomStatusPage() {
   );
 
   useEffect(() => {
+    if (skipFirstFetch.current) {
+      skipFirstFetch.current = false;
+      return;
+    }
+
     let mounted = true;
-
     void loadRegistration(() => mounted);
-
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [loadRegistration]);
 
   if (loading) {

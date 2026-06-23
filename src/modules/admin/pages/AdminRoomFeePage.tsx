@@ -3,7 +3,7 @@ import { CircleDollarSign, Eye, Funnel, Plus, X } from "lucide-react";
 import type { ReactNode, WheelEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useSearchParams } from "react-router-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import {
   confirmRoomFeePayment,
@@ -108,15 +108,23 @@ function InfoLine({ label, value }: { label: string; value: ReactNode }) {
 
 export default function AdminRoomFeePage() {
   const { headerSearchValue } = useOutletContext<AdminLayoutOutletContext>();
+  const [searchParams] = useSearchParams();
+  const queryStatus = searchParams.get("status");
+  const queryMonth = searchParams.get("month");
+  const queryYear = searchParams.get("year");
+  const initialStatusFilter: StatusFilter =
+    queryStatus === "unpaid" || queryStatus === "paid" || queryStatus === "overdue" ? queryStatus : "all";
+  const initialMonthFilter = queryMonth && Number(queryMonth) >= 1 && Number(queryMonth) <= 12 ? String(Number(queryMonth)) : String(currentMonth);
+  const initialYearFilter = queryYear && Number(queryYear) >= 2020 && Number(queryYear) <= 2100 ? String(Number(queryYear)) : String(currentYear);
   const [bills, setBills] = useState<RoomFeeBill[]>([]);
   const [roomFilter, setRoomFilter] = useState("all");
   const [draftRoomFilter, setDraftRoomFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [draftStatusFilter, setDraftStatusFilter] = useState<StatusFilter>("all");
-  const [monthFilter, setMonthFilter] = useState(String(currentMonth));
-  const [draftMonthFilter, setDraftMonthFilter] = useState(String(currentMonth));
-  const [yearFilter, setYearFilter] = useState(String(currentYear));
-  const [draftYearFilter, setDraftYearFilter] = useState(String(currentYear));
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(initialStatusFilter);
+  const [draftStatusFilter, setDraftStatusFilter] = useState<StatusFilter>(initialStatusFilter);
+  const [monthFilter, setMonthFilter] = useState(initialMonthFilter);
+  const [draftMonthFilter, setDraftMonthFilter] = useState(initialMonthFilter);
+  const [yearFilter, setYearFilter] = useState(initialYearFilter);
+  const [draftYearFilter, setDraftYearFilter] = useState(initialYearFilter);
   const [openFilterMenu, setOpenFilterMenu] = useState<FilterMenuType | null>(null);
   const [filterMenuPosition, setFilterMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const roomFilterButtonRef = useRef<HTMLButtonElement | null>(null);

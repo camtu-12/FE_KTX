@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
-import { CheckCircle2, Clock3, Eye, Filter, LifeBuoy, Save, Search, Settings2, X, XCircle } from "lucide-react";
+import { BedDouble, CheckCircle2, ClipboardList, Clock3, Eye, Funnel, LifeBuoy, NotebookPen, Save, Settings2, User, X, XCircle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useOutletContext } from "react-router-dom";
 import {
@@ -61,7 +61,7 @@ const statusMeta: Record<SupportRequestStatus, { label: string; className: strin
   processing: { label: "Đang xử lý", className: "border-sky-200 bg-sky-50 text-sky-700", Icon: LifeBuoy },
   approved: { label: "Đã duyệt", className: "border-emerald-200 bg-emerald-50 text-emerald-700", Icon: CheckCircle2 },
   rejected: { label: "Từ chối", className: "border-rose-200 bg-rose-50 text-rose-700", Icon: XCircle },
-  completed: { label: "Hoàn tất", className: "border-indigo-200 bg-indigo-50 text-indigo-700", Icon: CheckCircle2 },
+  completed: { label: "Hoàn tất", className: "border-emerald-200 bg-emerald-50 text-emerald-700", Icon: CheckCircle2 },
 };
 
 const currentStayLabels = new Set([
@@ -109,12 +109,6 @@ const getAutoTransferLabel = (type: SupportRequestType) => {
   return "Yêu cầu đổi giường";
 };
 
-const getTargetSectionTitle = (type: SupportRequestType) => {
-  if (type === "room_change") return "Phòng / Giường đích (sinh viên đã chọn)";
-  if (type === "roommate_request") return "Phòng bạn cùng phòng / Giường đích (sinh viên đã chọn)";
-  return "Giường đích (sinh viên đã chọn)";
-};
-
 function Badge({ status }: { status: SupportRequestStatus }) {
   const meta = statusMeta[status];
   const Icon = meta.Icon;
@@ -134,8 +128,11 @@ export default function AdminSupportRequestsPage() {
   const [processStatus, setProcessStatus] = useState<ProcessStatus>("pending");
   const [adminNote, setAdminNote] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
+  const [draftStatusFilter, setDraftStatusFilter] = useState<StatusFilter>("ALL");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("ALL");
-  const [tableSearch, setTableSearch] = useState("");
+  const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
+  const [statusFilterMenuPosition, setStatusFilterMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const statusFilterButtonRef = useRef<HTMLButtonElement | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -161,8 +158,31 @@ export default function AdminSupportRequestsPage() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  useEffect(() => {
+    if (!isStatusFilterOpen) return;
+
+    const updateMenuPosition = () => {
+      const buttonRect = statusFilterButtonRef.current?.getBoundingClientRect();
+      if (!buttonRect) return;
+
+      setStatusFilterMenuPosition({
+        top: buttonRect.bottom + 10,
+        left: buttonRect.left + buttonRect.width / 2,
+      });
+    };
+
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [isStatusFilterOpen]);
+
   const visibleItems = useMemo(() => {
-    const search = [headerSearchValue, tableSearch].filter(Boolean).join(" ").trim().toLowerCase();
+    const search = headerSearchValue.trim().toLowerCase();
     return items.filter((item) => {
       const matchesStatus = statusFilter === "ALL" || item.status === statusFilter;
       const matchesType = typeFilter === "ALL" || item.requestType === typeFilter;
@@ -174,7 +194,7 @@ export default function AdminSupportRequestsPage() {
           .includes(search);
       return matchesStatus && matchesType && matchesSearch;
     });
-  }, [headerSearchValue, items, statusFilter, tableSearch, typeFilter]);
+  }, [headerSearchValue, items, statusFilter, typeFilter]);
 
   const openProcessModal = (item: StudentSupportRequest) => {
     setProcessItem(item);
@@ -226,8 +246,24 @@ export default function AdminSupportRequestsPage() {
 
   const resetFilters = () => {
     setStatusFilter("ALL");
+    setDraftStatusFilter("ALL");
     setTypeFilter("ALL");
-    setTableSearch("");
+  };
+
+  const handleOpenStatusFilter = () => {
+    setDraftStatusFilter(statusFilter);
+    setIsStatusFilterOpen(true);
+  };
+
+  const handleResetStatusFilter = () => {
+    setDraftStatusFilter("ALL");
+    setStatusFilter("ALL");
+    setIsStatusFilterOpen(false);
+  };
+
+  const handleApplyStatusFilter = () => {
+    setStatusFilter(draftStatusFilter);
+    setIsStatusFilterOpen(false);
   };
 
   return (
@@ -238,52 +274,31 @@ export default function AdminSupportRequestsPage() {
       className="flex min-h-[calc(100vh-8rem)] flex-col space-y-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_42%,#d2e3f8_100%)] p-4 sm:p-6"
     >
       <div className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">Quản lý yêu cầu hỗ trợ</h1>
-          <p className="text-sm text-[#62789f]">Theo dõi, tiếp nhận và xử lý các yêu cầu hỗ trợ sinh viên.</p>
-        </div>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex flex-col gap-1">
+            <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">Quản lý yêu cầu hỗ trợ</h1>
+            <p className="text-sm text-[#62789f]">Theo dõi, tiếp nhận và xử lý các yêu cầu hỗ trợ sinh viên.</p>
+          </div>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
-          <label className="relative block">
-            <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6f84ad]" />
+          <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
             <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-              className="h-11 w-full rounded-2xl border border-[#d6e2f1] bg-white pl-9 pr-3 text-sm font-semibold text-[#1f3152] outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/12"
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
+              className="h-9 w-[190px] rounded-xl border border-[#d6e2f1] bg-white px-3 text-xs font-semibold text-[#1f3152] outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/12"
             >
-              {statusOptions.map((o) => (
+              {typeOptions.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
-          </label>
 
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
-            className="h-11 rounded-2xl border border-[#d6e2f1] bg-white px-3 text-sm font-semibold text-[#1f3152] outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/12"
-          >
-            {typeOptions.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-
-          <label className="relative block">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6f84ad]" />
-            <input
-              value={tableSearch}
-              onChange={(e) => setTableSearch(e.target.value)}
-              placeholder="Tìm sinh viên..."
-              className="h-11 w-full rounded-2xl border border-[#d6e2f1] bg-white pl-9 pr-3 text-sm font-semibold text-[#1f3152] outline-none placeholder:text-[#8da0bf] focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/12"
-            />
-          </label>
-
-          <button
-            type="button"
-            onClick={resetFilters}
-            className="h-11 rounded-2xl border border-[#c8d8ef] bg-white px-5 text-sm font-semibold text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.10)]"
-          >
-            Reset
-          </button>
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="h-9 rounded-xl border border-[#c8d8ef] bg-white px-4 text-xs font-semibold text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.10)]"
+            >
+              Reset
+            </button>
+          </div>
         </div>
       </div>
 
@@ -296,21 +311,38 @@ export default function AdminSupportRequestsPage() {
           <table className="w-full table-fixed border-separate border-spacing-0">
             <thead>
               <tr className="bg-[linear-gradient(180deg,#f7faff_0%,#eef4ff_100%)]">
-                <TableHead className="w-[26%]">Sinh viên</TableHead>
-                <TableHead className="w-[24%]">Loại yêu cầu</TableHead>
-                <TableHead className="w-[18%]">Ngày gửi</TableHead>
-                <TableHead className="w-[15%]">Trạng thái</TableHead>
-                <TableHead className="w-[17%]">Hành động</TableHead>
+                <TableHead className="w-[14%]">MSSV</TableHead>
+                <TableHead className="w-[18%]">Họ tên</TableHead>
+                <TableHead className="w-[22%]">Loại yêu cầu</TableHead>
+                <TableHead className="w-[16%]">Ngày gửi</TableHead>
+                <TableHead className="w-[14%]">
+                  <span className="inline-flex items-center justify-center gap-2">
+                    <span>Trạng thái</span>
+                    <button
+                      ref={statusFilterButtonRef}
+                      type="button"
+                      onClick={isStatusFilterOpen ? () => setIsStatusFilterOpen(false) : handleOpenStatusFilter}
+                      className={`flex items-center justify-center transition ${
+                        statusFilter !== "ALL" ? "text-[#244cb8]" : "text-[#6f84ad] hover:text-[#244cb8]"
+                      }`}
+                      aria-label="Bật lọc trạng thái"
+                      title="Bật lọc trạng thái"
+                    >
+                      <Funnel className="h-3.5 w-3.5" />
+                    </button>
+                  </span>
+                </TableHead>
+                <TableHead className="w-[16%]">Hành động</TableHead>
               </tr>
             </thead>
             <tbody>
               {visibleItems.map((item) => (
                 <tr key={item.id} className="transition hover:bg-[#f8fbff]">
                   <TableCell>
-                    <div className="flex flex-col items-center justify-center">
-                      <p className="max-w-full truncate text-sm font-bold text-[#1f3152]">{item.student?.studentCode || "-"}</p>
-                      <p className="mt-1 max-w-full truncate text-sm font-semibold text-[#6f84ad]">{item.student?.fullName || "-"}</p>
-                    </div>
+                    <span className="block max-w-full truncate text-[15px] font-semibold text-[#24407f]">{item.student?.studentCode || "-"}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="block max-w-full truncate text-sm font-semibold text-[#1f3152]">{item.student?.fullName || "-"}</span>
                   </TableCell>
                   <TableCell>
                     <span className="mx-auto line-clamp-2 max-w-[220px] text-sm font-semibold leading-5 text-[#1f3152]">{getTypeLabel(item.requestType)}</span>
@@ -328,18 +360,20 @@ export default function AdminSupportRequestsPage() {
                       <button
                         type="button"
                         onClick={() => setDetailItem(item)}
-                        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#bfd2ec] bg-white px-3 text-xs font-bold text-[#244cb8] transition hover:bg-[#eef5ff]"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#bfd2ec] bg-white text-[#244cb8] transition hover:bg-[#eef5ff]"
+                        aria-label="Xem"
+                        title="Xem"
                       >
                         <Eye className="h-4 w-4" />
-                        Xem
                       </button>
                       <button
                         type="button"
                         onClick={() => openProcessModal(item)}
-                        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-[#244cb8] px-3 text-xs font-bold text-white transition hover:bg-[#1d3f9c]"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#244cb8] text-white transition hover:bg-[#1d3f9c]"
+                        aria-label="Xử lý"
+                        title="Xử lý"
                       >
                         <Settings2 className="h-4 w-4" />
-                        Xử lý
                       </button>
                     </div>
                   </TableCell>
@@ -349,6 +383,60 @@ export default function AdminSupportRequestsPage() {
           </table>
         )}
       </div>
+
+      {isStatusFilterOpen && statusFilterMenuPosition
+        ? createPortal(
+            <div className="fixed inset-0 z-[68]" onClick={() => setIsStatusFilterOpen(false)}>
+              <div
+                className="absolute w-[210px] -translate-x-1/2 overflow-hidden rounded-[22px] border border-[#d7e2f2] bg-white text-left shadow-[0_18px_38px_rgba(15,23,42,0.18)]"
+                style={{ top: statusFilterMenuPosition.top, left: statusFilterMenuPosition.left }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="space-y-0.5 p-2.5">
+                  {statusOptions.map((option) => {
+                    const isSelected = draftStatusFilter === option.value;
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setDraftStatusFilter(option.value)}
+                        className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-[10px] font-medium tracking-normal text-[#1f4a8d] transition hover:bg-[#f5f9ff]"
+                      >
+                        <span
+                          className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                            isSelected ? "border-[#2554d8]" : "border-[#cbd8eb]"
+                          }`}
+                        >
+                          {isSelected ? <span className="h-2.5 w-2.5 rounded-full bg-[#2554d8]" /> : null}
+                        </span>
+                        <span>{option.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center justify-between border-t border-[#dbe5f3] px-2.5 py-2">
+                  <button
+                    type="button"
+                    onClick={handleResetStatusFilter}
+                    className="text-[10px] font-medium tracking-normal text-[#b2b8c3] transition hover:text-[#7c8799]"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleApplyStatusFilter}
+                    className="rounded-xl bg-[#0c4f97] px-3 py-1.5 text-[10px] font-semibold tracking-normal text-white shadow-[0_8px_16px_rgba(12,79,151,0.22)] transition hover:brightness-110"
+                  >
+                    OK
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {detailItem ? <DetailModal item={detailItem} onClose={() => setDetailItem(null)} /> : null}
 
@@ -485,81 +573,56 @@ function DetailModal({ item, onClose }: { item: StudentSupportRequest; onClose: 
         transition={{ duration: 0.24, ease: "easeOut" }}
         className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-[28px] border border-[#bfd4f2] bg-white shadow-[0_28px_70px_rgba(27,56,122,0.28)]"
       >
-        <div className="flex items-start justify-between gap-4 border-b border-[#e3ebf7] px-5 py-4">
-          <div>
+        <div className="flex items-start justify-between gap-4 border-b border-[#e3ebf7] px-6 py-5">
+          <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Chi tiết yêu cầu</p>
-            <h2 className="mt-1 text-xl font-extrabold text-[#1a2d52]">{item.title}</h2>
+            <h2 className="mt-2 text-xl font-extrabold uppercase text-[#1a2d52]">{item.title || getTypeLabel(item.requestType)}</h2>
           </div>
           <CloseButton onClick={onClose} />
         </div>
 
-        <div className="space-y-4 overflow-y-auto px-5 py-5">
+        <div className="space-y-5 overflow-y-auto px-6 py-5">
           <div className="grid gap-4 lg:grid-cols-2">
-            <InfoSection title="Thông tin sinh viên">
+            <InfoSection title="Thông tin sinh viên" icon={<User className="h-5 w-5 text-[#244cb8]" />}>
               <InfoRow label="MSSV" value={item.student?.studentCode} />
               <InfoRow label="Họ tên" value={item.student?.fullName} />
               <InfoRow label="Email" value={item.student?.email} />
               <InfoRow label="Lớp/Khoa" value={[item.student?.className, item.student?.faculty].filter(Boolean).join(" - ")} />
             </InfoSection>
 
-            <InfoSection title="Thông tin yêu cầu">
+            <InfoSection title="Thông tin yêu cầu" icon={<ClipboardList className="h-5 w-5 text-[#244cb8]" />}>
               <InfoRow label="Loại yêu cầu" value={getTypeLabel(item.requestType)} />
               <InfoRow label="Ngày gửi" value={formatDate(item.createdAt)} />
               <div className="grid gap-1 sm:grid-cols-[150px_1fr]">
-                <span className="text-sm font-semibold text-[#5570a0]">Trạng thái</span>
+                <span className="text-sm font-normal text-[#5570a0]">Trạng thái</span>
                 <Badge status={item.status} />
               </div>
             </InfoSection>
           </div>
 
-          {/* Structured transfer target — only for room/bed change */}
-          {false && isAutoTransferType(item.requestType) && (
-            <InfoSection title={getTargetSectionTitle(item.requestType)}>
-              {item.requestType !== "bed_change" && item.targetRoom ? (
-                <InfoRow
-                  label="Phòng đích"
-                  value={`${item.targetRoom?.buildingCode ?? ""}${item.targetRoom?.roomNumber ?? ""}`}
-                />
-              ) : item.requestType !== "bed_change" ? (
-                <EmptyLine text="Không có thông tin phòng đích." />
-              ) : null}
-              {item.targetBed ? (
-                <InfoRow label="Giường đích" value={`Giường ${item.targetBed?.bedNumber ?? ""}`} />
-              ) : (
-                <EmptyLine text="Sinh viên chưa chọn giường đích từ hệ thống — xử lý thủ công." />
-              )}
-            </InfoSection>
-          )}
+          <InfoSection title="Nội dung yêu cầu" icon={<BedDouble className="h-5 w-5 text-[#244cb8]" />}>
+            {parsed.currentStay.length === 0 && parsed.proposal.length === 0 && parsed.body.length === 0 ? (
+              <EmptyLine text="Không có nội dung yêu cầu." />
+            ) : (
+              <>
+                {parsed.currentStay.map((row) => <InfoRow key={`current-${row.label}`} label={row.label} value={row.value} />)}
+                {parsed.proposal.map((row) => <InfoRow key={`proposal-${row.label}`} label={row.label} value={row.value} />)}
+                {parsed.body.length > 0 ? (
+                  <div className="grid gap-1 sm:grid-cols-[150px_1fr]">
+                    <span className="text-sm font-normal text-[#5570a0]">Nội dung</span>
+                    <div className="space-y-1">
+                      {parsed.body.map((line, i) => (
+                        <p key={`${line}-${i}`} className="whitespace-pre-line text-sm font-normal leading-6 text-[#1b3766]">{line}</p>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </InfoSection>
 
-          <section>
-            <h3 className="mb-3 text-base font-extrabold text-[#1a2d52]">Nội dung yêu cầu</h3>
-            {parsed.body.length > 0 ? (
-              parsed.body.map((line, i) => (
-                <p key={`${line}-${i}`} className="whitespace-pre-line text-sm font-semibold leading-6 text-[#1b3766]">{line}</p>
-              ))
-            ) : null}
-          </section>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <InfoSection title="Thông tin lưu trú hiện tại">
-              {parsed.currentStay.length > 0 ? (
-                parsed.currentStay.map((row) => <InfoRow key={row.label} label={row.label} value={row.value} />)
-              ) : (
-                <EmptyLine text="Không có thông tin lưu trú trong yêu cầu này." />
-              )}
-            </InfoSection>
-
-            <InfoSection title="Thông tin đề xuất">
-              {parsed.proposal.length > 0 ? (
-                parsed.proposal.map((row) => <InfoRow key={row.label} label={row.label} value={row.value} />)
-              ) : (
-                <EmptyLine text="Không có thông tin đề xuất riêng." />
-              )}
-            </InfoSection>
-          </div>
-
-          <InfoSection title="Ghi chú xử lý">
-            <p className="whitespace-pre-line text-sm font-semibold leading-6 text-[#1b3766]">{item.adminNote || "Chưa có ghi chú xử lý."}</p>
+          <InfoSection title="Ghi chú xử lý" icon={<NotebookPen className="h-5 w-5 text-[#244cb8]" />}>
+            <p className="whitespace-pre-line text-sm font-normal leading-6 text-[#1b3766]">{item.adminNote || "Chưa có ghi chú xử lý."}</p>
           </InfoSection>
         </div>
       </motion.div>
@@ -576,11 +639,14 @@ function TableCell({ children }: { children: React.ReactNode }) {
   return <td className="border-t border-[#e8eef8] px-4 py-4 text-center align-middle">{children}</td>;
 }
 
-function InfoSection({ title, children }: { title: string; children: React.ReactNode }) {
+function InfoSection({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl border border-[#e2eaf6] bg-[#f8fbff] p-4">
-      <h3 className="mb-3 text-base font-extrabold text-[#1a2d52]">{title}</h3>
-      <div className="space-y-2">{children}</div>
+    <section className="rounded-2xl border border-[#e2eaf6] bg-[#f8fbff] p-5">
+      <div className="mb-4 flex items-center gap-2">
+        {icon}
+        <h3 className="text-base font-extrabold text-[#1a2d52]">{title}</h3>
+      </div>
+      <div className="space-y-3">{children}</div>
     </section>
   );
 }
@@ -588,14 +654,14 @@ function InfoSection({ title, children }: { title: string; children: React.React
 function InfoRow({ label, value }: { label: string; value?: string | null }) {
   return (
     <div className="grid gap-1 sm:grid-cols-[150px_1fr]">
-      <span className="text-sm font-semibold text-[#5570a0]">{label}</span>
-      <span className="whitespace-pre-line text-sm font-bold text-[#1b3766]">{value || "-"}</span>
+      <span className="text-sm font-normal text-[#5570a0]">{label}</span>
+      <span className="whitespace-pre-line text-sm font-normal text-[#1b3766]">{value || "-"}</span>
     </div>
   );
 }
 
 function EmptyLine({ text }: { text: string }) {
-  return <p className="text-sm font-semibold text-[#6f84ad]">{text}</p>;
+  return <p className="text-sm font-normal text-[#6f84ad]">{text}</p>;
 }
 
 function CloseButton({ onClick }: { onClick: () => void }) {
