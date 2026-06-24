@@ -333,6 +333,16 @@ export default function StudentSupportPage() {
     setStatusFilter(normalizeStatusFilter(searchParams.get("status")));
   }, [searchParams]);
 
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (!openId || items.length === 0) return;
+    const target = items.find((it) => String(it.id) === openId) ?? null;
+    if (target) {
+      setSelected(target);
+      setSearchParams((prev) => { prev.delete("open"); return prev; }, { replace: true });
+    }
+  }, [items, searchParams, setSearchParams]);
+
   const handleStatusFilterChange = (value: StatusFilter) => {
     setStatusFilter(value);
     const nextParams = new URLSearchParams(searchParams);
@@ -351,24 +361,34 @@ export default function StudentSupportPage() {
     completed: items.filter((i) => i.status === "completed").length,
   }), [items]);
 
+  const blockedTypes = useMemo<Set<SupportRequestType>>(() => {
+    const s = new Set<SupportRequestType>();
+    items.forEach((it) => {
+      if (it.status === "pending" || it.status === "processing") s.add(it.requestType);
+    });
+    return s;
+  }, [items]);
+
   const filteredItems = useMemo(
     () => statusFilter === "all" ? items : items.filter((i) => i.status === statusFilter),
     [items, statusFilter],
   );
 
-  // Rooms available for room-change (other rooms with empty beds)
+  // Rooms available for room-change: same gender, not current room, has empty beds
   const roomOptions = useMemo<SelectOption[]>(() => {
     const currentRoomCode = currentOccupancy?.roomCode;
+    const studentGender = currentOccupancy?.roomGender === "Nam" ? "male" : "female";
     return rooms
       .filter((r) => formatDormRoomName(r) !== currentRoomCode)
       .filter((r) => r.availableBeds > 0)
+      .filter((r) => r.gender?.toLowerCase() === studentGender)
       .sort((a, b) => formatDormRoomName(a).localeCompare(formatDormRoomName(b), "vi"))
       .map((r) => ({
         value: String(r.id),
         label: formatDormRoomName(r),
         helper: `${r.availableBeds}/${r.capacity ?? 0} giường trống`,
       }));
-  }, [currentOccupancy?.roomCode, rooms]);
+  }, [currentOccupancy?.roomCode, currentOccupancy?.roomGender, rooms]);
 
   // Beds in the selected target room (for room-change step 2)
   const targetRoomBedOptions = useMemo<SelectOption[]>(() => {
@@ -511,6 +531,11 @@ export default function StudentSupportPage() {
     }
 
     const config = formConfig[activeCreateType];
+
+    if (blockedTypes.has(config.requestType)) {
+      setFormError("Bạn đã có yêu cầu cùng loại đang chờ xử lý. Vui lòng chờ admin phản hồi trước khi gửi yêu cầu mới.");
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -738,20 +763,33 @@ export default function StudentSupportPage() {
                 </div>
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  {supportCategories.map(({ key, label, description, Icon }) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => openCreateModal(key)}
-                      className="group min-h-[132px] rounded-2xl border border-[#d8e3f1] bg-white p-4 text-left shadow-[0_10px_22px_rgba(15,23,42,0.06)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-[#f8fbff]"
-                    >
-                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#edf4ff] text-[#244cb8] transition group-hover:bg-[#244cb8] group-hover:text-white">
-                        <Icon className="h-5 w-5" />
-                      </span>
-                      <p className="mt-3 text-sm font-extrabold text-[#1a2d52]">{label}</p>
-                      <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-[#6f84ad]">{description}</p>
-                    </button>
-                  ))}
+                  {supportCategories.map(({ key, label, description, Icon }) => {
+                    const isBlocked = blockedTypes.has(formConfig[key].requestType);
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => !isBlocked && openCreateModal(key)}
+                        disabled={isBlocked}
+                        className={`group relative min-h-[132px] rounded-2xl border p-4 text-left shadow-[0_10px_22px_rgba(15,23,42,0.06)] transition duration-200 ${
+                          isBlocked
+                            ? "cursor-not-allowed border-[#d8e3f1] bg-[#f5f7fb] opacity-75"
+                            : "border-[#d8e3f1] bg-white hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-[#f8fbff]"
+                        }`}
+                      >
+                        {isBlocked && (
+                          <span className="absolute right-3 top-3 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                            Đang chờ xử lý
+                          </span>
+                        )}
+                        <span className={`flex h-10 w-10 items-center justify-center rounded-xl transition ${isBlocked ? "bg-[#eef3fb] text-[#8da0bf]" : "bg-[#edf4ff] text-[#244cb8] group-hover:bg-[#244cb8] group-hover:text-white"}`}>
+                          <Icon className="h-5 w-5" />
+                        </span>
+                        <p className={`mt-3 text-sm font-extrabold ${isBlocked ? "text-[#8da0bf]" : "text-[#1a2d52]"}`}>{label}</p>
+                        <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-[#6f84ad]">{description}</p>
+                      </button>
+                    );
+                  })}
                 </div>
               </motion.div>
             </div>,
@@ -855,9 +893,41 @@ export default function StudentSupportPage() {
 
 // ── Sub-forms ─────────────────────────────────────────────────────────────────
 
+type ParsedField = { label: string; value: string };
+
+const DETAIL_FIELD_ORDER = [
+  'Phòng hiện tại', 'Phòng mong muốn', 'Lý do',
+  'Giường hiện tại', 'Giường mong muốn',
+];
+
+function parseContent(content: string): { fields: ParsedField[]; body: string[] } {
+  const fields: ParsedField[] = [];
+  const body: string[] = [];
+  content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .forEach((line) => {
+      if (line === "Thông tin lưu trú hiện tại:" || line === "Thông tin yêu cầu:") return;
+      const sep = line.indexOf(":");
+      if (sep === -1) { body.push(line); return; }
+      fields.push({ label: line.slice(0, sep).trim(), value: line.slice(sep + 1).trim() || "-" });
+    });
+  return { fields, body };
+}
+
 function StudentRequestDetailModal({ item, onClose }: { item: StudentSupportRequest; onClose: () => void }) {
   const targetRoomLabel = item.targetRoom ? `${item.targetRoom.buildingCode}${item.targetRoom.roomNumber}` : "";
   const targetBedLabel = item.targetBed ? `Giường ${item.targetBed.bedNumber}` : "";
+
+  const { fields, body } = useMemo(() => parseContent(item.content), [item.content]);
+  const contentFields = useMemo(() => {
+    const fieldMap = new Map(fields.map((f) => [f.label, f.value]));
+    return [
+      ...DETAIL_FIELD_ORDER.filter((l) => fieldMap.has(l)).map((l) => ({ label: l, value: fieldMap.get(l)! })),
+      ...fields.filter((f) => !DETAIL_FIELD_ORDER.includes(f.label)),
+    ];
+  }, [fields]);
 
   return createPortal(
     <div className="fixed inset-0 z-[95] flex items-center justify-center bg-[rgba(14,25,48,0.52)] px-4 py-6 backdrop-blur-sm">
@@ -903,13 +973,30 @@ function StudentRequestDetailModal({ item, onClose }: { item: StudentSupportRequ
           ) : null}
 
           <section className="rounded-2xl border border-[#d8e3f1] bg-white p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#6f84ad]">Nội dung yêu cầu</p>
-            <p className="mt-3 whitespace-pre-line text-sm font-semibold leading-6 text-[#1b3766]">{item.content || "-"}</p>
-          </section>
-
-          <section className="grid gap-3 rounded-2xl border border-[#d8e3f1] bg-[#f8fbff] p-4 sm:grid-cols-2">
-            <DetailInfoRow label="Phản hồi" value={item.adminNote || "Chưa có phản hồi."} />
-            <DetailInfoRow label="Cập nhật" value={formatDate(item.updatedAt || item.createdAt)} />
+            <p className="mb-4 text-xs font-bold uppercase tracking-[0.08em] text-[#6f84ad]">Nội dung yêu cầu</p>
+            {contentFields.length === 0 && body.length === 0 ? (
+              <p className="text-sm font-semibold text-[#6f84ad]">Không có nội dung yêu cầu.</p>
+            ) : (
+              <>
+                {contentFields.length > 0 && (
+                  <div className="grid grid-cols-3 gap-x-8 gap-y-4">
+                    {contentFields.map((row, i) => (
+                      <div key={`${row.label}-${i}`}>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-[#5570a0]">{row.label}</p>
+                        <p className="mt-1 text-sm font-semibold text-[#1b3766]">{row.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {body.length > 0 && (
+                  <div className={contentFields.length > 0 ? "mt-3 border-t border-[#e2eaf6] pt-3" : ""}>
+                    {body.map((line, i) => (
+                      <p key={`${line}-${i}`} className="whitespace-pre-line text-sm font-semibold leading-6 text-[#1b3766]">{line}</p>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </section>
         </div>
       </motion.div>

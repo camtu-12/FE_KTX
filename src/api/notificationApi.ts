@@ -6,6 +6,7 @@ export type NotificationItem = {
   title: string;
   content: string;
   type: string;
+  related_id: number | null;
   created_at: string;
   is_read: boolean | number;
   read_at: string | null;
@@ -16,6 +17,7 @@ export type AdminNotificationItem = {
   title: string;
   content: string;
   type: string;
+  related_id: number | null;
   created_at: string;
   is_read: boolean | number;
   read_at: string | null;

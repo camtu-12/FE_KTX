@@ -9,14 +9,17 @@ import {
   Mail,
   PanelLeftClose,
   PanelLeftOpen,
+  Receipt,
   Search,
   ShieldCheck,
   ShieldX,
   X,
+  Zap,
 } from "lucide-react";
 import AppBrand from "./AppBrand";
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   getAdminNotifications,
   getAdminUnreadCount,
@@ -79,6 +82,10 @@ function NotifIcon({ type }: { type: string }) {
     type === "room_maintenance_return"
   )
     return <Home className="h-4 w-4 text-amber-500" />;
+  if (type === "electricity_bill_created")
+    return <Zap className="h-4 w-4 text-yellow-500" />;
+  if (type === "payment_reminder" || type === "eviction")
+    return <Receipt className="h-4 w-4 text-rose-500" />;
   return <Bell className="h-4 w-4 text-[var(--color-primary)]" />;
 }
 
@@ -94,6 +101,7 @@ export default function Header({
   isSidebarOpen = true,
   onToggleSidebar,
 }: HeaderProps) {
+  const navigate = useNavigate();
   const initials = getInitials(userName || userEmail || "");
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -192,29 +200,76 @@ export default function Header({
     }
   };
 
+  const getStudentNotifTarget = (item: NotificationItem): string | null => {
+    if (
+      (item.type === "room_change_approved" ||
+        item.type === "bed_change_approved" ||
+        item.type === "roommate_request_approved") &&
+      item.related_id
+    ) {
+      return `/student/support?open=${item.related_id}`;
+    }
+    if (
+      item.type === "extension_approved" ||
+      item.type === "extension_rejected" ||
+      item.type === "extension_opened" ||
+      item.type === "extension_reminder"
+    ) {
+      return "/student/extension";
+    }
+    if (
+      item.type === "bed_transferred_permanent" ||
+      item.type === "bed_transferred_temporary" ||
+      item.type === "bed_maintenance_return" ||
+      item.type === "room_maintenance_start" ||
+      item.type === "room_maintenance_return"
+    ) {
+      return "/student/room";
+    }
+    if (
+      item.type === "electricity_bill_created" ||
+      item.type === "payment_reminder" ||
+      item.type === "eviction"
+    ) {
+      return "/student/payment";
+    }
+    return null;
+  };
+
   const handleMarkRead = async (item: NotificationItem) => {
-    if (item.is_read) return;
-    setNotifications((prev) =>
-      prev.map((n) => (n.recipient_id === item.recipient_id ? { ...n, is_read: true } : n)),
-    );
-    setUnreadCount((c) => Math.max(0, c - 1));
-    try {
-      await markNotificationRead(item.recipient_id, userEmail!);
-    } catch {
-      // ignore
+    if (!item.is_read) {
+      setNotifications((prev) =>
+        prev.map((n) => (n.recipient_id === item.recipient_id ? { ...n, is_read: true } : n)),
+      );
+      setUnreadCount((c) => Math.max(0, c - 1));
+      try {
+        await markNotificationRead(item.recipient_id, userEmail!);
+      } catch {
+        // ignore
+      }
+    }
+    const target = getStudentNotifTarget(item);
+    if (target) {
+      setIsNotifOpen(false);
+      navigate(target);
     }
   };
 
   const handleAdminMarkRead = async (item: AdminNotificationItem) => {
-    if (item.is_read) return;
-    setAdminNotifications((prev) =>
-      prev.map((n) => (n.id === item.id ? { ...n, is_read: true } : n)),
-    );
-    setUnreadCount((c) => Math.max(0, c - 1));
-    try {
-      await markAdminNotificationRead(item.id);
-    } catch {
-      // ignore
+    if (!item.is_read) {
+      setAdminNotifications((prev) =>
+        prev.map((n) => (n.id === item.id ? { ...n, is_read: true } : n)),
+      );
+      setUnreadCount((c) => Math.max(0, c - 1));
+      try {
+        await markAdminNotificationRead(item.id);
+      } catch {
+        // ignore
+      }
+    }
+    if (item.type === "support_request_new" && item.related_id) {
+      setIsNotifOpen(false);
+      navigate(`/admin/support-requests?open=${item.related_id}`);
     }
   };
 

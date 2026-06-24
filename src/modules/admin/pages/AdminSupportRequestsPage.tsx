@@ -1,11 +1,10 @@
 import { motion } from "framer-motion";
-import { BedDouble, CheckCircle2, ClipboardList, Clock3, Eye, Funnel, LifeBuoy, NotebookPen, Save, Settings2, User, X, XCircle } from "lucide-react";
+import { BedDouble, CheckCircle2, ClipboardList, Clock3, Eye, Funnel, LifeBuoy, Settings2, User, X, XCircle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useSearchParams } from "react-router-dom";
 import {
-  approveSupportRequest,
   listAdminSupportRequests,
   updateAdminSupportRequestStatus,
   type SupportRequestStatus,
@@ -17,7 +16,6 @@ import { formatDate } from "../../../utils/dateFormat";
 
 type StatusFilter = SupportRequestStatus | "ALL";
 type TypeFilter = SupportRequestType | "ALL";
-type ProcessStatus = Exclude<SupportRequestStatus, "approved">;
 
 type ToastState = {
   type: "success" | "error";
@@ -49,13 +47,6 @@ const statusOptions: Array<{ value: StatusFilter; label: string }> = [
   { value: "completed", label: "Hoàn tất" },
 ];
 
-const processStatusOptions: Array<{ value: ProcessStatus; label: string }> = [
-  { value: "pending", label: "Chờ xử lý" },
-  { value: "processing", label: "Đang xử lý" },
-  { value: "completed", label: "Hoàn tất" },
-  { value: "rejected", label: "Từ chối" },
-];
-
 const statusMeta: Record<SupportRequestStatus, { label: string; className: string; Icon: LucideIcon }> = {
   pending: { label: "Chờ xử lý", className: "border-amber-200 bg-amber-50 text-amber-700", Icon: Clock3 },
   processing: { label: "Đang xử lý", className: "border-sky-200 bg-sky-50 text-sky-700", Icon: LifeBuoy },
@@ -73,8 +64,6 @@ const currentStayLabels = new Set([
 ]);
 
 const getTypeLabel = (value: SupportRequestType) => typeOptions.find((item) => item.value === value)?.label ?? "Khác";
-
-const normalizeProcessStatus = (status: SupportRequestStatus): ProcessStatus => (status === "approved" ? "completed" : status);
 
 const parseSupportContent = (content: string): ParsedContent => {
   const parsed: ParsedContent = { currentStay: [], proposal: [], body: [] };
@@ -122,10 +111,10 @@ function Badge({ status }: { status: SupportRequestStatus }) {
 
 export default function AdminSupportRequestsPage() {
   const { headerSearchValue } = useOutletContext<AdminLayoutOutletContext>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState<StudentSupportRequest[]>([]);
   const [detailItem, setDetailItem] = useState<StudentSupportRequest | null>(null);
   const [processItem, setProcessItem] = useState<StudentSupportRequest | null>(null);
-  const [processStatus, setProcessStatus] = useState<ProcessStatus>("pending");
   const [adminNote, setAdminNote] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [draftStatusFilter, setDraftStatusFilter] = useState<StatusFilter>("ALL");
@@ -151,6 +140,16 @@ export default function AdminSupportRequestsPage() {
   useEffect(() => {
     void loadItems();
   }, [loadItems]);
+
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (!openId || items.length === 0) return;
+    const target = items.find((it) => String(it.id) === openId) ?? null;
+    if (target) {
+      setDetailItem(target);
+      setSearchParams((prev) => { prev.delete("open"); return prev; }, { replace: true });
+    }
+  }, [items, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (!toast) return;
@@ -198,7 +197,6 @@ export default function AdminSupportRequestsPage() {
 
   const openProcessModal = (item: StudentSupportRequest) => {
     setProcessItem(item);
-    setProcessStatus(normalizeProcessStatus(item.status));
     setAdminNote(item.adminNote ?? "");
   };
 
@@ -208,37 +206,20 @@ export default function AdminSupportRequestsPage() {
     setAdminNote("");
   };
 
-  const saveProcess = async () => {
+  const saveProcess = async (status: SupportRequestStatus) => {
     if (!processItem) return;
     setIsSaving(true);
     try {
       await updateAdminSupportRequestStatus(processItem.id, {
-        status: processStatus,
+        status,
         admin_note: adminNote.trim() || undefined,
       });
       setProcessItem(null);
       setAdminNote("");
       await loadItems();
-      setToast({ type: "success", message: "Đã cập nhật yêu cầu hỗ trợ." });
+      setToast({ type: "success", message: status === "approved" ? "Đã duyệt yêu cầu hỗ trợ." : "Đã từ chối yêu cầu hỗ trợ." });
     } catch {
       setToast({ type: "error", message: "Không thể cập nhật yêu cầu hỗ trợ." });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const approveAndExecute = async () => {
-    if (!processItem) return;
-    setIsSaving(true);
-    try {
-      await approveSupportRequest(processItem.id, { admin_note: adminNote.trim() || undefined });
-      setProcessItem(null);
-      setAdminNote("");
-      await loadItems();
-      setToast({ type: "success", message: "Đã duyệt và thực hiện chuyển thành công." });
-    } catch (err: unknown) {
-      const errMessage = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setToast({ type: "error", message: errMessage || "Không thể thực hiện chuyển." });
     } finally {
       setIsSaving(false);
     }
@@ -483,19 +464,6 @@ export default function AdminSupportRequestsPage() {
                   )}
 
                   <label className="block">
-                    <span className="text-sm font-bold text-[#526a96]">Trạng thái</span>
-                    <select
-                      value={processStatus}
-                      onChange={(e) => setProcessStatus(e.target.value as ProcessStatus)}
-                      className="mt-1.5 h-11 w-full rounded-2xl border border-[#d6e2f1] bg-white px-3 text-sm font-semibold text-[#1f3152] outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/12"
-                    >
-                      {processStatusOptions.map((o) => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="block">
                     <span className="text-sm font-bold text-[#526a96]">Ghi chú xử lý</span>
                     <textarea
                       value={adminNote}
@@ -509,33 +477,22 @@ export default function AdminSupportRequestsPage() {
                 <div className="flex flex-col-reverse gap-3 border-t border-[#e3ebf7] px-5 py-4 sm:flex-row sm:justify-end">
                   <button
                     type="button"
-                    onClick={closeProcessModal}
-                    className="inline-flex h-11 items-center justify-center rounded-2xl border border-[#c8d8ef] bg-white px-5 text-sm font-bold text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.10)] transition hover:bg-[#f5f9ff]"
+                    onClick={() => void saveProcess("rejected")}
+                    disabled={isSaving}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-6 text-sm font-bold text-rose-700 shadow-[0_8px_18px_rgba(225,29,72,0.10)] transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
                   >
-                    Hủy
+                    <XCircle className="h-4 w-4" />
+                    {isSaving ? "Đang lưu..." : "Từ chối"}
                   </button>
-
-                  {/* Auto-execute approve button — only for room/bed change with a target bed set */}
-                  {isAutoTransferType(processItem.requestType) && processItem.targetBedId ? (
-                    <button
-                      type="button"
-                      onClick={approveAndExecute}
-                      disabled={isSaving}
-                      className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-6 text-sm font-bold text-white shadow-[0_12px_24px_rgba(22,163,74,0.22)] transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
-                    >
-                      <CheckCircle2 className="h-4 w-4" />
-                      {isSaving ? "Đang xử lý..." : "Duyệt & Thực hiện"}
-                    </button>
-                  ) : null}
 
                   <button
                     type="button"
-                    onClick={saveProcess}
+                    onClick={() => void saveProcess("approved")}
                     disabled={isSaving}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-[#244cb8] px-6 text-sm font-bold text-white shadow-[0_12px_24px_rgba(36,76,184,0.22)] transition hover:bg-[#1d3f9c] disabled:cursor-not-allowed disabled:opacity-70"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-6 text-sm font-bold text-white shadow-[0_12px_24px_rgba(5,150,105,0.22)] transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
                   >
-                    <Save className="h-4 w-4" />
-                    {isSaving ? "Đang lưu..." : "Lưu"}
+                    <CheckCircle2 className="h-4 w-4" />
+                    {isSaving ? "Đang lưu..." : "Duyệt"}
                   </button>
                 </div>
               </motion.div>
@@ -562,8 +519,22 @@ export default function AdminSupportRequestsPage() {
   );
 }
 
+const CONTENT_FIELD_ORDER = [
+  'Phòng hiện tại', 'Phòng mong muốn', 'Lý do',
+  'Giường hiện tại', 'Giường mong muốn',
+];
+
 function DetailModal({ item, onClose }: { item: StudentSupportRequest; onClose: () => void }) {
   const parsed = useMemo(() => parseSupportContent(item.content), [item.content]);
+
+  const contentFields = useMemo(() => {
+    const allFields = [...parsed.currentStay, ...parsed.proposal];
+    const fieldMap = new Map(allFields.map((r) => [r.label, r.value]));
+    return [
+      ...CONTENT_FIELD_ORDER.filter((l) => fieldMap.has(l)).map((l) => ({ label: l, value: fieldMap.get(l)! })),
+      ...allFields.filter((r) => !CONTENT_FIELD_ORDER.includes(r.label)),
+    ];
+  }, [parsed]);
 
   return createPortal(
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[rgba(14,25,48,0.52)] px-4 py-6 backdrop-blur-sm">
@@ -601,28 +572,30 @@ function DetailModal({ item, onClose }: { item: StudentSupportRequest; onClose: 
           </div>
 
           <InfoSection title="Nội dung yêu cầu" icon={<BedDouble className="h-5 w-5 text-[#244cb8]" />}>
-            {parsed.currentStay.length === 0 && parsed.proposal.length === 0 && parsed.body.length === 0 ? (
+            {contentFields.length === 0 && parsed.body.length === 0 ? (
               <EmptyLine text="Không có nội dung yêu cầu." />
             ) : (
               <>
-                {parsed.currentStay.map((row) => <InfoRow key={`current-${row.label}`} label={row.label} value={row.value} />)}
-                {parsed.proposal.map((row) => <InfoRow key={`proposal-${row.label}`} label={row.label} value={row.value} />)}
-                {parsed.body.length > 0 ? (
-                  <div className="grid gap-1 sm:grid-cols-[150px_1fr]">
-                    <span className="text-sm font-normal text-[#5570a0]">Nội dung</span>
-                    <div className="space-y-1">
-                      {parsed.body.map((line, i) => (
-                        <p key={`${line}-${i}`} className="whitespace-pre-line text-sm font-normal leading-6 text-[#1b3766]">{line}</p>
-                      ))}
-                    </div>
+                {contentFields.length > 0 && (
+                  <div className="grid grid-cols-3 gap-x-8 gap-y-4">
+                    {contentFields.map((row, i) => (
+                      <div key={`${row.label}-${i}`}>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-[#5570a0]">{row.label}</p>
+                        <p className="mt-1 text-sm font-semibold text-[#1b3766]">{row.value}</p>
+                      </div>
+                    ))}
                   </div>
-                ) : null}
+                )}
+                {parsed.body.length > 0 && (
+                  <div className={contentFields.length > 0 ? "border-t border-[#e2eaf6] pt-3" : ""}>
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-[#5570a0]">Nội dung</p>
+                    {parsed.body.map((line, i) => (
+                      <p key={`${line}-${i}`} className="whitespace-pre-line text-sm font-normal leading-6 text-[#1b3766]">{line}</p>
+                    ))}
+                  </div>
+                )}
               </>
             )}
-          </InfoSection>
-
-          <InfoSection title="Ghi chú xử lý" icon={<NotebookPen className="h-5 w-5 text-[#244cb8]" />}>
-            <p className="whitespace-pre-line text-sm font-normal leading-6 text-[#1b3766]">{item.adminNote || "Chưa có ghi chú xử lý."}</p>
           </InfoSection>
         </div>
       </motion.div>
