@@ -38,6 +38,11 @@ const statusMeta: Record<
     badgeClassName: "border-emerald-200 bg-emerald-50 text-emerald-700",
     Icon: CheckCircle2,
   },
+  PENDING_PAYMENT: {
+    label: "Chờ thanh toán",
+    badgeClassName: "border-amber-200 bg-amber-50 text-amber-700",
+    Icon: Clock3,
+  },
   LEAVE_REQUESTED: {
     label: "Chờ duyệt thôi ở",
     badgeClassName: "border-amber-200 bg-amber-50 text-amber-700",
@@ -474,6 +479,54 @@ export default function MyRoomPage() {
           <p className="mt-1.5 text-sm text-amber-800/90">
             Vui lòng chờ thông báo xác nhận phòng từ quản lý.
           </p>
+        </div>
+      </motion.section>
+    );
+  }
+
+  if (registration.occupancy_status === "PENDING_PAYMENT") {
+    const roomDisplay = occupancy?.roomCode ?? String(registration.assigned_room_id ?? "");
+    const bedDisplay = occupancy?.bedNumber ?? null;
+    return (
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="relative isolate flex min-h-[calc(100vh-5rem-28px)] flex-col space-y-6 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
+      >
+        <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-[24px]">
+          <div className="absolute -left-24 -top-24 h-56 w-56 rounded-full bg-[#f59e0b]/10 blur-3xl" />
+          <div className="absolute -bottom-28 right-0 h-60 w-60 rounded-full bg-[#f59e0b]/10 blur-3xl" />
+        </div>
+        <motion.div
+          transition={{ duration: 0.2 }}
+          className="auth-reveal is-visible rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm sm:px-8"
+        >
+          <h1 className="text-[30px] font-bold tracking-tight text-[#1A2D52]">Phòng của tôi</h1>
+          <p className="mt-1.5 text-sm text-[#5C7094]">Vui lòng hoàn tất thanh toán để kích hoạt lưu trú.</p>
+        </motion.div>
+        <div className="auth-reveal is-visible mx-auto w-full max-w-2xl rounded-2xl border border-amber-200 bg-amber-50/95 p-6 shadow-[0_12px_24px_rgba(180,120,0,0.12)] backdrop-blur-sm">
+          <div className="flex items-center gap-2 text-amber-700">
+            <Clock3 className="h-5 w-5 shrink-0" />
+            <p className="font-bold text-amber-900">Chờ thanh toán hóa đơn tháng đầu</p>
+          </div>
+          <p className="mt-2 text-sm text-amber-800/90">
+            Bạn đã chọn{" "}
+            {roomDisplay ? (
+              <span className="font-semibold">
+                phòng {roomDisplay}{bedDisplay != null ? ` giường #${bedDisplay}` : ""}
+              </span>
+            ) : "giường"}.{" "}
+            Vui lòng thanh toán hóa đơn tháng đầu để hoàn tất đăng ký lưu trú.
+          </p>
+          <div className="mt-4 flex justify-end">
+            <Link
+              to="/student/payment"
+              className="inline-flex items-center gap-2 rounded-xl bg-[linear-gradient(135deg,#f59e0b_0%,#d97706_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(245,158,11,0.30)] transition hover:-translate-y-0.5 hover:brightness-110"
+            >
+              Thanh toán ngay
+            </Link>
+          </div>
         </div>
       </motion.section>
     );

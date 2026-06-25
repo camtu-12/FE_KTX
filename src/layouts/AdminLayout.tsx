@@ -5,15 +5,20 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import Sidebar from "../components/Sidebar";
 import { clearAuthStorage, getStoredAuth } from "../modules/auth/utils/authStorage";
+import type { NavAutocompleteConfig } from "../types/navAutocomplete";
+
+export type { NavAutocompleteSuggestion, NavAutocompleteConfig } from "../types/navAutocomplete";
 
 export type AdminLayoutOutletContext = {
   headerSearchValue: string;
   setHeaderSearchValue: Dispatch<SetStateAction<string>>;
+  setNavAutocomplete: Dispatch<SetStateAction<NavAutocompleteConfig | null>>;
 };
 
 export default function AdminLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [headerSearchValue, setHeaderSearchValue] = useState("");
+  const [navAutocomplete, setNavAutocomplete] = useState<NavAutocompleteConfig | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const user = getStoredAuth()?.user ?? null;
@@ -66,6 +71,7 @@ export default function AdminLayout() {
         searchValue={isSearchEnabled ? headerSearchValue : undefined}
         searchPlaceholder={isSearchEnabled ? searchPlaceholder : undefined}
         onSearchChange={isSearchEnabled ? setHeaderSearchValue : undefined}
+        navAutocomplete={isOccupancyManagementPage ? navAutocomplete : null}
         onLogout={handleLogout}
         isSidebarOpen={isSidebarOpen}
         onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
@@ -93,7 +99,7 @@ export default function AdminLayout() {
             transition={{ duration: 0.35, delay: 0.08, ease: "easeOut" }}
             className="auth-scrollbar min-w-0 flex-1 overflow-y-auto bg-white/35 px-6 pb-6 pt-1"
           >
-            <Outlet context={{ headerSearchValue, setHeaderSearchValue }} />
+            <Outlet context={{ headerSearchValue, setHeaderSearchValue, setNavAutocomplete }} />
           </motion.div>
         </div>
       </div>

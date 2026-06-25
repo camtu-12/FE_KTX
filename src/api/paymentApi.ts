@@ -5,6 +5,10 @@ const API_ROOT = API_BASE.endsWith("/api") ? API_BASE : `${API_BASE}/api`;
 
 const http = axios.create({
   baseURL: API_ROOT,
+  headers: {
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+  },
 });
 
 export type PaymentStatus = "unpaid" | "paid" | "overdue";

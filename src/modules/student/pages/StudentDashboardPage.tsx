@@ -203,27 +203,37 @@ function getRegistrationHeroState(registration: LatestRegistration | null) {
     };
   }
 
-  const isWaitingForPayment =
-    registration.occupancy_status === "ROOM_CONFIRMED" &&
-    Boolean(registration.bed_id) &&
-    registration.bed_approval_status === "approved";
-
-  if (isWaitingForPayment) {
+  if (registration.occupancy_status === "PENDING_PAYMENT") {
     return {
-      title: "Vui lòng thanh toán để hoàn tất thủ tục",
-      description: "Sau khi thanh toán, trạng thái lưu trú sẽ được cập nhật.",
-      buttonLabel: "Thanh toán",
+      title: "Vui lòng thanh toán để hoàn tất lưu trú",
+      description: "Bạn đã chọn giường. Thanh toán hóa đơn tháng đầu để kích hoạt lưu trú.",
+      buttonLabel: "Thanh toán ngay",
       to: "/student/payment",
+      secondaryLabel: "Xem hồ sơ",
+      secondaryTo: "/student/room-status",
       Icon: CreditCard,
-      tone: "blue",
+      tone: "amber",
+    };
+  }
+
+  if (registration.occupancy_status === "ROOM_CONFIRMED") {
+    return {
+      title: "Bạn đã được phân phòng!",
+      description: "Vui lòng vào chọn giường để hoàn tất thủ tục lưu trú.",
+      buttonLabel: "Chọn giường",
+      to: "/student/room",
+      secondaryLabel: "Xem hồ sơ",
+      secondaryTo: "/student/room-status",
+      Icon: CheckCircle2,
+      tone: "emerald",
     };
   }
 
   return {
     title: "Hồ sơ đã được duyệt",
-    description: "Bạn có thể tiếp tục chọn giường để hoàn tất hồ sơ.",
-    buttonLabel: "Chọn giường",
-    to: "/student/bed-selection",
+    description: "Vui lòng chờ ban quản lý phân phòng. Bạn sẽ được thông báo khi có phòng.",
+    buttonLabel: "Xem hồ sơ",
+    to: "/student/room-status",
     Icon: CheckCircle2,
     tone: "emerald",
   };
@@ -249,13 +259,23 @@ function HeroBannerEmpty({ registration }: { registration: LatestRegistration | 
         </div>
         <h1 className="text-2xl font-extrabold tracking-tight">{state.title}</h1>
         <p className="mt-2 max-w-xl text-[15px] font-medium leading-6 text-blue-100">{state.description}</p>
-        <Link
-          to={state.to}
-          className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-full bg-white px-7 text-sm font-bold text-[#1e3a5f] shadow-[0_8px_20px_rgba(0,0,0,0.18)] transition hover:bg-blue-50"
-        >
-          {state.buttonLabel}
-          <ArrowRight className="h-4 w-4" />
-        </Link>
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+          <Link
+            to={state.to}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-white px-7 text-sm font-bold text-[#1e3a5f] shadow-[0_8px_20px_rgba(0,0,0,0.18)] transition hover:bg-blue-50"
+          >
+            {state.buttonLabel}
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+          {"secondaryTo" in state && state.secondaryTo && (
+            <Link
+              to={state.secondaryTo}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-white/30 bg-white/10 px-6 text-sm font-semibold text-white transition hover:bg-white/20"
+            >
+              {state.secondaryLabel}
+            </Link>
+          )}
+        </div>
       </div>
     </motion.div>
   );

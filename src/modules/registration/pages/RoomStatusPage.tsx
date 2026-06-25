@@ -1,11 +1,237 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { AlertCircle, CheckCircle, Clock, LoaderCircle, RefreshCw } from "lucide-react";
+import { AlertCircle, Award, CheckCircle, ChevronDown, Clock, ExternalLink, FileText, LoaderCircle, RefreshCw, User, Users } from "lucide-react";
 import { getLatestRegistrationByEmail } from "../../../api/registrationService";
 import { checkEligibility, type EligibilityResult } from "../../../api/registrationApi";
 import type { RegistrationRequest } from "../../admin/data/registrationRequests";
 import { useAuthStore } from "../../auth/store";
+import { formatDate } from "../../../utils/dateFormat";
+
+// ─── Registration detail accordion ───────────────────────────────────────────
+
+function InfoField({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#6d7fa6]">{label}</p>
+      <p className="mt-1 break-words text-sm font-medium text-[#1b3766]">{value || "—"}</p>
+    </div>
+  );
+}
+
+function AccordionSection({
+  title,
+  icon: Icon,
+  isOpen,
+  onToggle,
+  children,
+}: {
+  title: string;
+  icon: React.ElementType;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-[#d8e7f8] bg-white shadow-[0_4px_16px_rgba(15,23,42,0.06)]">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between px-5 py-4 text-left transition hover:bg-[#f7faff]"
+      >
+        <span className="flex items-center gap-2 text-sm font-bold text-[#1a2d52]">
+          <Icon className="h-4 w-4 text-[#244cb8]" />
+          {title}
+        </span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-[#6d7fa6] transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
+      </button>
+      {isOpen && (
+        <div className="border-t border-[#eef3fb] px-5 pb-5 pt-4">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RegistrationDetailSection({ registration }: { registration: RegistrationRequest }) {
+  const [open, setOpen] = useState({
+    personal: true,
+    family: false,
+    documents: false,
+    criteria: false,
+    commitment: false,
+  });
+  const toggle = (key: keyof typeof open) => setOpen((prev) => ({ ...prev, [key]: !prev[key] }));
+  const { formData } = registration;
+
+  const criteriaStatusMeta = (status: string) => {
+    if (status === "verified") return { label: "Đã xác minh", cls: "bg-emerald-100 text-emerald-700 border border-emerald-200" };
+    if (status === "rejected") return { label: "Từ chối", cls: "bg-rose-100 text-rose-700 border border-rose-200" };
+    return { label: "Chờ xác minh", cls: "bg-amber-100 text-amber-700 border border-amber-200" };
+  };
+
+  return (
+    <div className="w-full max-w-3xl space-y-3 pb-6">
+      <h2 className="px-1 text-base font-bold text-[#1a2d52]">Thông tin đơn đã nộp</h2>
+
+      {/* Thông tin cá nhân */}
+      <AccordionSection title="Thông tin cá nhân" icon={User} isOpen={open.personal} onToggle={() => toggle("personal")}>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+          <InfoField label="MSSV" value={formData.mssv} />
+          <InfoField label="Họ và tên" value={formData.fullName} />
+          <InfoField label="Ngày sinh" value={formatDate(formData.birthDate)} />
+          <InfoField label="Giới tính" value={formData.gender} />
+          <InfoField label="Lớp" value={formData.class} />
+          <InfoField label="Khoa / Ngành" value={formData.department} />
+          <InfoField label="Quốc tịch" value={formData.nationality} />
+          <InfoField label="Dân tộc" value={formData.ethnicity} />
+          <InfoField label="Tôn giáo" value={formData.religion} />
+          <InfoField label="Số điện thoại" value={formData.phone} />
+          <InfoField label="Số CCCD / CMND" value={formData.cccd} />
+          <InfoField label="Ngày cấp" value={formatDate(formData.cccdIssueDate)} />
+          <div className="col-span-2 sm:col-span-3">
+            <InfoField label="Nơi cấp" value={formData.cccdIssuePlace} />
+          </div>
+          <div className="col-span-2 sm:col-span-3">
+            <InfoField label="Địa chỉ thường trú" value={formData.address} />
+          </div>
+        </div>
+      </AccordionSection>
+
+      {/* Thông tin gia đình */}
+      <AccordionSection title="Thông tin gia đình & liên hệ" icon={Users} isOpen={open.family} onToggle={() => toggle("family")}>
+        <div className="space-y-4">
+          <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.1em] text-[#244cb8]">Cha</p>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+              <InfoField label="Họ tên" value={formData.father_name} />
+              <InfoField label="Số điện thoại" value={formData.father_phone} />
+              <InfoField label="Nghề nghiệp" value={formData.father_job} />
+            </div>
+          </div>
+          <div className="border-t border-[#eef3fb] pt-4">
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.1em] text-[#244cb8]">Mẹ</p>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+              <InfoField label="Họ tên" value={formData.mother_name} />
+              <InfoField label="Số điện thoại" value={formData.mother_phone} />
+              <InfoField label="Nghề nghiệp" value={formData.mother_job} />
+            </div>
+          </div>
+          <div className="border-t border-[#eef3fb] pt-4">
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.1em] text-[#244cb8]">Liên hệ khẩn cấp</p>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+              <InfoField label="Họ tên" value={formData.relationName} />
+              <InfoField label="Số điện thoại" value={formData.relationPhone} />
+              <InfoField label="Quan hệ" value={formData.relationship} />
+              <div className="col-span-2 sm:col-span-3">
+                <InfoField label="Địa chỉ liên hệ gia đình" value={formData.familyContactAddress} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </AccordionSection>
+
+      {/* Tài liệu đính kèm */}
+      <AccordionSection title="Tài liệu đính kèm" icon={FileText} isOpen={open.documents} onToggle={() => toggle("documents")}>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {[
+            { label: "Ảnh chân dung", url: registration.avatarUrl },
+            { label: "CCCD mặt trước", url: registration.cccdFrontUrl },
+            { label: "CCCD mặt sau", url: registration.cccdBackUrl },
+          ].map(({ label, url }) => (
+            <div key={label}>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-[#6d7fa6]">{label}</p>
+              {url ? (
+                <a href={url} target="_blank" rel="noopener noreferrer" className="group relative block">
+                  <img
+                    src={url}
+                    alt={label}
+                    className="h-36 w-full rounded-xl border border-[#d8e7f8] object-cover transition group-hover:opacity-80"
+                  />
+                  <span className="absolute inset-0 flex items-center justify-center rounded-xl opacity-0 transition group-hover:opacity-100">
+                    <span className="flex items-center gap-1 rounded-lg bg-black/60 px-3 py-1.5 text-xs font-semibold text-white">
+                      <ExternalLink className="h-3.5 w-3.5" /> Xem ảnh
+                    </span>
+                  </span>
+                </a>
+              ) : (
+                <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-[#d8e7f8] bg-[#f7faff] text-xs text-[#9aacca]">
+                  Chưa có ảnh
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </AccordionSection>
+
+      {/* Tiêu chí ưu tiên */}
+      <AccordionSection title="Tiêu chí ưu tiên" icon={Award} isOpen={open.criteria} onToggle={() => toggle("criteria")}>
+        {registration.priority_criteria && registration.priority_criteria.length > 0 ? (
+          <div className="space-y-3">
+            {registration.priority_criteria.map((c) => {
+              const meta = criteriaStatusMeta(c.status);
+              return (
+                <div key={c.id} className="rounded-xl border border-[#eef3fb] bg-[#f7faff] px-4 py-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-[#1b3766]">{c.name}</p>
+                      <p className="mt-0.5 text-xs text-[#6d7fa6]">Mã: {c.code}</p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${meta.cls}`}>{meta.label}</span>
+                  </div>
+                  {c.evidence_urls.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {c.evidence_urls.map((url, i) => (
+                        <a
+                          key={i}
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 rounded-lg border border-[#c8d9f0] bg-white px-2.5 py-1 text-xs font-medium text-[#244cb8] transition hover:bg-[#eef3fb]"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          Minh chứng {i + 1}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-[#9aacca]">Không có tiêu chí ưu tiên.</p>
+        )}
+      </AccordionSection>
+
+      {/* Cam kết & thời gian */}
+      <AccordionSection title="Cam kết & thời gian đăng ký" icon={CheckCircle} isOpen={open.commitment} onToggle={() => toggle("commitment")}>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+            <InfoField label="Ngày bắt đầu ở" value={formatDate(formData.dormStartDate)} />
+            <InfoField label="Ngày kết thúc ở" value={formatDate(formData.dormEndDate)} />
+            <InfoField label="Ngày nộp đơn" value={formatDate(registration.submittedAt)} />
+          </div>
+          <div className="flex items-center gap-2 rounded-xl border border-[#d8e7f8] bg-[#f7faff] px-4 py-3">
+            <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 ${registration.commitmentConfirmed ? "border-emerald-500 bg-emerald-500" : "border-[#9aacca] bg-white"}`}>
+              {registration.commitmentConfirmed && (
+                <svg viewBox="0 0 12 9" className="h-3 w-3 fill-white">
+                  <path d="M1 4.5L4.5 8L11 1" stroke="white" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </div>
+            <p className="text-sm font-medium text-[#1b3766]">
+              Tôi xác nhận đã đọc và đồng ý với các điều khoản và quy định của ký túc xá.
+            </p>
+          </div>
+        </div>
+      </AccordionSection>
+    </div>
+  );
+}
+
+// ─── Status timeline ──────────────────────────────────────────────────────────
 
 type TimelineState = "done" | "current" | "pending" | "rejected";
 
@@ -102,6 +328,11 @@ export default function RoomStatusPage() {
           return;
         }
 
+        if (data.status === "approved" && data.occupancy_status === "ACTIVE") {
+          navigate("/student/room", { replace: true });
+          return;
+        }
+
         setRegistration(data);
         setEligibility(eligRes);
       } catch (err) {
@@ -157,9 +388,7 @@ export default function RoomStatusPage() {
     return null;
   }
 
-  const hasBedAssigned =
-    Boolean(registration.bedId) &&
-    registration.bed_approval_status === "approved";
+  const occupancyStatus = registration.occupancy_status ?? null;
 
   return (
     <motion.div
@@ -200,31 +429,50 @@ export default function RoomStatusPage() {
             </p>
           )}
         </div>
-      ) : registration.status === "approved" ? (
+      ) : registration.status === "approved" && occupancyStatus === "ROOM_CONFIRMED" ? (
         <div className="w-full max-w-3xl rounded-2xl border border-emerald-200 bg-emerald-50/95 p-6 text-center shadow-[0_12px_24px_rgba(16,185,129,0.14)]">
           <StatusTimeline status={registration.status} />
-          <p className="mt-3 font-semibold text-emerald-900">Hoàn tất đăng ký nội trú</p>
+          <p className="mt-3 font-semibold text-emerald-900">Bạn đã được phân phòng!</p>
           <p className="mt-1.5 text-sm text-emerald-700">
-            {hasBedAssigned
-              ? "Bạn đã được phân phòng. Nhấn bên dưới để xem thông tin phòng."
-              : "Đơn của bạn đã được duyệt. Ban quản lý sẽ sắp xếp phòng cho bạn sớm."}
+            Vui lòng vào chọn giường để hoàn tất thủ tục lưu trú.
           </p>
           <button
             type="button"
             onClick={() => navigate("/student/room")}
             className="auth-btn-gloss mx-auto mt-4 rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#31b7d4_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_18px_rgba(36,76,184,0.20)] transition-all duration-200 hover:-translate-y-0.5 hover:brightness-105 active:scale-[0.98]"
           >
-            <span className="auth-btn-gloss__content">
-              {hasBedAssigned ? "Xem thông tin phòng" : "Xem phòng của tôi"}
-            </span>
+            <span className="auth-btn-gloss__content">Chọn giường</span>
           </button>
+        </div>
+      ) : registration.status === "approved" && occupancyStatus === "PENDING_PAYMENT" ? (
+        <div className="w-full max-w-3xl rounded-2xl border border-amber-200 bg-amber-50/95 p-6 text-center shadow-[0_12px_24px_rgba(180,120,0,0.12)]">
+          <StatusTimeline status={registration.status} />
+          <p className="mt-3 font-semibold text-amber-900">Bạn đã chọn giường thành công!</p>
+          <p className="mt-1.5 text-sm text-amber-700">
+            Vui lòng thanh toán hóa đơn tháng đầu để hoàn tất lưu trú.
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate("/student/payment")}
+            className="auth-btn-gloss mx-auto mt-4 rounded-xl bg-[linear-gradient(135deg,#f59e0b_0%,#d97706_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_18px_rgba(245,158,11,0.28)] transition-all duration-200 hover:-translate-y-0.5 hover:brightness-105 active:scale-[0.98]"
+          >
+            <span className="auth-btn-gloss__content">Thanh toán ngay</span>
+          </button>
+        </div>
+      ) : registration.status === "approved" ? (
+        <div className="w-full max-w-3xl rounded-2xl border border-blue-200 bg-blue-50/95 p-6 text-center shadow-[0_12px_24px_rgba(36,76,184,0.10)]">
+          <StatusTimeline status={registration.status} />
+          <p className="mt-3 font-semibold text-blue-900">Hồ sơ đã được duyệt!</p>
+          <p className="mt-1.5 text-sm text-blue-700">
+            Vui lòng chờ ban quản lý phân phòng. Bạn sẽ được thông báo khi có phòng.
+          </p>
         </div>
       ) : (
         <div className="w-full max-w-3xl rounded-2xl border border-amber-200 bg-[linear-gradient(180deg,#fffdf3_0%,#fff7db_100%)] p-6 text-center shadow-[0_14px_28px_rgba(180,120,0,0.14)]">
           <StatusTimeline status={registration.status} />
-          <p className="mt-3 font-semibold text-[#7a4d00]">Đơn đang chờ xét duyệt</p>
+          <p className="mt-3 font-semibold text-[#7a4d00]">Hồ sơ đang chờ xét duyệt</p>
           <p className="mt-1.5 text-sm text-[#8a6a2a]">
-            Kết quả sẽ được thông báo sau khi ban quản lý xem xét.
+            Dự kiến xử lý trong 3–5 ngày làm việc.
           </p>
           <button
             type="button"
@@ -235,6 +483,10 @@ export default function RoomStatusPage() {
             <span className="auth-btn-gloss__content">Kiểm tra lại</span>
           </button>
         </div>
+        )}
+
+        {(registration.status === "submitted" || registration.status === "approved") && (
+          <RegistrationDetailSection registration={registration} />
         )}
       </div>
     </motion.div>

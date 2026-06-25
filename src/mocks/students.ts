@@ -10,6 +10,7 @@ export type Student = {
   faculty: string;
   phone: string;
   email: string;
+  currentYear?: number | null;
 };
 
 export const students: Student[] = [

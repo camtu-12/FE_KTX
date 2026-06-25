@@ -88,6 +88,7 @@ export type RegistrationRequest = {
   top_priority_tier?: number | null;
   total_priority_score?: number | null;
   approved_at?: string | null;
+  current_year?: number | null;
 };
 
 const createPreviewSvg = (title: string, subtitle: string, accent: string) =>

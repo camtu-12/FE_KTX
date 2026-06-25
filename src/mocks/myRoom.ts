@@ -1,4 +1,4 @@
-export type MyRoomStatus = "ACTIVE" | "LEAVE_REQUESTED" | "LEFT" | "FORCED_LEFT";
+export type MyRoomStatus = "ACTIVE" | "PENDING_PAYMENT" | "LEAVE_REQUESTED" | "LEFT" | "FORCED_LEFT";
 
 export type LeaveRequest = {
   requestedAt: string;

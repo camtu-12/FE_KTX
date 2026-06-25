@@ -311,7 +311,7 @@ export default function AssignRoomPage() {
 
     return approvedStudents
       .filter((student) => {
-        const isConfirmed = student.occupancy_status === "ROOM_CONFIRMED" || student.occupancy_status === "ACTIVE";
+        const isConfirmed = student.occupancy_status === "ROOM_CONFIRMED" || student.occupancy_status === "ACTIVE" || student.occupancy_status === "PENDING_PAYMENT";
 
         if (assignmentFilter === "assigned") {
           if (!isConfirmed) return false;
@@ -347,7 +347,7 @@ export default function AssignRoomPage() {
   }, [rooms]);
 
   const assignedCount = approvedStudents.filter(
-    (s) => s.occupancy_status === "ROOM_CONFIRMED" || s.occupancy_status === "ACTIVE",
+    (s) => s.occupancy_status === "ROOM_CONFIRMED" || s.occupancy_status === "ACTIVE" || s.occupancy_status === "PENDING_PAYMENT",
   ).length;
   const proposedCount = approvedStudents.filter((s) => s.occupancy_status === "PROPOSED").length;
   const unassignedCount = approvedStudents.length - assignedCount - proposedCount;
@@ -587,7 +587,7 @@ export default function AssignRoomPage() {
             </thead>
             <tbody>
               {visibleStudents.map((student) => {
-                const isConfirmed = student.occupancy_status === "ROOM_CONFIRMED" || student.occupancy_status === "ACTIVE";
+                const isConfirmed = student.occupancy_status === "ROOM_CONFIRMED" || student.occupancy_status === "ACTIVE" || student.occupancy_status === "PENDING_PAYMENT";
                 const isProposed = student.occupancy_status === "PROPOSED";
                 const confirmedRoomName = isConfirmed && student.assigned_room_id ? roomNameById.get(student.assigned_room_id) : null;
                 const proposedRoomName = isProposed && student.assigned_room_id ? roomNameById.get(student.assigned_room_id) : null;

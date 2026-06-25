@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { CalendarDays, CreditCard, Zap } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { createVnpayPayment, getStudentPayments, verifyVnpayPayment, type PaymentStatus, type StudentPaymentItem, type StudentPayments } from "../../../api/paymentApi";
 import { useAuthStore } from "../../auth/store";
 import { formatDate } from "../../../utils/dateFormat";
@@ -53,13 +53,16 @@ function BillIcon({ source }: { source: StudentPaymentItem["source"] }) {
 }
 
 export default function PaymentPage() {
+  const navigate = useNavigate();
   const studentEmail = useAuthStore((state) => state.user?.email ?? "");
   const [searchParams, setSearchParams] = useSearchParams();
   const vnpayStatus = searchParams.get("vnpay");
   const vnpayTxnRef = searchParams.get("vnp_TxnRef");
+  const noticeType = searchParams.get("notice");
   const [payments, setPayments] = useState<StudentPayments | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [paymentMessage, setPaymentMessage] = useState("");
   const [payingKey, setPayingKey] = useState("");
   const [activeTab, setActiveTab] = useState<PaymentTab>("room_fee");
@@ -138,6 +141,9 @@ export default function PaymentPage() {
     if (vnpayStatus === "success") {
       setPaymentMessageLater("Thanh toán VNPay thành công.");
       window.dispatchEvent(new Event("ktx-payments-updated"));
+      redirectTimerRef.current = setTimeout(() => {
+        navigate("/student/room", { replace: true });
+      }, 1500);
     } else {
       setPaymentMessageLater("Thanh toán VNPay không thành công hoặc đã bị hủy.");
     }
@@ -145,6 +151,7 @@ export default function PaymentPage() {
     setSearchParams({}, { replace: true });
     return () => {
       messageTimers.forEach((timerId) => window.clearTimeout(timerId));
+      if (redirectTimerRef.current) window.clearTimeout(redirectTimerRef.current);
     };
   }, [searchParams, setSearchParams, vnpayStatus, vnpayTxnRef]);
 
@@ -230,6 +237,11 @@ export default function PaymentPage() {
       </header>
 
       {loadError ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{loadError}</div> : null}
+      {noticeType === "bed_selected" ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+          Bạn đã chọn giường thành công! Vui lòng thanh toán hóa đơn tháng đầu để hoàn tất đăng ký lưu trú.
+        </div>
+      ) : null}
       {paymentMessage ? (
         <div className="rounded-2xl border border-[#d3e0f2] bg-white/80 px-4 py-3 text-sm font-semibold text-[#1b3766]">{paymentMessage}</div>
       ) : null}

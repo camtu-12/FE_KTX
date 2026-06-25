@@ -111,6 +111,7 @@ const emptyForm: RegistrationPeriodPayload = {
   stay_end_date: "",
   bed_selection_days: null,
   processing_days: null,
+  initial_payment_due_days: null,
 };
 
 type FormError = Partial<Record<keyof RegistrationPeriodPayload, string>>;
@@ -265,6 +266,11 @@ function validate(
       errors.start_date = `Thời gian nhận đơn trùng với đợt '${overlap.name}' đang hoạt động.`;
   }
 
+  if (form.initial_payment_due_days == null || form.initial_payment_due_days === ("" as unknown as null))
+    errors.initial_payment_due_days = "Vui lòng nhập số ngày thanh toán.";
+  else if (form.initial_payment_due_days < 1)
+    errors.initial_payment_due_days = "Số ngày phải lớn hơn 0.";
+
   return errors;
 }
 
@@ -348,6 +354,7 @@ export default function AdminRegistrationPeriodsPage() {
       stay_end_date: toDateInputValue(period.stay_end_date) || "",
       bed_selection_days: period.bed_selection_days ?? null,
       processing_days: period.processing_days ?? null,
+      initial_payment_due_days: period.initial_payment_due_days ?? null,
     });
     setFormErrors({});
     setApiError(null);
@@ -725,6 +732,9 @@ export default function AdminRegistrationPeriodsPage() {
                 <DashboardTile icon={CheckCircle2} label="Số ngày chọn giường">
                   {formatDayCount(period.bed_selection_days)}
                 </DashboardTile>
+                <DashboardTile icon={CalendarDays} label="Hạn thanh toán hóa đơn đầu">
+                  {formatDayCount(period.initial_payment_due_days)}
+                </DashboardTile>
               </div>
 
               {/* Thông tin thêm theo trạng thái */}
@@ -835,6 +845,9 @@ export default function AdminRegistrationPeriodsPage() {
                 )}
                 {period.status === "active" && (
                   <>
+                    <Link to={`/admin/registrations?period=${period.id}&channel=${period.channel}`} className={secondaryActionClass}>
+                      Xem đơn
+                    </Link>
                     {period.channel === "main" && (() => {
                       const noRegs = totalRegistrations === 0;
                       const pendingCriteria = period.pending_criteria_count ?? 0;
@@ -874,7 +887,7 @@ export default function AdminRegistrationPeriodsPage() {
                 )}
                 {period.status === "processing" && (
                   <>
-                    <Link to="/admin/registrations" className={secondaryActionClass}>
+                    <Link to={`/admin/registrations?period=${period.id}&channel=${period.channel}`} className={secondaryActionClass}>
                       Xem kết quả
                     </Link>
                     {(() => {
@@ -907,7 +920,7 @@ export default function AdminRegistrationPeriodsPage() {
                   </>
                 )}
                 {period.status === "closed" && period.channel === "main" && (
-                  <Link to="/admin/registrations" className={secondaryActionClass}>
+                  <Link to={`/admin/registrations?period=${period.id}&channel=${period.channel}`} className={secondaryActionClass}>
                     Xem kết quả
                   </Link>
                 )}
@@ -1081,6 +1094,27 @@ export default function AdminRegistrationPeriodsPage() {
                         className="w-full rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-3 py-1.5 text-sm text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
                         placeholder="Để trống nếu không giới hạn"
                       />
+                    </div>
+
+                    {/* Initial payment due days */}
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-[#324B76]">Số ngày thanh toán hóa đơn đầu</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={form.initial_payment_due_days ?? ""}
+                        onChange={(e) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            initial_payment_due_days: e.target.value === "" ? null : Number(e.target.value),
+                          }))
+                        }
+                        className={`w-full rounded-xl border px-3 py-1.5 text-sm text-[#1f3152] focus:border-[#244cb8] focus:outline-none ${formErrors.initial_payment_due_days ? "border-rose-400 bg-rose-50" : "border-[#cfdcf0] bg-[#f7faff]"}`}
+                        placeholder="Nhập số ngày"
+                      />
+                      {formErrors.initial_payment_due_days && (
+                        <p className="mt-1 text-xs text-rose-600">{formErrors.initial_payment_due_days}</p>
+                      )}
                     </div>
                   </>
               </div>

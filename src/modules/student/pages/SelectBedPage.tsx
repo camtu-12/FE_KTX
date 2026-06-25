@@ -412,8 +412,12 @@ export default function SelectBedPage() {
     setErrorMessage("");
 
     try {
-      await selectBedForRegistration({ email: studentEmail, bedId: selectedBed.id, currentRequest: request ?? undefined });
-      navigate("/student/registration", { replace: true });
+      const { billId } = await selectBedForRegistration({ email: studentEmail, bedId: selectedBed.id, currentRequest: request ?? undefined });
+      if (billId) {
+        navigate(`/student/payment?new_bill=${billId}&notice=bed_selected`, { replace: true });
+      } else {
+        navigate("/student/registration", { replace: true });
+      }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Không thể chọn giường.");
     } finally {

@@ -340,6 +340,7 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
     top_priority_tier: toNumberOrNull(registration.top_priority_tier) ?? null,
     total_priority_score: toNumberOrNull(registration.total_priority_score) ?? null,
     approved_at: firstDefinedString(registration.approved_at) || null,
+    current_year: toNumberOrNull(student.current_year) ?? null,
   };
 };
 
@@ -531,13 +532,13 @@ export const selectBedForRegistration = async ({
   email: string;
   bedId: number;
   currentRequest?: RegistrationRequest;
-}) => {
+}): Promise<{ request: RegistrationRequest; billId: number | null }> => {
   const current = currentRequest ?? normalizeRegistrationResponse(await regApi.getMyRegistration(email));
   if (!current) {
     throw new Error("Không tìm thấy đơn đăng ký của sinh viên.");
   }
 
-  await regApi.selectBed(email, bedId);
+  const result = await regApi.selectBed(email, bedId);
 
   const refreshed = normalizeRegistrationResponse(await regApi.getMyRegistration(email));
   const nextRequest = refreshed ?? {
@@ -549,7 +550,7 @@ export const selectBedForRegistration = async ({
   dispatchRegistrationRequestsUpdated();
   dispatchRoomsUpdated();
 
-  return nextRequest;
+  return { request: nextRequest, billId: result.bill_id ?? null };
 };
 
 export const getEffectiveBedApprovalStatus = (

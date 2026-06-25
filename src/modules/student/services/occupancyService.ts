@@ -38,6 +38,10 @@ const resolveMyRoomStatus = (value: unknown): MyRoomStatus => {
     return "FORCED_LEFT";
   }
 
+  if (normalized === "pending_payment") {
+    return "PENDING_PAYMENT";
+  }
+
   return "ACTIVE";
 };
 

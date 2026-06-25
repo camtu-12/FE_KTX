@@ -74,11 +74,11 @@ export const getRooms = () => {
   return API.get("/rooms").then((res) => res.data);
 };
 
-export const selectBed = (email: string, bedId: number) => {
+export const selectBed = (email: string, bedId: number): Promise<{ message: string; bill_id: number | null }> => {
   return API.put("/registration/select-bed", {
     email,
     bed_id: bedId,
-  }).then((res) => res.data);
+  }).then((res) => res.data as { message: string; bill_id: number | null });
 };
 
 export const approveBedSelection = (id: number) => {
@@ -123,6 +123,7 @@ export type RegistrationPeriodPayload = {
   stay_end_date?: string | null;
   bed_selection_days?: number | null;
   processing_days?: number | null;
+  initial_payment_due_days?: number | null;
 };
 
 export type RegistrationPeriodData = RegistrationPeriodPayload & {

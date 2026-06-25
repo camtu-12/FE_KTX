@@ -17,6 +17,8 @@ import type { DormRoom } from "../../../types/dormRoom";
 import { listViolationTypes, type ActivityCategory, type ViolationType } from "../../../api/violationTypeApi";
 import { createViolation } from "../../../api/violationApi";
 import { formatDate } from "../../../utils/dateFormat";
+import { fetchOccupancyDetail, type OccupancyDetail } from "../../../api/occupancyDetailApi";
+import { searchStudentsForOccupancy } from "../../../api/studentSearchApi";
 
 type OccupancyStatusFilter = OccupancyStatus | "ALL";
 
@@ -166,10 +168,12 @@ const createOccupancyRowsFromApi = (
   const studentsById: Student[] = [];
   const occupancies = registrations
     .filter((registration) => {
+      const occStatus = String(registration.occupancy_status ?? "").trim().toLowerCase();
       return (
         registration.status === "approved" &&
         Boolean(registration.assigned_room_id) &&
-        Boolean(registration.bedId)
+        Boolean(registration.bedId) &&
+        occStatus !== "pending_payment"
       );
     })
     .map((registration) => {
@@ -187,6 +191,7 @@ const createOccupancyRowsFromApi = (
         faculty: formData.department,
         phone: formData.phone,
         email: registration.email,
+        currentYear: registration.current_year ?? null,
       });
 
       const occupancyStatus = resolveOccupancyStatus(registration.occupancy_status);
@@ -223,7 +228,7 @@ const createOccupancyRowsFromApi = (
 };
 
 export default function OccupancyManagementPage() {
-  const { headerSearchValue } = useOutletContext<AdminLayoutOutletContext>();
+  const { headerSearchValue, setNavAutocomplete } = useOutletContext<AdminLayoutOutletContext>();
   const [occupancyRows, setOccupancyRows] = useState<Occupancy[]>([]);
   const [studentRows, setStudentRows] = useState<Student[]>([]);
   const [isLoadingOccupancies, setIsLoadingOccupancies] = useState(true);
@@ -247,6 +252,12 @@ export default function OccupancyManagementPage() {
   const [activityAction, setActivityAction] = useState<ActivityAction>("reminded");
   const [violationFormError, setViolationFormError] = useState("");
   const [isSavingViolation, setIsSavingViolation] = useState(false);
+  const [occupancyDetail, setOccupancyDetail] = useState<OccupancyDetail | null>(null);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [showAllRoomChanges, setShowAllRoomChanges] = useState(false);
+  const [genderFilter, setGenderFilter] = useState<"ALL" | "MALE" | "FEMALE">("ALL");
+  const [yearFilter, setYearFilter] = useState("ALL");
+  const occupancyRowsRef = useRef(occupancyRows);
 
   const studentById = useMemo(() => new Map(studentRows.map((student) => [student.id, student])), [studentRows]);
   const buildingOptions = useMemo(() => uniqueSorted(occupancyRows.map((item) => item.buildingCode)), [occupancyRows]);
@@ -259,13 +270,15 @@ export default function OccupancyManagementPage() {
       const matchesFloor = floorFilter === "ALL" || String(item.floorNumber) === floorFilter;
       const matchesStatus = statusFilter === "ALL" || item.status === statusFilter;
       const student = studentById.get(item.studentId);
+      const matchesGender = genderFilter === "ALL" || student?.gender === genderFilter;
+      const matchesYear = yearFilter === "ALL" || String(student?.currentYear ?? "") === yearFilter;
       const matchesSearch =
         !normalizedSearch ||
         [student?.studentCode, student?.fullName, student?.email].filter(Boolean).join(" ").toLowerCase().includes(normalizedSearch);
 
-      return matchesBuilding && matchesFloor && matchesStatus && matchesSearch;
+      return matchesBuilding && matchesFloor && matchesStatus && matchesGender && matchesYear && matchesSearch;
     });
-  }, [buildingFilter, floorFilter, headerSearchValue, occupancyRows, statusFilter, studentById]);
+  }, [buildingFilter, floorFilter, genderFilter, yearFilter, headerSearchValue, occupancyRows, statusFilter, studentById]);
 
   const activeCount = occupancyRows.filter((item) => item.status === "ACTIVE").length;
   const checkoutRequestedCount = occupancyRows.filter((item) => item.status === "CHECKOUT_REQUESTED").length;
@@ -415,6 +428,59 @@ export default function OccupancyManagementPage() {
     };
   }, [isStatusFilterOpen]);
 
+  // Sync ref for stable callbacks
+  useEffect(() => {
+    occupancyRowsRef.current = occupancyRows;
+  }, [occupancyRows]);
+
+  // Navbar autocomplete — debounced on headerSearchValue
+  useEffect(() => {
+    const trimmed = headerSearchValue.trim();
+    if (!trimmed) {
+      setNavAutocomplete(null);
+      return;
+    }
+    setNavAutocomplete((prev) =>
+      prev ? { ...prev, isSearching: true } : { suggestions: [], isSearching: true, onSelect: () => {}, onDismiss: () => setNavAutocomplete(null) },
+    );
+    const timer = setTimeout(() => {
+      searchStudentsForOccupancy(trimmed, 8)
+        .then((results) => {
+          setNavAutocomplete({
+            suggestions: results,
+            isSearching: false,
+            onSelect: (suggestion) => {
+              const occupancy = occupancyRowsRef.current.find((item) => item.id === suggestion.registration_id);
+              if (occupancy) {
+                setOccupancyDetail(null);
+                setShowAllRoomChanges(false);
+                setIsLoadingDetail(true);
+                setSelectedOccupancy(occupancy);
+                setIsStatusFilterOpen(false);
+                if (occupancy.occupancyId) {
+                  fetchOccupancyDetail(occupancy.occupancyId)
+                    .then((detail) => setOccupancyDetail(detail))
+                    .catch(() => setOccupancyDetail(null))
+                    .finally(() => setIsLoadingDetail(false));
+                } else {
+                  setIsLoadingDetail(false);
+                }
+              }
+              setNavAutocomplete(null);
+            },
+            onDismiss: () => setNavAutocomplete(null),
+          });
+        })
+        .catch(() => setNavAutocomplete(null));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [headerSearchValue, setNavAutocomplete]);
+
+  // Clear navbar autocomplete on unmount
+  useEffect(() => {
+    return () => setNavAutocomplete(null);
+  }, [setNavAutocomplete]);
+
   useEffect(() => {
     setActivityAction(availableActivityActions[0] ?? "reminded");
   }, [availableActivityActions]);
@@ -490,7 +556,17 @@ export default function OccupancyManagementPage() {
 
   const handleOpenDetail = (item: Occupancy) => {
     setSelectedOccupancy(item);
+    setOccupancyDetail(null);
+    setShowAllRoomChanges(false);
     setIsStatusFilterOpen(false);
+
+    if (item.occupancyId) {
+      setIsLoadingDetail(true);
+      fetchOccupancyDetail(item.occupancyId)
+        .then((data) => { setOccupancyDetail(data); })
+        .catch(() => { setOccupancyDetail(null); })
+        .finally(() => { setIsLoadingDetail(false); });
+    }
   };
 
   const resetViolationForm = () => {
@@ -577,8 +653,8 @@ export default function OccupancyManagementPage() {
           transition={{ duration: 0.2 }}
           className="auth-reveal is-visible rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm transition-all duration-300 ease-out hover:shadow-[0_24px_56px_rgba(36,76,184,0.14)] sm:px-8"
         >
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="min-w-0">
+          <div className="space-y-4">
+            <div>
               <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">
                 Quản lý lưu trú
               </h1>
@@ -587,37 +663,51 @@ export default function OccupancyManagementPage() {
               </p>
             </div>
 
-            <div className="grid w-full gap-3 sm:grid-cols-2 xl:w-[420px]">
-              <label className="block">
-                <select
-                  value={buildingFilter}
-                  onChange={(event) => setBuildingFilter(event.target.value)}
-                  className="h-11 w-full rounded-2xl border border-[#d6e2f1] bg-[#f8fbff] px-3 text-sm font-semibold text-[#1f3152] outline-none transition focus:border-[#244cb8] focus:bg-white focus:ring-4 focus:ring-[#244cb8]/12"
-                >
-                  <option value="ALL">Tất cả tòa</option>
-                  {buildingOptions.map((building) => (
-                    <option key={building} value={building}>
-                      Tòa {building}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            {/* Filter selects */}
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <select
+                value={buildingFilter}
+                onChange={(event) => setBuildingFilter(event.target.value)}
+                className="h-11 w-full rounded-2xl border border-[#d6e2f1] bg-[#f8fbff] px-3 text-sm font-semibold text-[#1f3152] outline-none transition focus:border-[#244cb8] focus:bg-white focus:ring-4 focus:ring-[#244cb8]/12"
+              >
+                <option value="ALL">Tất cả tòa</option>
+                {buildingOptions.map((building) => (
+                  <option key={building} value={building}>Tòa {building}</option>
+                ))}
+              </select>
 
-              <label className="block">
-                <select
-                  value={floorFilter}
-                  onChange={(event) => setFloorFilter(event.target.value)}
-                  className="h-11 w-full rounded-2xl border border-[#d6e2f1] bg-[#f8fbff] px-3 text-sm font-semibold text-[#1f3152] outline-none transition focus:border-[#244cb8] focus:bg-white focus:ring-4 focus:ring-[#244cb8]/12"
-                >
-                  <option value="ALL">Tất cả tầng</option>
-                  {floorOptions.map((floor) => (
-                    <option key={floor} value={floor}>
-                      Tầng {floor}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <select
+                value={floorFilter}
+                onChange={(event) => setFloorFilter(event.target.value)}
+                className="h-11 w-full rounded-2xl border border-[#d6e2f1] bg-[#f8fbff] px-3 text-sm font-semibold text-[#1f3152] outline-none transition focus:border-[#244cb8] focus:bg-white focus:ring-4 focus:ring-[#244cb8]/12"
+              >
+                <option value="ALL">Tất cả tầng</option>
+                {floorOptions.map((floor) => (
+                  <option key={floor} value={floor}>Tầng {floor}</option>
+                ))}
+              </select>
 
+              <select
+                value={genderFilter}
+                onChange={(event) => setGenderFilter(event.target.value as "ALL" | "MALE" | "FEMALE")}
+                className="h-11 w-full rounded-2xl border border-[#d6e2f1] bg-[#f8fbff] px-3 text-sm font-semibold text-[#1f3152] outline-none transition focus:border-[#244cb8] focus:bg-white focus:ring-4 focus:ring-[#244cb8]/12"
+              >
+                <option value="ALL">Tất cả giới tính</option>
+                <option value="MALE">Nam</option>
+                <option value="FEMALE">Nữ</option>
+              </select>
+
+              <select
+                value={yearFilter}
+                onChange={(event) => setYearFilter(event.target.value)}
+                className="h-11 w-full rounded-2xl border border-[#d6e2f1] bg-[#f8fbff] px-3 text-sm font-semibold text-[#1f3152] outline-none transition focus:border-[#244cb8] focus:bg-white focus:ring-4 focus:ring-[#244cb8]/12"
+              >
+                <option value="ALL">Tất cả năm học</option>
+                <option value="1">Năm 1</option>
+                <option value="2">Năm 2</option>
+                <option value="3">Năm 3</option>
+                <option value="4">Năm 4</option>
+              </select>
             </div>
           </div>
         </motion.div>
@@ -844,14 +934,13 @@ export default function OccupancyManagementPage() {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 16, scale: 0.98 }}
                   transition={{ duration: 0.3, ease: "easeOut" }}
-                  className="relative w-full max-w-[800px] rounded-[28px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f9fcff_0%,#eef5ff_72%,#e7f0ff_100%)] p-6 shadow-[0_28px_70px_rgba(27,56,122,0.28)]"
+                  className="relative flex max-h-[92vh] w-full max-w-[820px] flex-col overflow-hidden rounded-[28px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f9fcff_0%,#eef5ff_72%,#e7f0ff_100%)] shadow-[0_28px_70px_rgba(27,56,122,0.28)]"
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7d90b5]">
-                        CHI TIẾT LƯU TRÚ
-                      </p>
-                    </div>
+                  {/* Header */}
+                  <div className="flex flex-shrink-0 items-start justify-between gap-4 px-6 pt-6 pb-4">
+                    <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7d90b5]">
+                      CHI TIẾT LƯU TRÚ
+                    </p>
                     <button
                       type="button"
                       onClick={() => setSelectedOccupancy(null)}
@@ -861,62 +950,114 @@ export default function OccupancyManagementPage() {
                     </button>
                   </div>
 
-                  <div className="mt-2 space-y-4">
+                  {/* Scrollable content */}
+                  <div className="flex-1 space-y-4 overflow-y-auto px-6 pb-4">
+
+                    {/* THÔNG TIN SINH VIÊN */}
                     <div className="rounded-2xl border border-[#d3e0f2] bg-white/65 p-4">
                       <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
                         THÔNG TIN SINH VIÊN
                       </h4>
-                      <div className="mt-4 grid gap-x-6 gap-y-3 text-sm md:grid-cols-2">
-                        <p className="text-[#5570a0]">
-                          MSSV: <span className="font-semibold text-[#1b3766]">{selectedStudent?.studentCode ?? emptyValue}</span>
-                        </p>
-                        <p className="text-[#5570a0]">
-                          Họ tên: <span className="font-semibold text-[#1b3766]">{selectedStudent?.fullName ?? emptyValue}</span>
-                        </p>
-                        <p className="text-[#5570a0]">
-                          Giới tính: <span className="font-semibold text-[#1b3766]">{getGenderLabel(selectedStudent?.gender)}</span>
-                        </p>
-                        <p className="text-[#5570a0]">
-                          Ngày sinh:{" "}
-                          <span className="font-semibold text-[#1b3766]">
-                            {selectedStudent?.dateOfBirth ? formatDate(selectedStudent.dateOfBirth) : emptyValue}
-                          </span>
-                        </p>
-                        <p className="text-[#5570a0]">
-                          Lớp: <span className="font-semibold text-[#1b3766]">{getStudentText(selectedStudent, "className")}</span>
-                        </p>
-                        <p className="text-[#5570a0]">
-                          Khoa: <span className="font-semibold text-[#1b3766]">{getStudentText(selectedStudent, "faculty")}</span>
-                        </p>
-                        <p className="text-[#5570a0]">
-                          Email: <span className="font-semibold text-[#1b3766]">{getStudentText(selectedStudent, "email")}</span>
-                        </p>
-                        <p className="text-[#5570a0]">
-                          Số điện thoại: <span className="font-semibold text-[#1b3766]">{getStudentText(selectedStudent, "phone")}</span>
-                        </p>
+                      <div className="mt-4 flex gap-4">
+                        {/* Avatar */}
+                        <div className="flex-shrink-0">
+                          {isLoadingDetail ? (
+                            <div className="h-20 w-20 animate-pulse rounded-full bg-[#d8e6f5]" />
+                          ) : occupancyDetail?.student.avatar ? (
+                            <img
+                              src={occupancyDetail.student.avatar}
+                              alt="avatar"
+                              className="h-20 w-20 rounded-full border border-[#d3e0f2] object-cover shadow-sm"
+                            />
+                          ) : (
+                            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#dde9ff]">
+                              <span className="text-2xl font-bold text-[#5573a0]">
+                                {selectedStudent?.fullName?.[0]?.toUpperCase() ?? "?"}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="grid flex-1 gap-x-6 gap-y-3 text-sm md:grid-cols-2">
+                          {/* Cột trái: thông tin học vụ */}
+                          <div className="flex flex-col gap-y-3">
+                            <p className="text-[#5570a0]">
+                              MSSV: <span className="font-semibold text-[#1b3766]">{selectedStudent?.studentCode ?? emptyValue}</span>
+                            </p>
+                            <p className="text-[#5570a0]">
+                              Họ tên: <span className="font-semibold text-[#1b3766]">{selectedStudent?.fullName ?? emptyValue}</span>
+                            </p>
+                            <p className="text-[#5570a0]">
+                              Lớp: <span className="font-semibold text-[#1b3766]">{getStudentText(selectedStudent, "className")}</span>
+                            </p>
+                            <p className="text-[#5570a0]">
+                              Khoa: <span className="font-semibold text-[#1b3766]">{getStudentText(selectedStudent, "faculty")}</span>
+                            </p>
+                            <p className="text-[#5570a0]">
+                              Năm học hiện tại:{" "}
+                              <span className="font-semibold text-[#1b3766]">
+                                {isLoadingDetail ? (
+                                  <span className="inline-block h-3 w-12 animate-pulse rounded bg-[#d8e6f5]" />
+                                ) : occupancyDetail?.student.current_year != null ? (
+                                  `Năm ${occupancyDetail.student.current_year}`
+                                ) : emptyValue}
+                              </span>
+                            </p>
+                            <p className="text-[#5570a0]">
+                              Email: <span className="font-semibold text-[#1b3766]">{getStudentText(selectedStudent, "email")}</span>
+                            </p>
+                          </div>
+
+                          {/* Cột phải: thông tin cá nhân */}
+                          <div className="flex flex-col gap-y-3">
+                            <p className="text-[#5570a0]">
+                              Giới tính: <span className="font-semibold text-[#1b3766]">{getGenderLabel(selectedStudent?.gender)}</span>
+                            </p>
+                            <p className="text-[#5570a0]">
+                              Ngày sinh:{" "}
+                              <span className="font-semibold text-[#1b3766]">
+                                {selectedStudent?.dateOfBirth ? formatDate(selectedStudent.dateOfBirth) : emptyValue}
+                              </span>
+                            </p>
+                            <p className="text-[#5570a0]">
+                              Số điện thoại: <span className="font-semibold text-[#1b3766]">{getStudentText(selectedStudent, "phone")}</span>
+                            </p>
+                            {isLoadingDetail ? (
+                              <div className="h-4 w-3/4 animate-pulse rounded bg-[#d8e6f5]" />
+                            ) : (
+                              <p className="text-[#5570a0]">
+                                Địa chỉ thường trú:{" "}
+                                <span className="font-semibold text-[#1b3766]">
+                                  {occupancyDetail?.student.permanent_address?.trim() || emptyValue}
+                                </span>
+                              </p>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
 
+                    {/* THÔNG TIN LƯU TRÚ */}
                     <div className="rounded-2xl border border-[#d3e0f2] bg-white/65 p-4">
                       <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
                         THÔNG TIN LƯU TRÚ
                       </h4>
                       <div className="mt-4 grid gap-x-6 gap-y-3 text-sm md:grid-cols-2">
                         <p className="text-[#5570a0]">
-                          Tòa: <span className="font-semibold text-[#1b3766]">{selectedOccupancy.buildingCode}</span>
-                        </p>
-                        <p className="text-[#5570a0]">
-                          Tầng: <span className="font-semibold text-[#1b3766]">{selectedOccupancy.floorNumber}</span>
-                        </p>
-                        <p className="text-[#5570a0]">
-                          Phòng: <span className="font-semibold text-[#1b3766]">{selectedOccupancy.roomNumber}</span>
+                          Phòng:{" "}
+                          <span className="font-semibold text-[#1b3766]">
+                            {selectedOccupancy.buildingCode}{selectedOccupancy.roomNumber}
+                          </span>
                         </p>
                         <p className="text-[#5570a0]">
                           Giường: <span className="font-semibold text-[#1b3766]">#{selectedOccupancy.bedNumber}</span>
                         </p>
                         <p className="text-[#5570a0]">
-                          Ngày nhận phòng:{" "}
-                          <span className="font-semibold text-[#1b3766]">{formatDate(selectedOccupancy.checkInDate)}</span>
+                          Thời gian lưu trú:{" "}
+                          <span className="font-semibold text-[#1b3766]">
+                            {formatDate(selectedOccupancy.checkInDate)}
+                            {" – "}
+                            {selectedOccupancy.checkOutDate ? formatDate(selectedOccupancy.checkOutDate) : "nay"}
+                          </span>
                         </p>
                         <div className="flex flex-wrap items-center gap-2 text-[#5570a0]">
                           <span>Trạng thái lưu trú:</span>
@@ -928,14 +1069,6 @@ export default function OccupancyManagementPage() {
                             {getStatusMeta(selectedOccupancy.status).label}
                           </span>
                         </div>
-                        {selectedOccupancy.status === "CHECKED_OUT" || selectedOccupancy.status === "FORCED_CHECKOUT" ? (
-                          <p className="text-[#5570a0]">
-                            Ngày thôi ở:{" "}
-                            <span className="font-semibold text-[#1b3766]">
-                              {selectedOccupancy.checkOutDate ? formatDate(selectedOccupancy.checkOutDate) : emptyValue}
-                            </span>
-                          </p>
-                        ) : null}
                         {selectedOccupancy.status === "FORCED_CHECKOUT" ? (
                           <p className="text-[#5570a0] md:col-span-2">
                             Lý do buộc thôi ở:{" "}
@@ -968,20 +1101,496 @@ export default function OccupancyManagementPage() {
                         </div>
                       </div>
                     ) : null}
-                  </div>
 
-                  <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
-                    <div className="flex flex-wrap justify-end gap-3">
-                    {selectedOccupancy.status === "CHECKOUT_REQUESTED" ? (
-                        <button
-                          type="button"
-                          onClick={() => void updateOccupancyStatus(selectedOccupancy.id, "CHECKED_OUT")}
-                          className="auth-btn-gloss rounded-2xl bg-[linear-gradient(135deg,#1f9a60_0%,#35bf7a_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_20px_rgba(31,154,96,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110"
-                        >
-                          <span className="auth-btn-gloss__content">Xác nhận thôi ở</span>
-                        </button>
+                    {/* THÔNG TIN GIA ĐÌNH */}
+                    {isLoadingDetail ? (
+                      <div className="rounded-2xl border border-[#d3e0f2] bg-white/65 p-4">
+                        <div className="mb-4 h-3.5 w-40 animate-pulse rounded bg-[#d8e6f5]" />
+                        <div className="space-y-3">
+                          <div className="rounded-xl border border-[#e6eef8] bg-[#f5f9ff] p-3">
+                            <div className="mb-2 h-3 w-8 animate-pulse rounded bg-[#d8e6f5]" />
+                            <div className="grid gap-3 md:grid-cols-3">
+                              <div className="h-4 animate-pulse rounded bg-[#d8e6f5]" />
+                              <div className="h-4 animate-pulse rounded bg-[#d8e6f5]" />
+                              <div className="h-4 animate-pulse rounded bg-[#d8e6f5]" />
+                            </div>
+                          </div>
+                          <div className="rounded-xl border border-[#e6eef8] bg-[#f5f9ff] p-3">
+                            <div className="mb-2 h-3 w-6 animate-pulse rounded bg-[#d8e6f5]" />
+                            <div className="grid gap-3 md:grid-cols-3">
+                              <div className="h-4 animate-pulse rounded bg-[#d8e6f5]" />
+                              <div className="h-4 animate-pulse rounded bg-[#d8e6f5]" />
+                              <div className="h-4 animate-pulse rounded bg-[#d8e6f5]" />
+                            </div>
+                          </div>
+                          <div className="h-4 w-2/3 animate-pulse rounded bg-[#d8e6f5]" />
+                        </div>
+                      </div>
+                    ) : occupancyDetail ? (
+                      <div className="rounded-2xl border border-[#d3e0f2] bg-white/65 p-4">
+                        <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                          THÔNG TIN GIA ĐÌNH
+                        </h4>
+                        <div className="mt-4 space-y-3">
+                          {/* Cha */}
+                          <div className="rounded-xl border border-[#e6eef8] bg-[#f5f9ff] p-3">
+                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#8aa4cc]">Cha</p>
+                            <div className="grid gap-x-6 gap-y-2 text-sm md:grid-cols-4">
+                              <p className="text-[#5570a0]">
+                                Họ tên:{" "}
+                                <span className="font-semibold text-[#1b3766]">
+                                  {occupancyDetail.family.father_name?.trim() || emptyValue}
+                                </span>
+                              </p>
+                              <p className="text-[#5570a0]">
+                                Năm sinh:{" "}
+                                <span className="font-semibold text-[#1b3766]">
+                                  {occupancyDetail.family.father_birth_year?.trim() || emptyValue}
+                                </span>
+                              </p>
+                              <p className="text-[#5570a0]">
+                                SĐT:{" "}
+                                <span className="font-semibold text-[#1b3766]">
+                                  {occupancyDetail.family.father_phone?.trim() || emptyValue}
+                                </span>
+                              </p>
+                              <p className="text-[#5570a0]">
+                                Nghề nghiệp:{" "}
+                                <span className="font-semibold text-[#1b3766]">
+                                  {occupancyDetail.family.father_occupation?.trim() || emptyValue}
+                                </span>
+                              </p>
+                            </div>
+                          </div>
+                          {/* Mẹ */}
+                          <div className="rounded-xl border border-[#e6eef8] bg-[#f5f9ff] p-3">
+                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#8aa4cc]">Mẹ</p>
+                            <div className="grid gap-x-6 gap-y-2 text-sm md:grid-cols-4">
+                              <p className="text-[#5570a0]">
+                                Họ tên:{" "}
+                                <span className="font-semibold text-[#1b3766]">
+                                  {occupancyDetail.family.mother_name?.trim() || emptyValue}
+                                </span>
+                              </p>
+                              <p className="text-[#5570a0]">
+                                Năm sinh:{" "}
+                                <span className="font-semibold text-[#1b3766]">
+                                  {occupancyDetail.family.mother_birth_year?.trim() || emptyValue}
+                                </span>
+                              </p>
+                              <p className="text-[#5570a0]">
+                                SĐT:{" "}
+                                <span className="font-semibold text-[#1b3766]">
+                                  {occupancyDetail.family.mother_phone?.trim() || emptyValue}
+                                </span>
+                              </p>
+                              <p className="text-[#5570a0]">
+                                Nghề nghiệp:{" "}
+                                <span className="font-semibold text-[#1b3766]">
+                                  {occupancyDetail.family.mother_occupation?.trim() || emptyValue}
+                                </span>
+                              </p>
+                            </div>
+                          </div>
+                          {/* Địa chỉ liên hệ gia đình */}
+                          <p className="px-1 text-sm text-[#5570a0]">
+                            Địa chỉ liên hệ:{" "}
+                            <span className="font-semibold text-[#1b3766]">
+                              {occupancyDetail.family.parent_address?.trim() || emptyValue}
+                            </span>
+                          </p>
+                        </div>
+                      </div>
                     ) : null}
 
+                    {/* LỊCH SỬ LƯU TRÚ */}
+                    {isLoadingDetail ? (
+                      <div className="rounded-2xl border border-[#d3e0f2] bg-white/65 p-4">
+                        <div className="mb-4 h-3.5 w-36 animate-pulse rounded bg-[#d8e6f5]" />
+                        <div className="space-y-2">
+                          {[1, 2].map((i) => (
+                            <div key={i} className="flex gap-4">
+                              <div className="h-4 flex-1 animate-pulse rounded bg-[#d8e6f5]" />
+                              <div className="h-4 flex-1 animate-pulse rounded bg-[#d8e6f5]" />
+                              <div className="h-4 flex-1 animate-pulse rounded bg-[#d8e6f5]" />
+                              <div className="h-4 flex-1 animate-pulse rounded bg-[#d8e6f5]" />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : occupancyDetail ? (
+                      <div className="rounded-2xl border border-[#d3e0f2] bg-white/65 p-4">
+                        <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                          LỊCH SỬ LƯU TRÚ
+                        </h4>
+                        {occupancyDetail.occupancy_history.length === 0 ? (
+                          <p className="mt-3 text-sm text-[#7a9cc0]">Đây là lần lưu trú đầu tiên.</p>
+                        ) : (
+                          <div className="mt-3 overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b border-[#dce9f5] text-left text-xs font-semibold uppercase tracking-wide text-[#8aa4cc]">
+                                  <th className="pb-2 pr-4">Năm học</th>
+                                  <th className="pb-2 pr-4">Học kỳ</th>
+                                  <th className="pb-2 pr-4">Phòng</th>
+                                  <th className="pb-2 pr-4">Giường</th>
+                                  <th className="pb-2 pr-4">Ngày vào</th>
+                                  <th className="pb-2">Ngày ra</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {occupancyDetail.occupancy_history.map((h) => (
+                                  <tr
+                                    key={h.id}
+                                    className={`border-b border-[#edf3fb] last:border-0 ${h.is_current ? "bg-blue-50/60" : ""}`}
+                                  >
+                                    <td className="py-2 pr-4 text-[#1b3766]">
+                                      {h.school_year ?? emptyValue}
+                                      {h.is_current && (
+                                        <span className="ml-1 rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-600">
+                                          Hiện tại
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="py-2 pr-4 text-[#1b3766]">{h.semester ?? emptyValue}</td>
+                                    <td className="py-2 pr-4 font-medium text-[#1b3766]">
+                                      {h.building_code}{h.room_number || emptyValue}
+                                    </td>
+                                    <td className="py-2 pr-4 text-[#1b3766]">
+                                      {h.bed_number ? `#${h.bed_number}` : emptyValue}
+                                    </td>
+                                    <td className="py-2 pr-4 text-[#1b3766]">
+                                      {h.check_in_date ? formatDate(h.check_in_date) : emptyValue}
+                                    </td>
+                                    <td className="py-2 text-[#1b3766]">
+                                      {h.check_out_date ? (
+                                        <span>
+                                          {formatDate(h.check_out_date)}
+                                          {h.status === "ACTIVE" && (() => {
+                                            const days = Math.ceil((new Date(h.check_out_date).getTime() - Date.now()) / 86_400_000);
+                                            return days >= 0 && days < 30 ? (
+                                              <span className="ml-1 text-[10px] font-semibold text-amber-500">
+                                                (còn {days} ngày)
+                                              </span>
+                                            ) : null;
+                                          })()}
+                                        </span>
+                                      ) : (
+                                        <span className="text-[#8aa4cc]">Chưa xác định</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {/* VI PHẠM GẦN ĐÂY */}
+                    {isLoadingDetail ? (
+                      <div className="rounded-2xl border border-[#d3e0f2] bg-white/65 p-4">
+                        <div className="mb-4 h-3.5 w-32 animate-pulse rounded bg-[#d8e6f5]" />
+                        <div className="space-y-2">
+                          {[1, 2].map((i) => (
+                            <div key={i} className="h-10 animate-pulse rounded-xl bg-[#d8e6f5]" />
+                          ))}
+                        </div>
+                      </div>
+                    ) : occupancyDetail ? (
+                      <div className="rounded-2xl border border-[#d3e0f2] bg-white/65 p-4">
+                        <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                          VI PHẠM GẦN ĐÂY
+                        </h4>
+                        {occupancyDetail.recent_violations.length === 0 ? (
+                          <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700">
+                            Không có vi phạm nào được ghi nhận.
+                          </p>
+                        ) : (
+                          <div className="mt-3 space-y-2">
+                            {occupancyDetail.recent_violations.map((v) => (
+                              <div key={v.id} className="flex items-start gap-3 rounded-xl border border-[#e6eef8] bg-[#f5f9ff] px-3 py-2.5 text-sm">
+                                <div className="flex-1">
+                                  <span className="font-semibold text-[#1b3766]">{v.type_name || emptyValue}</span>
+                                  {v.note ? (
+                                    <span className="ml-1 text-[#7a9cc0]">— {v.note}</span>
+                                  ) : null}
+                                  <span className="ml-2 text-xs text-[#9ab2ce]">
+                                    {v.activity_date ? formatDate(v.activity_date) : ""}
+                                  </span>
+                                </div>
+                                {v.level ? (
+                                  <span
+                                    className={`flex-shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-bold ${
+                                      v.level === "SERIOUS"
+                                        ? "border-red-200 bg-red-50 text-red-700"
+                                        : v.level === "MEDIUM"
+                                          ? "border-orange-200 bg-orange-50 text-orange-700"
+                                          : "border-yellow-200 bg-yellow-50 text-yellow-700"
+                                    }`}
+                                  >
+                                    {v.level === "SERIOUS" ? "Nghiêm trọng" : v.level === "MEDIUM" ? "Trung bình" : "Nhẹ"}
+                                  </span>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {/* TÌNH TRẠNG HÓA ĐƠN */}
+                    {isLoadingDetail ? (
+                      <div className="rounded-2xl border border-[#d3e0f2] bg-white/65 p-4">
+                        <div className="mb-4 h-3.5 w-40 animate-pulse rounded bg-[#d8e6f5]" />
+                        <div className="space-y-2">
+                          <div className="h-12 animate-pulse rounded-xl bg-[#d8e6f5]" />
+                          <div className="h-12 animate-pulse rounded-xl bg-[#d8e6f5]" />
+                        </div>
+                      </div>
+                    ) : occupancyDetail ? (
+                      <div className="rounded-2xl border border-[#d3e0f2] bg-white/65 p-4">
+                        <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                          TÌNH TRẠNG HÓA ĐƠN
+                        </h4>
+                        <div className="mt-3 space-y-3 text-sm">
+                          {/* Hóa đơn tháng hiện tại */}
+                          {occupancyDetail.current_invoice ? (
+                            <div className="flex items-center justify-between rounded-xl border border-[#e6eef8] bg-[#f5f9ff] px-4 py-3">
+                              <span className="text-[#5570a0]">
+                                Hóa đơn tháng {occupancyDetail.current_invoice.month}/{occupancyDetail.current_invoice.year}
+                              </span>
+                              <div className="flex items-center gap-3">
+                                <span className="font-semibold text-[#1b3766]">
+                                  {occupancyDetail.current_invoice.amount.toLocaleString("vi-VN")}₫
+                                </span>
+                                <span
+                                  className={`rounded-full border px-2.5 py-0.5 text-xs font-bold ${
+                                    occupancyDetail.current_invoice.status === "paid"
+                                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                      : "border-amber-200 bg-amber-50 text-amber-700"
+                                  }`}
+                                >
+                                  {occupancyDetail.current_invoice.status === "paid" ? "Đã thanh toán" : "Chưa thanh toán"}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-[#7a9cc0]">Chưa có hóa đơn tháng này.</p>
+                          )}
+                          {/* Tổng nợ */}
+                          {occupancyDetail.total_debt > 0 ? (
+                            <div className="flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+                              <span className="font-semibold text-rose-700">Tổng nợ hiện tại</span>
+                              <span className="text-lg font-bold text-rose-600">
+                                {occupancyDetail.total_debt.toLocaleString("vi-VN")}₫
+                              </span>
+                            </div>
+                          ) : (
+                            <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 font-medium text-emerald-700">
+                              Không có khoản nợ.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {/* YÊU CẦU HỖ TRỢ */}
+                    {isLoadingDetail ? (
+                      <div className="rounded-2xl border border-[#d3e0f2] bg-white/65 p-4">
+                        <div className="mb-4 h-3.5 w-44 animate-pulse rounded bg-[#d8e6f5]" />
+                        <div className="space-y-2">
+                          <div className="h-10 animate-pulse rounded-xl bg-[#d8e6f5]" />
+                          <div className="h-10 animate-pulse rounded-xl bg-[#d8e6f5]" />
+                        </div>
+                      </div>
+                    ) : occupancyDetail ? (
+                      <div className="rounded-2xl border border-[#d3e0f2] bg-white/65 p-4">
+                        <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                          YÊU CẦU HỖ TRỢ
+                        </h4>
+                        {occupancyDetail.support_requests.length === 0 ? (
+                          <p className="mt-3 text-sm text-[#7a9cc0]">Chưa có yêu cầu nào.</p>
+                        ) : (
+                          <div className="mt-3 overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                              <thead>
+                                <tr className="border-b border-[#dce9f5] text-xs font-semibold uppercase tracking-wide text-[#8aa4cc]">
+                                  <th className="pb-2 pr-4">Loại yêu cầu</th>
+                                  <th className="pb-2 pr-4">Tiêu đề</th>
+                                  <th className="pb-2 pr-4">Ngày gửi</th>
+                                  <th className="pb-2">Trạng thái</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-[#edf3fb]">
+                                {occupancyDetail.support_requests.map((req) => {
+                                  const typeLabel: Record<string, string> = {
+                                    room_change: "Chuyển phòng",
+                                    bed_change: "Chuyển giường",
+                                    roommate_request: "Yêu cầu ở cùng",
+                                    complaint: "Khiếu nại",
+                                    suggestion: "Góp ý",
+                                    maintenance_report: "Báo hỏng",
+                                    other: "Khác",
+                                  };
+                                  const statusMeta: Record<string, { label: string; cls: string }> = {
+                                    pending:    { label: "Chờ xử lý",   cls: "border-amber-200 bg-amber-50 text-amber-700" },
+                                    processing: { label: "Đang xử lý",  cls: "border-blue-200 bg-blue-50 text-blue-700" },
+                                    approved:   { label: "Đã duyệt",    cls: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+                                    rejected:   { label: "Từ chối",     cls: "border-rose-200 bg-rose-50 text-rose-700" },
+                                    completed:  { label: "Hoàn thành",  cls: "border-slate-200 bg-slate-50 text-slate-600" },
+                                  };
+                                  const sm = statusMeta[req.status] ?? { label: req.status, cls: "border-gray-200 bg-gray-50 text-gray-600" };
+                                  return (
+                                    <tr key={req.id} className="text-[#2d4a7a]">
+                                      <td className="py-2 pr-4 font-medium">
+                                        {typeLabel[req.request_type] ?? req.request_type}
+                                      </td>
+                                      <td className="py-2 pr-4 text-[#5570a0]">
+                                        {req.title ?? "—"}
+                                      </td>
+                                      <td className="py-2 pr-4 text-[#5570a0]">
+                                        {req.created_at
+                                          ? new Date(req.created_at).toLocaleDateString("vi-VN")
+                                          : "—"}
+                                      </td>
+                                      <td className="py-2">
+                                        <span className={`rounded-full border px-2.5 py-0.5 text-xs font-bold ${sm.cls}`}>
+                                          {sm.label}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {/* LỊCH SỬ CHUYỂN PHÒNG/GIƯỜNG */}
+                    {isLoadingDetail ? (
+                      <div className="rounded-2xl border border-[#d3e0f2] bg-white/65 p-4">
+                        <div className="mb-4 h-3.5 w-56 animate-pulse rounded bg-[#d8e6f5]" />
+                        <div className="space-y-2">
+                          <div className="h-10 animate-pulse rounded-xl bg-[#d8e6f5]" />
+                          <div className="h-10 animate-pulse rounded-xl bg-[#d8e6f5]" />
+                        </div>
+                      </div>
+                    ) : occupancyDetail ? (() => {
+                        const PAGE = 5;
+                        const allLogs = occupancyDetail.room_change_history;
+                        const visibleLogs = showAllRoomChanges ? allLogs : allLogs.slice(-PAGE);
+                        const hasMore = allLogs.length > PAGE;
+
+                        const getBadge = (log: (typeof allLogs)[number]): { label: string; cls: string } => {
+                          if (log.change_type === "PERMANENT") {
+                            const sameRoom = log.old_room_code === log.new_room_code && log.old_room_code !== null;
+                            return sameRoom
+                              ? { label: "Đổi giường",   cls: "border-blue-200 bg-blue-50 text-blue-700" }
+                              : { label: "Chuyển phòng", cls: "border-emerald-200 bg-emerald-50 text-emerald-700" };
+                          }
+                          if (log.change_type === "TEMPORARY_MAINTENANCE") {
+                            return log.is_temporary
+                              ? { label: "Tạm chuyển",          cls: "border-amber-200 bg-amber-50 text-amber-700" }
+                              : { label: "Trả về sau bảo trì",  cls: "border-cyan-200 bg-cyan-50 text-cyan-700" };
+                          }
+                          if (log.change_type === "ADMIN_TRANSFER") return { label: "Admin chuyển", cls: "border-slate-200 bg-slate-100 text-slate-600" };
+                          if (log.change_type === "SWAP")            return { label: "Hoán đổi",    cls: "border-violet-200 bg-violet-50 text-violet-700" };
+                          return { label: log.change_type, cls: "border-gray-200 bg-gray-50 text-gray-600" };
+                        };
+
+                        const formatLocation = (roomCode: string | null, bedNumber: string | null) => {
+                          if (!roomCode) return "—";
+                          return bedNumber ? `${roomCode} #${bedNumber}` : roomCode;
+                        };
+
+                        const formatDetail = (log: (typeof allLogs)[number]) => {
+                          const from = formatLocation(log.old_room_code, log.old_bed_number);
+                          const to   = formatLocation(log.new_room_code, log.new_bed_number);
+                          if (log.old_room_code && log.new_room_code && log.old_room_code === log.new_room_code) {
+                            return `Phòng ${log.old_room_code}: #${log.old_bed_number ?? "?"} → #${log.new_bed_number ?? "?"}`;
+                          }
+                          return `${from} → ${to}`;
+                        };
+
+                        return (
+                          <div className="rounded-2xl border border-[#d3e0f2] bg-white/65 p-4">
+                            <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                              LỊCH SỬ CHUYỂN PHÒNG/GIƯỜNG
+                            </h4>
+                            {allLogs.length === 0 ? (
+                              <p className="mt-3 text-sm text-[#7a9cc0]">Chưa có lịch sử chuyển phòng/giường.</p>
+                            ) : (
+                              <>
+                                <div className="mt-3 overflow-x-auto">
+                                  <table className="w-full text-left text-sm">
+                                    <thead>
+                                      <tr className="border-b border-[#dce9f5] text-xs font-semibold uppercase tracking-wide text-[#8aa4cc]">
+                                        <th className="pb-2 pr-4">Ngày</th>
+                                        <th className="pb-2 pr-4">Loại</th>
+                                        <th className="pb-2 pr-4">Chi tiết</th>
+                                        <th className="pb-2">Nguồn</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-[#edf3fb]">
+                                      {visibleLogs.map((log) => {
+                                        const badge = getBadge(log);
+                                        return (
+                                          <tr key={log.id} className="text-[#2d4a7a]">
+                                            <td className="py-2 pr-4 text-[#5570a0]">
+                                              {log.transferred_at
+                                                ? new Date(log.transferred_at).toLocaleDateString("vi-VN")
+                                                : "—"}
+                                            </td>
+                                            <td className="py-2 pr-4">
+                                              <span className={`rounded-full border px-2.5 py-0.5 text-xs font-bold ${badge.cls}`}>
+                                                {badge.label}
+                                              </span>
+                                            </td>
+                                            <td className="py-2 pr-4 font-medium">
+                                              {formatDetail(log)}
+                                            </td>
+                                            <td className="py-2 text-[#5570a0]">
+                                              {log.change_source === "student_request" ? "Sinh viên" : "Admin"}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                                {hasMore && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowAllRoomChanges((v) => !v)}
+                                    className="mt-2 text-xs font-semibold text-[#2f63da] hover:underline"
+                                  >
+                                    {showAllRoomChanges ? "Thu gọn" : `Xem thêm ${allLogs.length - PAGE} mục`}
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        );
+                      })()
+                    : null}
+
+                  </div>
+
+                  {/* Footer */}
+                  <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-3 border-t border-[#d3e0f2] px-6 py-4">
+                    {selectedOccupancy.status === "CHECKOUT_REQUESTED" ? (
+                      <button
+                        type="button"
+                        onClick={() => void updateOccupancyStatus(selectedOccupancy.id, "CHECKED_OUT")}
+                        className="auth-btn-gloss rounded-2xl bg-[linear-gradient(135deg,#1f9a60_0%,#35bf7a_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_20px_rgba(31,154,96,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110"
+                      >
+                        <span className="auth-btn-gloss__content">Xác nhận thôi ở</span>
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => setSelectedOccupancy(null)}
@@ -989,7 +1598,6 @@ export default function OccupancyManagementPage() {
                     >
                       Đóng
                     </button>
-                    </div>
                   </div>
                 </motion.div>
               </motion.div>,

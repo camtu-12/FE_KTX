@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { ArrowUp, ChevronDown, Filter, X } from "lucide-react";
 import { createPortal } from "react-dom";
-import { Link, useLocation, useNavigate, useOutletContext } from "react-router-dom";
+import { Link, useLocation, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import {
   getRegistrations,
@@ -35,11 +35,15 @@ export default function AdminRegistrationsPage() {
   const { headerSearchValue } = useOutletContext<AdminLayoutOutletContext>();
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const routeState = location.state as { openRequestId?: number; requestModalTab?: "info" | "history" } | null;
   const [shouldSkipAnim] = useState(() => Boolean(routeState?.openRequestId));
 
   const [requests, setRequests] = useState<RegistrationRequest[]>([]);
-  const [activeTab, setActiveTab] = useState<AdminTab>("main");
+  const [activeTab, setActiveTab] = useState<AdminTab>(() => {
+    const ch = searchParams.get("channel");
+    return ch === "rolling" ? "rolling" : "main";
+  });
   const [mainSubFilter, setMainSubFilter] = useState<SubFilter>("pending");
   const [rollingSubFilter, setRollingSubFilter] = useState<SubFilter>("pending");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -70,7 +74,11 @@ export default function AdminRegistrationsPage() {
   const [verifyAllDoneToast, setVerifyAllDoneToast] = useState(false);
 
   // Filter
-  const [filterPeriodId, setFilterPeriodId] = useState<number | "all">("all");
+  const [filterPeriodId, setFilterPeriodId] = useState<number | "all">(() => {
+    const p = searchParams.get("period");
+    const n = p ? Number(p) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : "all";
+  });
   const [pendingFilter, setPendingFilter] = useState<PendingFilter>("all");
   const [processedFilter, setProcessedFilter] = useState<ProcessedFilter>("all");
   const [openSubFilterMenu, setOpenSubFilterMenu] = useState<"pending" | "done" | null>(null);
@@ -80,6 +88,14 @@ export default function AdminRegistrationsPage() {
   const [openDropdownId, setOpenDropdownId] = useState<number | null>(null);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const subFilterMenuRef = useRef<HTMLDivElement | null>(null);
+
+  // Clear URL params after reading them into state
+  useEffect(() => {
+    if (searchParams.get("period") || searchParams.get("channel")) {
+      setSearchParams({}, { replace: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ─── Load ───────────────────────────────────────────────
   useEffect(() => {
