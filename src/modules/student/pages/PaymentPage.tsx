@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { CalendarDays, CreditCard, Zap } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { createVnpayPayment, getStudentPayments, verifyVnpayPayment, type PaymentStatus, type StudentPaymentItem, type StudentPayments } from "../../../api/paymentApi";
+import { confirmFreeRoomFeeBill, createVnpayPayment, getStudentPayments, verifyVnpayPayment, type PaymentStatus, type StudentPaymentItem, type StudentPayments } from "../../../api/paymentApi";
 import { useAuthStore } from "../../auth/store";
 import { formatDate } from "../../../utils/dateFormat";
 
@@ -214,6 +214,25 @@ export default function PaymentPage() {
     }
   };
 
+  const handleConfirmFree = async (item: StudentPaymentItem) => {
+    if (!studentEmail) return;
+
+    const key = `${item.source}-${item.id}`;
+    setPayingKey(key);
+    setLoadError("");
+    setPaymentMessage("");
+
+    try {
+      await confirmFreeRoomFeeBill(item.id, studentEmail);
+      setPaymentMessage("Thanh toán thành công!");
+      window.dispatchEvent(new Event("ktx-payments-updated"));
+    } catch {
+      setPaymentMessage("Không thể xác nhận. Vui lòng thử lại sau.");
+    } finally {
+      setPayingKey("");
+    }
+  };
+
   if (isLoading) {
     return (
       <section className="rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6">
@@ -284,6 +303,7 @@ export default function PaymentPage() {
         emptyText={activeTabData.unpaidEmptyText}
         payingKey={payingKey}
         onPayOnline={handleVnpayPayment}
+        onConfirmFree={handleConfirmFree}
       />
 
       <PaymentSection
@@ -302,6 +322,7 @@ function PaymentSection({
   emptyText,
   payingKey,
   onPayOnline,
+  onConfirmFree,
 }: {
   title: string;
   description?: string;
@@ -309,6 +330,7 @@ function PaymentSection({
   emptyText: string;
   payingKey?: string;
   onPayOnline?: (item: StudentPaymentItem) => void;
+  onConfirmFree?: (item: StudentPaymentItem) => void;
 }) {
   return (
     <section className="rounded-[26px] border border-[#c4d7f3] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] p-5 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
@@ -327,6 +349,7 @@ function PaymentSection({
               item={item}
               isPaying={payingKey === `${item.source}-${item.id}`}
               onPayOnline={onPayOnline}
+              onConfirmFree={onConfirmFree}
             />
           ))
         ) : (
@@ -343,14 +366,19 @@ function PaymentItemCard({
   item,
   isPaying = false,
   onPayOnline,
+  onConfirmFree,
 }: {
   item: StudentPaymentItem;
   isPaying?: boolean;
   onPayOnline?: (item: StudentPaymentItem) => void;
+  onConfirmFree?: (item: StudentPaymentItem) => void;
 }) {
   if (item.source === "electricity") {
     return <ElectricityPaymentItemCard item={item} isPaying={isPaying} onPayOnline={onPayOnline} />;
   }
+
+  const hasDiscount = item.source === "room_fee" && (item.discountPercent ?? 0) > 0 && (item.originalAmount ?? 0) > 0;
+  const isFree = item.source === "room_fee" && item.amount === 0;
 
   return (
     <article className="rounded-[22px] border border-[#d6e2f1] bg-white p-4 shadow-[0_14px_30px_rgba(36,76,184,0.10)]">
@@ -362,6 +390,11 @@ function PaymentItemCard({
             <p className="mt-1 text-sm font-semibold text-[#6f84ad]">
               Phòng {item.room ? `${item.room.buildingCode}${item.room.roomNumber}` : "-"} · Hạn thanh toán {formatDate(item.dueDate)}
             </p>
+            {hasDiscount ? (
+              <p className="mt-1 text-sm font-semibold text-emerald-600">
+                Miễn/giảm {item.discountPercent}% · {item.discountReason ?? "Diện ưu tiên"}
+              </p>
+            ) : null}
             {item.status === "paid" ? (
               <p className="mt-1 text-sm font-semibold text-[#6f84ad]">
                 Đã thanh toán: {item.paidAt ? formatDate(item.paidAt) : "-"} · {item.paymentMethod || "-"} {item.transactionCode ? `· ${item.transactionCode}` : ""}
@@ -370,9 +403,21 @@ function PaymentItemCard({
           </div>
         </div>
         <div className="flex flex-col items-start gap-2 sm:items-end">
+          {hasDiscount ? (
+            <p className="text-sm font-semibold text-[#9aafcf] line-through">{moneyFormatter.format(item.originalAmount!)}</p>
+          ) : null}
           <p className="text-xl font-bold text-[#244cb8]">{moneyFormatter.format(item.amount)}</p>
           <StatusBadge status={item.status} />
-          {item.status !== "paid" && onPayOnline ? (
+          {item.status !== "paid" && isFree && onConfirmFree ? (
+            <button
+              type="button"
+              onClick={() => onConfirmFree(item)}
+              disabled={isPaying}
+              className="inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-[0_12px_24px_rgba(5,150,105,0.22)] transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {isPaying ? "Đang xác nhận..." : "Xác nhận miễn phí"}
+            </button>
+          ) : item.status !== "paid" && !isFree && onPayOnline ? (
             <button
               type="button"
               onClick={() => onPayOnline(item)}

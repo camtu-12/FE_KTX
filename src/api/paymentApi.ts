@@ -34,6 +34,10 @@ export type RoomFeeBill = {
   month: number;
   year: number;
   amount: number;
+  originalAmount: number | null;
+  discountPercent: number | null;
+  discountAmount: number;
+  discountReason: string | null;
   createdAt: string;
   dueDate: string;
   paymentMethod: string;
@@ -81,6 +85,10 @@ export type StudentPaymentItem = {
   title: string;
   period: string;
   amount: number;
+  originalAmount?: number | null;
+  discountPercent?: number | null;
+  discountAmount?: number;
+  discountReason?: string | null;
   dueDate: string;
   paymentMethod: string;
   transactionCode: string;
@@ -146,6 +154,10 @@ type ApiRoomFeeBill = {
   month?: number | string | null;
   year?: number | string | null;
   amount?: number | string | null;
+  original_amount?: number | string | null;
+  discount_percent?: number | string | null;
+  discount_amount?: number | string | null;
+  discount_reason?: string | null;
   created_at?: string | null;
   due_date?: string | null;
   payment_method?: string | null;
@@ -181,6 +193,10 @@ type ApiStudentPaymentItem = {
   title?: string | null;
   period?: string | null;
   amount?: number | string | null;
+  original_amount?: number | string | null;
+  discount_percent?: number | string | null;
+  discount_amount?: number | string | null;
+  discount_reason?: string | null;
   due_date?: string | null;
   payment_method?: string | null;
   transaction_code?: string | null;
@@ -244,6 +260,10 @@ const normalizeRoomFeeBill = (item: ApiRoomFeeBill): RoomFeeBill => ({
   month: toNumber(item.month),
   year: toNumber(item.year),
   amount: toNumber(item.amount),
+  originalAmount: item.original_amount != null ? toNumber(item.original_amount) : null,
+  discountPercent: item.discount_percent != null ? toNumber(item.discount_percent) : null,
+  discountAmount: toNumber(item.discount_amount),
+  discountReason: item.discount_reason ?? null,
   createdAt: item.created_at ?? "",
   dueDate: item.due_date ?? "",
   paymentMethod: item.payment_method ?? "",
@@ -333,6 +353,28 @@ export const confirmRoomFeePayment = async (
   return normalizeRoomFeeBill(response.data);
 };
 
+export const confirmFreeRoomFeeBill = async (id: number, email: string): Promise<StudentPaymentItem> => {
+  const response = await http.post<ApiStudentPaymentItem>(`/student/payments/room-fee-bills/${id}/confirm-free`, { email });
+  const item = response.data;
+  return {
+    id: toNumber(item.id),
+    source: "room_fee",
+    title: item.title ?? "",
+    period: item.period ?? "",
+    amount: toNumber(item.amount),
+    originalAmount: item.original_amount != null ? toNumber(item.original_amount) : null,
+    discountPercent: item.discount_percent != null ? toNumber(item.discount_percent) : null,
+    discountAmount: toNumber(item.discount_amount),
+    discountReason: item.discount_reason ?? null,
+    dueDate: item.due_date ?? "",
+    paymentMethod: item.payment_method ?? "",
+    transactionCode: item.transaction_code ?? "",
+    paidAt: item.paid_at ?? "",
+    status: normalizeStatus(item.status),
+    room: item.room ? { buildingCode: item.room.building_code ?? "", roomNumber: String(item.room.room_number ?? "") } : null,
+  };
+};
+
 export const listElectricityBills = async (): Promise<ElectricityBill[]> => {
   const response = await http.get<ApiElectricityBill[]>("/electricity-bills");
   return Array.isArray(response.data) ? response.data.map(normalizeElectricityBill) : [];
@@ -386,6 +428,10 @@ export const getStudentPayments = async (email: string): Promise<StudentPayments
         title: item.title ?? "",
         period: item.period ?? "",
         amount: toNumber(item.amount),
+        originalAmount: item.original_amount != null ? toNumber(item.original_amount) : null,
+        discountPercent: item.discount_percent != null ? toNumber(item.discount_percent) : null,
+        discountAmount: toNumber(item.discount_amount),
+        discountReason: item.discount_reason ?? null,
         dueDate: item.due_date ?? "",
         paymentMethod: item.payment_method ?? "",
         transactionCode: item.transaction_code ?? "",

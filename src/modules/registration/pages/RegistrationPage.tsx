@@ -1912,6 +1912,7 @@ export default function RegistrationPage() {
                       <span className="text-xs font-semibold uppercase tracking-wide text-[#2F83C9]">Bước 4</span>
                       <h2 className="text-lg font-semibold text-[#1F3152]">Tiêu chí ưu tiên</h2>
                       <p className="mt-0.5 text-sm text-[#5C7094]">Chọn các tiêu chí phù hợp (không bắt buộc)</p>
+                      <p className="mt-1 text-xs text-emerald-600">Một số diện ưu tiên đã được xác minh sẽ được tự động áp dụng chính sách miễn/giảm phí phòng ở nếu có.</p>
                     </div>
                   </div>
                   <div className="mt-6 space-y-3">
