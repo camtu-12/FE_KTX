@@ -154,12 +154,24 @@ const resolveOccupancyStatus = (value: string | null | undefined): OccupancyStat
     return "CHECKED_OUT";
   }
 
-  if (normalized === "forced_checkout") {
+  if (normalized === "forced_checkout" || normalized === "terminated") {
     return "FORCED_CHECKOUT";
   }
 
   return "ACTIVE";
 };
+
+const occupancyManagementStatuses = new Set([
+  "active",
+  "checkout_requested",
+  "completed",
+  "checked_out",
+  "terminated",
+  "forced_checkout",
+]);
+
+const isOccupancyManagementStatus = (value: string | null | undefined) =>
+  occupancyManagementStatuses.has(String(value ?? "").trim().toLowerCase());
 
 const createOccupancyRowsFromApi = (
   registrations: RegistrationRequest[],
@@ -168,12 +180,12 @@ const createOccupancyRowsFromApi = (
   const studentsById: Student[] = [];
   const occupancies = registrations
     .filter((registration) => {
-      const occStatus = String(registration.occupancy_status ?? "").trim().toLowerCase();
       return (
         registration.status === "approved" &&
+        Boolean(registration.occupancy_id) &&
         Boolean(registration.assigned_room_id) &&
         Boolean(registration.bedId) &&
-        occStatus !== "pending_payment"
+        isOccupancyManagementStatus(registration.occupancy_status)
       );
     })
     .map((registration) => {
@@ -737,31 +749,31 @@ export default function OccupancyManagementPage() {
           transition={{ duration: 0.46, delay: 0.16, ease: "easeOut" }}
           className="relative mt-1 min-h-[420px] overflow-hidden rounded-[14px] border border-[#d6e2f1] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.10)]"
         >
-          <table className="min-w-[980px] w-full table-fixed border-separate border-spacing-0">
+          <table className="w-full table-fixed border-separate border-spacing-0">
             <colgroup>
               <col className="w-[14%]" />
-              <col className="w-[22%]" />
-              <col className="w-[12%]" />
-              <col className="w-[10%]" />
-              <col className="w-[20%]" />
-              <col className="w-[22%]" />
+              <col className="w-[23%]" />
+              <col className="w-[9%]" />
+              <col className="w-[8%]" />
+              <col className="w-[18%]" />
+              <col className="w-[28%]" />
             </colgroup>
             <thead>
               <tr className="bg-[linear-gradient(180deg,#f7faff_0%,#eef4ff_100%)]">
-                <th className="px-3 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                <th className="whitespace-nowrap px-2 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
                   MSSV
                 </th>
-                <th className="px-3 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                <th className="whitespace-nowrap px-2 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
                   Họ tên
                 </th>
-                <th className="px-3 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                <th className="whitespace-nowrap px-2 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
                   Phòng
                 </th>
-                <th className="px-3 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                <th className="whitespace-nowrap px-2 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
                   Giường
                 </th>
-                <th className="relative z-30 px-3 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
-                  <div className="inline-flex items-center justify-center gap-2">
+                <th className="relative z-30 whitespace-nowrap px-2 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                  <div className="inline-flex flex-nowrap items-center justify-center gap-2">
                     <span>Trạng thái</span>
                     <button
                       ref={statusFilterButtonRef}
@@ -777,7 +789,7 @@ export default function OccupancyManagementPage() {
                     </button>
                   </div>
                 </th>
-                <th className="px-3 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                <th className="whitespace-nowrap px-2 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
                   Hành động
                 </th>
               </tr>
@@ -809,20 +821,25 @@ export default function OccupancyManagementPage() {
                       transition={{ duration: 0.3, delay: 0.2 + index * 0.035, ease: "easeOut" }}
                       className="group transition duration-200 hover:bg-[#f8fbff]"
                     >
-                      <td className="border-t border-[#e8eef8] px-3 py-4 text-center text-[15px] font-semibold text-[#24407f]">
-                        {student?.studentCode ?? emptyValue}
+                      <td className="overflow-hidden border-t border-[#e8eef8] px-2 py-4 text-center text-[15px] font-semibold text-[#24407f]">
+                        <span className="block truncate whitespace-nowrap" title={student?.studentCode ?? emptyValue}>
+                          {student?.studentCode ?? emptyValue}
+                        </span>
                       </td>
-                      <td className="border-t border-[#e8eef8] px-3 py-4 text-center text-sm font-semibold text-[#1f3152]">
-                        <span className="line-clamp-2">{student?.fullName ?? emptyValue}</span>
+                      <td className="overflow-hidden border-t border-[#e8eef8] px-2 py-4 text-center text-sm font-semibold text-[#1f3152]">
+                        <span className="block truncate whitespace-nowrap" title={student?.fullName ?? emptyValue}>
+                          {student?.fullName ?? emptyValue}
+                        </span>
                       </td>
-                      <td className="border-t border-[#e8eef8] px-3 py-4 text-center text-sm font-semibold text-[#6d7fa6]">
-                        {item.buildingCode}
-                        {item.roomNumber}
+                      <td className="overflow-hidden whitespace-nowrap border-t border-[#e8eef8] px-2 py-4 text-center text-sm font-semibold text-[#6d7fa6]">
+                        <span className="block truncate" title={`${item.buildingCode}${item.roomNumber}`}>
+                          {item.buildingCode}{item.roomNumber}
+                        </span>
                       </td>
-                      <td className="border-t border-[#e8eef8] px-3 py-4 text-center text-sm font-semibold text-[#5a6f98]">
+                      <td className="overflow-hidden whitespace-nowrap border-t border-[#e8eef8] px-2 py-4 text-center text-sm font-semibold text-[#5a6f98]">
                         #{item.bedNumber}
                       </td>
-                      <td className="border-t border-[#e8eef8] px-3 py-4 text-center">
+                      <td className="overflow-hidden whitespace-nowrap border-t border-[#e8eef8] px-2 py-4 text-center">
                         <span
                           className={`inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold ${meta.badgeClassName}`}
                         >
@@ -830,24 +847,24 @@ export default function OccupancyManagementPage() {
                           {meta.label}
                         </span>
                       </td>
-                      <td className="border-t border-[#e8eef8] px-3 py-4 text-center">
-                        <div className="flex flex-nowrap items-center justify-center gap-1.5">
+                      <td className="overflow-hidden whitespace-nowrap border-t border-[#e8eef8] px-2 py-4 text-center">
+                        <div className="flex min-w-0 flex-nowrap items-center justify-center gap-1.5">
                           <button
                             type="button"
                             onClick={() => handleOpenDetail(item)}
-                            className="auth-btn-gloss inline-flex min-w-[92px] items-center justify-center whitespace-nowrap rounded-xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-2.5 py-2 text-[12px] font-semibold text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.12)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white"
+                            className="auth-btn-gloss inline-flex min-w-0 flex-[0.85] items-center justify-center overflow-hidden whitespace-nowrap rounded-xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-2 py-2 text-[12px] font-semibold text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.12)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white"
                           >
-                            <span className="auth-btn-gloss__content">Xem chi tiết</span>
+                            <span className="auth-btn-gloss__content block truncate">Xem chi tiết</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => handleOpenViolations(item)}
                             disabled={!canAddViolation(item)}
                             title={!canAddViolation(item) ? "Sinh viên không còn lưu trú tại KTX, không thể ghi nhận hoạt động mới." : undefined}
-                            className="auth-btn-gloss inline-flex min-w-[76px] items-center justify-center gap-1 whitespace-nowrap rounded-xl border border-rose-200 bg-rose-50 px-2.5 py-2 text-[12px] font-semibold text-rose-700 shadow-[0_8px_18px_rgba(190,24,93,0.10)] transition duration-200 hover:-translate-y-0.5 hover:border-rose-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:border-rose-200 disabled:hover:bg-rose-50"
+                            className="auth-btn-gloss inline-flex min-w-0 flex-[1.15] items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-xl border border-rose-200 bg-rose-50 px-2 py-2 text-[12px] font-semibold text-rose-700 shadow-[0_8px_18px_rgba(190,24,93,0.10)] transition duration-200 hover:-translate-y-0.5 hover:border-rose-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:border-rose-200 disabled:hover:bg-rose-50"
                           >
-                            <ShieldAlert className="h-3.5 w-3.5" />
-                            <span className="auth-btn-gloss__content">Ghi nhận hoạt động</span>
+                            <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
+                            <span className="auth-btn-gloss__content block truncate">Ghi nhận hoạt động</span>
                           </button>
                         </div>
                       </td>

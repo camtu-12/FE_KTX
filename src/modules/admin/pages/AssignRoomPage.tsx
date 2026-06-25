@@ -527,26 +527,26 @@ export default function AssignRoomPage() {
       </div>
 
       <div className="flex flex-col space-y-3 sm:space-y-4">
-        <div className="overflow-x-auto rounded-[22px] border border-[#dde7f5] bg-white shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
-          <table className="min-w-[860px] w-full table-fixed border-separate border-spacing-0">
+        <div className="overflow-hidden rounded-[22px] border border-[#dde7f5] bg-white shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
+          <table className="w-full table-fixed border-separate border-spacing-0">
             <colgroup>
               <col className="w-[15%]" />
-              <col className="w-[18%]" />
-              <col className="w-[11%]" />
-              <col className="w-[16%]" />
-              <col className="w-[17%]" />
               <col className="w-[23%]" />
+              <col className="w-[10%]" />
+              <col className="w-[20%]" />
+              <col className="w-[16%]" />
+              <col className="w-[16%]" />
             </colgroup>
             <thead>
               <tr className="bg-[linear-gradient(180deg,#f7faff_0%,#eef4ff_100%)]">
-                <th className="px-3 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                <th className="whitespace-nowrap px-2 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
                   MSSV
                 </th>
-                <th className="px-3 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                <th className="whitespace-nowrap px-2 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
                   Họ tên
                 </th>
-                <th className="relative z-30 px-3 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
-                  <div className="inline-flex items-center justify-center gap-2">
+                <th className="relative z-30 whitespace-nowrap px-2 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                  <div className="inline-flex flex-nowrap items-center justify-center gap-2">
                     <span>Giới tính</span>
                     <button
                       ref={genderFilterButtonRef}
@@ -561,14 +561,14 @@ export default function AssignRoomPage() {
                     </button>
                   </div>
                 </th>
-                <th className="px-3 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                <th className="whitespace-nowrap px-2 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
                   Trạng thái
                 </th>
-                <th className="px-3 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                <th className="whitespace-nowrap px-2 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
                   Phòng đề xuất
                 </th>
-                <th className="relative z-30 px-3 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
-                  <div className="inline-flex items-center justify-center gap-2">
+                <th className="relative z-30 whitespace-nowrap px-2 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                  <div className="inline-flex flex-nowrap items-center justify-center gap-2">
                     <span>Hành động</span>
                     <button
                       ref={filterButtonRef}
@@ -594,18 +594,18 @@ export default function AssignRoomPage() {
 
                 return (
                   <tr key={student.id} className="transition-colors hover:bg-[#f8fbff]">
-                    <td className="border-t border-[#e7eef9] px-3 py-2.5 text-center text-[15px] font-semibold text-[#1f3152]">
-                      <span className="whitespace-nowrap">{student.formData.mssv}</span>
+                    <td className="overflow-hidden border-t border-[#e7eef9] px-2 py-2.5 text-center text-[15px] font-semibold text-[#1f3152]">
+                      <span className="block truncate whitespace-nowrap" title={student.formData.mssv}>{student.formData.mssv}</span>
                     </td>
-                    <td className="border-t border-[#e7eef9] px-3 py-2.5 text-center text-sm font-semibold text-[#1f3152]">
-                      <span className="line-clamp-2">{student.formData.fullName}</span>
+                    <td className="overflow-hidden border-t border-[#e7eef9] px-2 py-2.5 text-center text-sm font-semibold text-[#1f3152]">
+                      <span className="block truncate whitespace-nowrap" title={student.formData.fullName}>{student.formData.fullName}</span>
                     </td>
-                    <td className="border-t border-[#e7eef9] px-3 py-2.5 text-center text-[15px] font-semibold text-[#5d7299]">
+                    <td className="overflow-hidden whitespace-nowrap border-t border-[#e7eef9] px-2 py-2.5 text-center text-[15px] font-semibold text-[#5d7299]">
                       <span className="whitespace-nowrap">{getGenderLabel(student.formData.gender)}</span>
                     </td>
-                    <td className="border-t border-[#e7eef9] px-3 py-2.5 text-center text-[15px]">
+                    <td className="overflow-hidden whitespace-nowrap border-t border-[#e7eef9] px-2 py-2.5 text-center text-[15px]">
                       <span
-                        className={`inline-flex items-center rounded-full border px-3 py-1 text-[13px] font-semibold ${
+                        className={`inline-flex max-w-full items-center whitespace-nowrap rounded-full border px-3 py-1 text-[13px] font-semibold ${
                           isConfirmed
                             ? "border-[#b9e6c7] bg-[#effcf3] text-[#16784b]"
                             : "border-[#f3dd9c] bg-[#fff8df] text-[#9b6b00]"
@@ -618,16 +618,16 @@ export default function AssignRoomPage() {
                           : "Chưa phân phòng"}
                       </span>
                     </td>
-                    <td className="border-t border-[#e7eef9] px-3 py-2.5 text-center text-[14px]">
+                    <td className="overflow-hidden whitespace-nowrap border-t border-[#e7eef9] px-2 py-2.5 text-center text-[14px]">
                       {isProposed && proposedRoomName ? (
-                        <span className="inline-flex items-center rounded-full border border-[#d4b0f0] bg-[#f6eeff] px-3 py-1 text-[13px] font-semibold text-[#7c3fb0]">
+                        <span className="inline-flex max-w-full items-center whitespace-nowrap rounded-full border border-[#d4b0f0] bg-[#f6eeff] px-3 py-1 text-[13px] font-semibold text-[#7c3fb0]">
                           {proposedRoomName}
                         </span>
                       ) : (
                         <span className="text-[#b0bdd4]">—</span>
                       )}
                     </td>
-                    <td className="border-t border-[#e7eef9] px-3 py-2.5 text-center">
+                    <td className="overflow-hidden whitespace-nowrap border-t border-[#e7eef9] px-2 py-2.5 text-center">
                       <button
                         type="button"
                         onClick={() => navigate(`/admin/assign-room/${student.id}`)}

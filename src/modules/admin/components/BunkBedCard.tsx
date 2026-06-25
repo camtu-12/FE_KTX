@@ -1,4 +1,4 @@
-import { ArrowDownToLine, ArrowUpToLine, BedDouble, CheckCircle2, Check, Eye, Pencil, RefreshCw, TriangleAlert } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, BedDouble, CheckCircle2, Check, Clock3, Eye, Pencil, RefreshCw, TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";
 import type { BedDetail } from "../../../api/roomApi";
 import StudentMiniInfo from "./StudentMiniInfo";
@@ -51,6 +51,13 @@ const statusMeta: Record<
     badgeClass: "border-blue-200 bg-blue-100 text-blue-700",
     slotClass: "border-[#bfd2ee] bg-[linear-gradient(180deg,#f5f9ff_0%,#e8f1ff_100%)]",
     Icon: BedDouble,
+    emptyText: "",
+  },
+  reserved: {
+    label: "Chờ thanh toán",
+    badgeClass: "border-amber-200 bg-amber-100 text-amber-700",
+    slotClass: "border-amber-200 bg-[linear-gradient(180deg,#fffdf5_0%,#fff7dc_100%)]",
+    Icon: Clock3,
     emptyText: "",
   },
   maintenance: {
@@ -126,6 +133,7 @@ function BedSlot({ bed, beds = [], position, onViewBed, onEditStatus, onTransfer
   const meta = statusMeta[displayStatus];
   const StatusIcon = meta.Icon;
   const isOccupied = Boolean(bed.student);
+  const isActiveResident = bed.student?.occupancy?.status === "ACTIVE";
   const temporary = bed.student?.temporary_assignment?.is_temporary ? bed.student.temporary_assignment : null;
   const maintenance = bed.maintenance_assignment;
   const temporaryBedStudent = maintenance?.temporary_bed_id
@@ -158,6 +166,11 @@ function BedSlot({ bed, beds = [], position, onViewBed, onEditStatus, onTransfer
       {isOccupied ? (
         <div className="mt-3 flex flex-1 flex-col border-t border-white/70 pt-3">
           <StudentMiniInfo student={bed.student!} />
+          {displayStatus === "reserved" ? (
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+              Sinh viên đã chọn giường nhưng chưa thanh toán hóa đơn đầu.
+            </div>
+          ) : null}
           {temporary ? (
             <div
               className="mt-3 rounded-2xl border border-orange-200 bg-orange-50 px-3 py-2 text-[11px] font-semibold text-orange-700 shadow-sm"
@@ -227,8 +240,8 @@ function BedSlot({ bed, beds = [], position, onViewBed, onEditStatus, onTransfer
           <Pencil className="h-4 w-4" />
         </ActionButton>
         <ActionButton
-          title={isOccupied ? "Chuyển sinh viên" : "Giường chưa có sinh viên để chuyển"}
-          disabled={!isOccupied}
+          title={isActiveResident ? "Chuyển sinh viên" : displayStatus === "reserved" ? "Chưa thể chuyển khi sinh viên chưa thanh toán" : "Giường chưa có sinh viên để chuyển"}
+          disabled={!isActiveResident}
           className="text-indigo-600 hover:bg-indigo-50"
           onClick={() => onTransferStudent?.(bed)}
         >

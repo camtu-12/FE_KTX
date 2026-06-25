@@ -271,6 +271,23 @@ function validate(
   else if (form.initial_payment_due_days < 1)
     errors.initial_payment_due_days = "Số ngày phải lớn hơn 0.";
 
+  // Rule 4: stay_start_date >= end_date + processing_days + bed_selection_days + initial_payment_due_days
+  if (stayStartDate && endDate && !errors.end_date && !errors.stay_start_date) {
+    const procDays = form.processing_days ?? 0;
+    const bedDays = form.bed_selection_days ?? 0;
+    const dueDays = form.initial_payment_due_days ?? 0;
+    const totalDays = procDays + bedDays + dueDays;
+    const minDate = new Date(endDate);
+    minDate.setDate(minDate.getDate() + totalDays);
+    const minDateStr = dateToInputValue(minDate);
+    if (stayStartDate < minDateStr) {
+      const minFormatted = formatDate(minDateStr);
+      errors.stay_start_date =
+        `Ngày bắt đầu lưu trú tối thiểu phải là ${minFormatted} ` +
+        `(sau ${procDays} ngày xử lý + ${bedDays} ngày chọn giường + ${dueDays} ngày thanh toán).`;
+    }
+  }
+
   return errors;
 }
 
@@ -1059,25 +1076,6 @@ export default function AdminRegistrationPeriodsPage() {
                       {formErrors.processing_days && <p className="mt-1 text-xs text-rose-600">{formErrors.processing_days}</p>}
                     </div>
 
-                    {/* Stay dates */}
-                    <div className="rounded-xl border border-[#cfdcf0] bg-[#f7faff] p-2.5">
-                      <p className="mb-2 text-xs font-semibold text-[#324B76]">Thời gian lưu trú (tuỳ chọn)</p>
-                      <div className="grid grid-cols-2 gap-2.5">
-                        {field("stay_start_date", "Bắt đầu lưu trú", "date", undefined, (() => {
-                          const endVal = toDateInputValue(form.end_date);
-                          const gap = form.processing_days ?? 0;
-                          if (endVal && gap > 0) { const d = new Date(endVal); d.setDate(d.getDate() + gap); return d; }
-                          if (endVal) { const d = new Date(endVal); d.setDate(d.getDate() + 1); return d; }
-                          const d = new Date(); d.setHours(0,0,0,0); return d;
-                        })())}
-                        {field("stay_end_date", "Kết thúc lưu trú", "date", undefined, (() => {
-                          const stayStartVal = toDateInputValue(form.stay_start_date);
-                          if (stayStartVal) { const d = new Date(stayStartVal); d.setDate(d.getDate() + 1); return d; }
-                          const d = new Date(); d.setHours(0,0,0,0); return d;
-                        })())}
-                      </div>
-                    </div>
-
                     {/* Bed selection days */}
                     <div>
                       <label className="mb-1 block text-xs font-semibold text-[#324B76]">Số ngày chọn giường (tuỳ chọn)</label>
@@ -1115,6 +1113,25 @@ export default function AdminRegistrationPeriodsPage() {
                       {formErrors.initial_payment_due_days && (
                         <p className="mt-1 text-xs text-rose-600">{formErrors.initial_payment_due_days}</p>
                       )}
+                    </div>
+
+                    {/* Stay dates */}
+                    <div className="rounded-xl border border-[#cfdcf0] bg-[#f7faff] p-2.5">
+                      <p className="mb-2 text-xs font-semibold text-[#324B76]">Thời gian lưu trú</p>
+                      <div className="grid grid-cols-2 gap-2.5">
+                        {field("stay_start_date", "Bắt đầu lưu trú", "date", undefined, (() => {
+                          const endVal = toDateInputValue(form.end_date);
+                          const gap = form.processing_days ?? 0;
+                          if (endVal && gap > 0) { const d = new Date(endVal); d.setDate(d.getDate() + gap); return d; }
+                          if (endVal) { const d = new Date(endVal); d.setDate(d.getDate() + 1); return d; }
+                          const d = new Date(); d.setHours(0,0,0,0); return d;
+                        })())}
+                        {field("stay_end_date", "Kết thúc lưu trú", "date", undefined, (() => {
+                          const stayStartVal = toDateInputValue(form.stay_start_date);
+                          if (stayStartVal) { const d = new Date(stayStartVal); d.setDate(d.getDate() + 1); return d; }
+                          const d = new Date(); d.setHours(0,0,0,0); return d;
+                        })())}
+                      </div>
                     </div>
                   </>
               </div>

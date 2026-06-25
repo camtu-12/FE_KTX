@@ -29,10 +29,18 @@ export default function StudentMiniInfo({ student, size = "md" }: StudentMiniInf
   const metaClass = size === "lg" ? "mt-1.5 text-sm" : "mt-0.5 text-[11px]";
   const metaIconClass = size === "lg" ? "h-4 w-4" : "h-3 w-3";
   const currentOccupancy = student.occupancy ?? null;
+  const occupancyStatus = String(currentOccupancy?.status ?? "").toUpperCase();
+  const isPendingPayment = occupancyStatus === "PENDING_PAYMENT";
+  const isActive = occupancyStatus === "ACTIVE";
   const modalCheckInDate = currentOccupancy?.check_in_date ?? null;
   const modalCheckOutDate = currentOccupancy?.check_out_date ?? null;
-  const residencyBadge = currentOccupancy
-    ? modalCheckOutDate
+  const residencyBadge = isPendingPayment
+    ? {
+        label: "● Chờ thanh toán",
+        className: "border-amber-200 bg-amber-50 text-amber-700",
+      }
+    : currentOccupancy
+      ? !isActive
       ? {
           label: "● Đã rời KTX",
           className: "border-slate-200 bg-slate-100 text-slate-600",
@@ -81,19 +89,19 @@ export default function StudentMiniInfo({ student, size = "md" }: StudentMiniInf
         ) : null}
         <p className={`flex items-center gap-1.5 leading-relaxed text-[#7c8fb5] ${metaClass}`}>
           <CalendarDays className={`${metaIconClass} shrink-0 text-[#9bb0d4]`} />
-          Ngày vào ở: {size === "lg" ? formatOccupancyDate(modalCheckInDate) : formatDate(student.check_in_date)}
+          {isPendingPayment ? "Ngày dự kiến vào:" : "Ngày vào ở:"} {size === "lg" ? formatOccupancyDate(modalCheckInDate) : formatDate(student.check_in_date)}
         </p>
         {size !== "lg" ? (
           <p className={`flex items-center gap-1.5 leading-relaxed text-[#7c8fb5] ${metaClass}`}>
             <CalendarDays className={`${metaIconClass} shrink-0 text-[#9bb0d4]`} />
-            Ngày rời đi: {student.check_out_date ? formatDate(student.check_out_date) : "Đang ở"}
+            {isPendingPayment ? "Ngày dự kiến rời:" : "Ngày rời đi:"} {student.check_out_date ? formatDate(student.check_out_date) : isActive ? "Đang ở" : "--"}
           </p>
         ) : null}
         {size === "lg" ? (
           <>
             <p className={`flex items-center gap-1.5 leading-relaxed text-[#7c8fb5] ${metaClass}`}>
               <CalendarDays className={`${metaIconClass} shrink-0 text-[#9bb0d4]`} />
-              Ngày rời đi: {currentOccupancy ? (modalCheckOutDate ? formatDate(modalCheckOutDate) : "Đang ở") : "--"}
+              {isPendingPayment ? "Ngày dự kiến rời:" : "Ngày rời đi:"} {currentOccupancy ? (modalCheckOutDate ? formatDate(modalCheckOutDate) : isActive ? "Đang ở" : "--") : "--"}
             </p>
             <span className={`mt-2 inline-flex w-fit rounded-full border px-3 py-1 text-xs font-bold ${residencyBadge.className}`}>
               {residencyBadge.label}

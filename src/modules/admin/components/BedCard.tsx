@@ -1,4 +1,4 @@
-import { ArrowDownToLine, ArrowUpToLine, BedDouble, CheckCircle2, Eye, TriangleAlert } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, BedDouble, CheckCircle2, Clock3, Eye, TriangleAlert } from "lucide-react";
 import type { BedDetail } from "../../../api/roomApi";
 import StudentMiniInfo from "./StudentMiniInfo";
 
@@ -23,6 +23,12 @@ const statusMeta: Record<BedDetail["display_status"], BedCardStatusMeta> = {
       "border-[#bfd2ee] bg-[linear-gradient(180deg,#f5f9ff_0%,#e8f1ff_100%)] hover:border-[#9ebce5]",
     Icon: BedDouble,
   },
+  reserved: {
+    label: "Chờ thanh toán",
+    badgeClass: "border-amber-200 bg-amber-100 text-amber-700",
+    cardClass: "border-amber-200 bg-[linear-gradient(180deg,#fffdf5_0%,#fff7dc_100%)] hover:border-amber-300",
+    Icon: Clock3,
+  },
   maintenance: {
     label: "Bảo trì",
     badgeClass: "border-amber-200 bg-amber-50 text-amber-700",
@@ -45,8 +51,8 @@ export default function BedCard({ bed, onEdit, onViewStudent }: BedCardProps) {
   const StatusIcon = meta.Icon;
   const PositionIcon = bed.position === "bottom" ? ArrowDownToLine : ArrowUpToLine;
   const positionLabel = bed.position === "bottom" ? "Tầng dưới" : "Tầng trên";
-  const isOccupied = displayStatus === "occupied" && bed.student;
-  const canEdit = displayStatus !== "occupied" && Boolean(onEdit);
+  const hasStudent = (displayStatus === "occupied" || displayStatus === "reserved") && bed.student;
+  const canEdit = displayStatus === "empty" && Boolean(onEdit);
 
   return (
     <div
@@ -89,9 +95,14 @@ export default function BedCard({ bed, onEdit, onViewStudent }: BedCardProps) {
         </span>
       </div>
 
-      {isOccupied ? (
+      {hasStudent ? (
         <div className="mt-3 border-t border-white/70 pt-3">
           <StudentMiniInfo student={bed.student!} />
+          {displayStatus === "reserved" ? (
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+              Đã chọn giường, chưa thanh toán.
+            </div>
+          ) : null}
           {onViewStudent ? (
             <button
               type="button"

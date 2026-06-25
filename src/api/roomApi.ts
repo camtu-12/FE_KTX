@@ -161,7 +161,7 @@ export const transferBedOccupancy = async (
 
 // ----- Danh sách giường kèm thông tin sinh viên (GET /rooms/{roomId}/beds) -----
 
-export type BedDetailStatus = "empty" | "occupied" | "maintenance";
+export type BedDetailStatus = "empty" | "reserved" | "occupied" | "maintenance";
 export type BedDetailPhysicalStatus = "active" | "maintenance";
 export type BedDetailPosition = "top" | "bottom";
 
@@ -295,7 +295,7 @@ const normalizeBedDetail = (bed: ApiBedDetail): BedDetail => {
   const rawStudent = bed.student ?? null;
   const rawDisplayStatus = String(bed.display_status ?? "").toLowerCase();
   const displayStatus: BedDetailStatus =
-    rawDisplayStatus === "occupied" || rawDisplayStatus === "empty" || rawDisplayStatus === "maintenance"
+    rawDisplayStatus === "occupied" || rawDisplayStatus === "reserved" || rawDisplayStatus === "empty" || rawDisplayStatus === "maintenance"
       ? rawDisplayStatus
       : status === "occupied"
         ? "occupied"
@@ -311,7 +311,7 @@ const normalizeBedDetail = (bed: ApiBedDetail): BedDetail => {
     position,
     status: physicalStatus,
     display_status: displayStatus,
-    occupied: displayStatus === "occupied" || Boolean(bed.occupied),
+    occupied: displayStatus === "occupied" || displayStatus === "reserved" || Boolean(bed.occupied),
     transfer_history: Array.isArray(bed.transfer_history) ? bed.transfer_history : [],
     maintenance_history: Array.isArray(bed.maintenance_history) ? bed.maintenance_history : [],
     maintenance_assignment: bed.maintenance_assignment

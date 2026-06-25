@@ -150,6 +150,15 @@ const documentFieldConfigs: Array<{ field: DocumentField }> = [
   { field: "cccdBackPhoto" },
 ];
 
+const acceptedDocumentTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const maxDocumentFileSize = 2 * 1024 * 1024;
+
+const uploadFieldToDocumentField: Record<string, DocumentField> = {
+  avatar: "portraitPhoto",
+  cccd_front: "cccdFrontPhoto",
+  cccd_back: "cccdBackPhoto",
+};
+
 const initialDocumentFiles: Record<DocumentField, File | null> = {
   portraitPhoto: null,
   cccdFrontPhoto: null,
@@ -636,8 +645,22 @@ export default function RegistrationPage() {
   };
 
   const setDocumentFile = (fieldName: DocumentField, nextFile: File) => {
-    if (!nextFile.type.startsWith("image/")) {
-      setDocumentErrors((prev) => ({ ...prev, [fieldName]: "Vui lòng chọn tệp ảnh hợp lệ" }));
+    const clearRejectedDocument = (message: string) => {
+      setDocumentFiles((prev) => ({ ...prev, [fieldName]: null }));
+      setBlurStatus((prev) => ({ ...prev, [fieldName]: null }));
+      setDocumentErrors((prev) => ({ ...prev, [fieldName]: message }));
+      if (documentRefs.current[fieldName]) {
+        documentRefs.current[fieldName]!.value = "";
+      }
+    };
+
+    if (!acceptedDocumentTypes.has(nextFile.type)) {
+      clearRejectedDocument("Ảnh phải có định dạng JPG, JPEG, PNG hoặc WEBP.");
+      return;
+    }
+
+    if (nextFile.size > maxDocumentFileSize) {
+      clearRejectedDocument("Ảnh vượt quá 2 MB. Vui lòng chọn ảnh có dung lượng nhỏ hơn.");
       return;
     }
 
@@ -1035,14 +1058,38 @@ export default function RegistrationPage() {
         const responseData = response?.data;
 
         if (responseData) {
+          const responseErrors = responseData.errors as Record<string, unknown> | undefined;
+          const nextDocumentErrors: Partial<Record<DocumentField, string>> = {};
+
+          if (responseErrors) {
+            Object.entries(uploadFieldToDocumentField).forEach(([uploadField, documentField]) => {
+              const rawMessages = responseErrors[uploadField];
+              const firstMessage = Array.isArray(rawMessages) ? rawMessages[0] : rawMessages;
+
+              if (typeof firstMessage !== "string") {
+                return;
+              }
+
+              nextDocumentErrors[documentField] = firstMessage.toLowerCase().includes("failed to upload")
+                ? `Không thể tải ${documentLabels[documentField].toLowerCase()} lên. Vui lòng kiểm tra dung lượng ảnh không vượt quá 2 MB rồi chọn lại.`
+                : firstMessage;
+            });
+          }
+
+          if (Object.keys(nextDocumentErrors).length > 0) {
+            setDocumentErrors((prev) => ({ ...prev, ...nextDocumentErrors }));
+            setSubmitError("Vui lòng kiểm tra lại lỗi tại phần hồ sơ ảnh đính kèm.");
+            return;
+          }
+
           const message = responseData.message;
           if (typeof message === "string") {
             setSubmitError(message);
             return;
           }
 
-          const validationMessages = responseData.errors
-            ? Object.values(responseData.errors as Record<string, unknown>).flat().filter(Boolean)
+          const validationMessages = responseErrors
+            ? Object.values(responseErrors).flat().filter(Boolean)
             : [];
 
           if (validationMessages.length > 0) {

@@ -171,6 +171,7 @@ function getBedPositionLabel(position?: BedPosition | BedDetail["position"] | nu
 
 function getBedStatusLabel(status?: BedStatus | BedDetail["status"] | BedDetail["display_status"] | null) {
   if (status === "MAINTENANCE" || status === "maintenance") return "Bảo trì";
+  if (status === "reserved") return "Chờ thanh toán";
   if (status === "occupied") return "Có người";
   if (status === "empty") return "Trống";
   return "Hoạt động";
