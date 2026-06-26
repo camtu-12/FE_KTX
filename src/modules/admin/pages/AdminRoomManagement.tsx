@@ -183,6 +183,9 @@ function getHistoryReasonLabel(reason?: string | null) {
   if (reason === "BED_MAINTENANCE_RETURN") return "Quay lại sau bảo trì giường";
   if (reason === "ROOM_MAINTENANCE_RETURN") return "Quay lại sau bảo trì phòng";
   if (reason === "admin_transfer_bed") return "Chuyển giường";
+  if (reason === "student_room_change_request") return "Đổi phòng theo yêu cầu sinh viên";
+  if (reason === "student_bed_change_request") return "Đổi giường theo yêu cầu sinh viên";
+  if (reason === "student_roommate_request") return "Ở cùng bạn theo yêu cầu sinh viên";
   return reason || "—";
 }
 

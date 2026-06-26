@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   AlertCircle,
+  ArrowRight,
   BadgeCheck,
   BedDouble,
   Bell,
@@ -12,6 +13,7 @@ import {
   Car,
   ClipboardCheck,
   CreditCard,
+  Droplets,
   FileCheck2,
   FileText,
   Flame,
@@ -19,11 +21,14 @@ import {
   Mail,
   MapPin,
   Phone,
+  ShieldCheck,
   Users,
   Utensils,
+  X,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import heroBanner from "../../../assets/tuade.png";
+import dormImage from "../../../assets/ktx.png";
 import {
   getRegistrationPeriods,
   type RegistrationPeriodData,
@@ -50,6 +55,21 @@ type ContactItem = {
   icon: LucideIcon;
   label: string;
   value: string;
+};
+
+type IntroTabKey = "overview" | "facilities" | "eligibility" | "rules" | "contact";
+
+type IntroTab = {
+  id: IntroTabKey;
+  label: string;
+  title: string;
+  body: string[];
+};
+
+type IntroStat = {
+  icon: LucideIcon;
+  value: string;
+  label: string;
 };
 
 const announcements: Announcement[] = [
@@ -191,6 +211,61 @@ const footerContacts: ContactItem[] = [
   },
 ];
 
+const introTabs: IntroTab[] = [
+  {
+    id: "overview",
+    label: "Giới thiệu",
+    title: "Môi trường lưu trú dành cho sinh viên STU",
+    body: [
+      "Ký túc xá STU hỗ trợ sinh viên có nhu cầu lưu trú trong quá trình học tập tại trường.",
+      "Hệ thống trực tuyến giúp sinh viên đăng ký nội trú, theo dõi xét duyệt, chọn giường và quản lý các thông tin lưu trú quan trọng.",
+    ],
+  },
+  {
+    id: "facilities",
+    label: "Cơ sở vật chất",
+    title: "Không gian sinh hoạt thiết yếu",
+    body: [
+      "KTX được quản lý theo tòa, tầng, phòng và giường để thuận tiện cho phân phòng, theo dõi tình trạng lưu trú và bảo trì.",
+      "Các khu vực sinh hoạt chung, căn tin, bãi xe, khu tự học và camera an ninh hỗ trợ nhu cầu học tập, nghỉ ngơi hằng ngày.",
+    ],
+  },
+  {
+    id: "eligibility",
+    label: "Đối tượng đăng ký",
+    title: "Sinh viên đủ điều kiện nội trú",
+    body: [
+      "Sinh viên STU đang theo học, có nhu cầu ở ký túc xá và đáp ứng quy định xét duyệt của từng đợt đăng ký có thể nộp hồ sơ trực tuyến.",
+      "Những trường hợp có minh chứng ưu tiên cần cập nhật đầy đủ để hệ thống hỗ trợ xét duyệt chính xác.",
+    ],
+  },
+  {
+    id: "rules",
+    label: "Quy định lưu trú",
+    title: "Nếp sống an toàn và có trách nhiệm",
+    body: [
+      "Sinh viên nội trú cần tuân thủ quy định về giờ giấc, vệ sinh, an toàn phòng cháy chữa cháy và bảo quản tài sản chung.",
+      "Các yêu cầu hỗ trợ, đổi phòng, đổi giường, gia hạn hoặc thanh toán được thực hiện trên hệ thống để ban quản lý tiếp nhận và xử lý.",
+    ],
+  },
+  {
+    id: "contact",
+    label: "Liên hệ",
+    title: "Thông tin hỗ trợ",
+    body: [
+      "Ban quản lý KTX tiếp nhận hỗ trợ trong khung giờ làm việc qua điện thoại, email hoặc trực tiếp tại khu ký túc xá.",
+      "Sinh viên nên theo dõi thông báo trên hệ thống để không bỏ lỡ các mốc đăng ký, thanh toán và gia hạn lưu trú.",
+    ],
+  },
+];
+
+const introStats: IntroStat[] = [
+  { icon: Building2, value: "01", label: "Tòa nhà" },
+  { icon: BedDouble, value: "42", label: "Giường" },
+  { icon: Droplets, value: "Miễn phí", label: "Nước sinh hoạt" },
+  { icon: ShieldCheck, value: "24/24", label: "Bảo vệ" },
+];
+
 const surfaceClassName =
   "rounded-[32px] border border-white/80 bg-white/92 shadow-[0_24px_72px_rgba(17,40,97,0.14)] backdrop-blur-xl transition-[transform,box-shadow,border-color,background-color] duration-300 ease-out";
 
@@ -244,6 +319,9 @@ function SectionHeading({
 export default function HomePage() {
   const pageRef = useRef<HTMLDivElement>(null);
   const [activePeriod, setActivePeriod] = useState<RegistrationPeriodData | null>(null);
+  const [isIntroModalOpen, setIsIntroModalOpen] = useState(false);
+  const [activeIntroTab, setActiveIntroTab] = useState<IntroTabKey>("overview");
+  const activeIntroContent = introTabs.find((tab) => tab.id === activeIntroTab) ?? introTabs[0];
 
   useEffect(() => {
     getRegistrationPeriods()
@@ -257,6 +335,19 @@ export default function HomePage() {
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!isIntroModalOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsIntroModalOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isIntroModalOpen]);
 
   useEffect(() => {
     const container = pageRef.current;
@@ -314,6 +405,129 @@ export default function HomePage() {
 
           </div>
         </section>
+
+        {isIntroModalOpen ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-[#081636]/55 px-4 py-6 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="intro-modal-title"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) {
+                setIsIntroModalOpen(false);
+              }
+            }}
+          >
+            <div className="max-h-[88vh] w-full max-w-[900px] overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-[0_28px_80px_rgba(8,22,54,0.28)]">
+              <div className="flex items-center justify-between border-b border-[#e6edf8] px-5 py-4 sm:px-6">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--color-primary-hover)]">
+                    KTX STU
+                  </p>
+                  <h3 id="intro-modal-title" className="mt-1 text-lg font-extrabold text-[var(--color-title)]">
+                    Tìm hiểu ký túc xá
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsIntroModalOpen(false)}
+                  className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[#d9e4f4] bg-white text-[#6f84ad] transition-all duration-300 ease-out hover:border-[#c8d8f0] hover:text-[var(--color-primary)] hover:shadow-[0_12px_24px_rgba(17,40,97,0.10)]"
+                  aria-label="Đóng"
+                >
+                  <X size={19} strokeWidth={2.2} />
+                </button>
+              </div>
+
+              <div className="grid max-h-[calc(88vh-78px)] overflow-y-auto md:grid-cols-[240px_1fr]">
+                <nav className="border-b border-[#e6edf8] bg-[#f7faff] p-4 md:border-b-0 md:border-r">
+                  <div className="grid gap-2">
+                    {introTabs.map((tab) => {
+                      const isActive = tab.id === activeIntroTab;
+
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setActiveIntroTab(tab.id)}
+                          className={`rounded-2xl px-4 py-3 text-left text-sm font-bold transition-all duration-300 ease-out ${
+                            isActive
+                              ? "bg-white text-[var(--color-primary)] shadow-[0_12px_24px_rgba(17,40,97,0.10)]"
+                              : "text-[#62789f] hover:bg-white/70 hover:text-[var(--color-primary)]"
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </nav>
+
+                <div className="p-5 sm:p-7">
+                  <h4 className="text-[1.35rem] font-extrabold leading-tight text-[var(--color-title)]">
+                    {activeIntroContent.title}
+                  </h4>
+                  <div className="mt-4 space-y-4 text-[0.98rem] leading-7 text-[var(--color-content)]">
+                    {activeIntroContent.body.map((paragraph) => (
+                      <p key={paragraph}>{paragraph}</p>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <section
+          data-reveal
+          className="auth-reveal is-visible"
+          style={revealStyle(60)}
+        >
+          <article className={`${surfaceClassName} overflow-hidden p-4 sm:p-5 lg:p-6`}>
+            <div className="grid gap-6">
+              <div className="flex flex-col justify-center px-1 py-2 sm:px-2 lg:px-6">
+                <h2 className="text-[1.65rem] font-extrabold leading-tight text-[var(--color-title)] sm:text-[2rem]">
+                  Giới thiệu tổng quan về Hệ thống Quản lý Ký túc xá STU
+                </h2>
+                <p className="mt-4 max-w-2xl text-[1rem] leading-7 text-[var(--color-content)]">
+                  Ký túc xá STU mang đến môi trường lưu trú an toàn, thuận tiện cho sinh viên trong suốt quá trình học tập. Hệ thống hỗ trợ đăng ký nội trú và quản lý lưu trú trực tuyến.
+                </p>
+                <Link
+                  to="/about"
+                  className="mt-6 inline-flex w-fit items-center gap-2 rounded-full bg-[var(--color-primary)] px-5 py-3 text-sm font-bold text-white shadow-[0_14px_28px_rgba(36,76,184,0.22)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:bg-[var(--color-primary-hover)] hover:shadow-[0_18px_34px_rgba(36,76,184,0.28)]"
+                >
+                  Tìm hiểu thêm
+                  <ArrowRight size={17} strokeWidth={2.2} />
+                </Link>
+              </div>
+            </div>
+          </article>
+
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {introStats.map((item, index) => {
+              const Icon = item.icon;
+
+              return (
+                <article
+                  key={item.label}
+                  data-reveal
+                  style={revealStyle(110 + index * 60)}
+                  className="rounded-[18px] border border-[#d9e4f4] bg-white p-5 shadow-[0_12px_26px_rgba(17,40,97,0.06)] transition-all duration-300 ease-out hover:-translate-y-1 hover:border-[#c8d8f0] hover:shadow-[0_20px_40px_rgba(17,40,97,0.12)]"
+                >
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#eef3ff_0%,#f5f9ff_100%)] text-[var(--color-primary)] shadow-[0_10px_20px_rgba(36,76,184,0.08)]">
+                    <Icon size={22} strokeWidth={2.1} />
+                  </div>
+                  <div className="mt-4 text-[1.65rem] font-extrabold leading-none text-[var(--color-title)]">
+                    {item.value}
+                  </div>
+                  <div className="mt-2 text-sm font-bold text-[var(--color-content)]">
+                    {item.label}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+
         <section
           data-reveal
           className="auth-reveal is-visible"

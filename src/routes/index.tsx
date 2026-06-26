@@ -31,6 +31,7 @@ import AdminRoomFeePage from "../modules/admin/pages/AdminRoomFeePage";
 import LoginPage from "../modules/auth/pages/LoginPage";
 import RegisterPage from "../modules/auth/pages/RegisterPage";
 import AboutPage from "../modules/public/pages/AboutPage";
+import AdminContentAboutPage from "../modules/admin/pages/AdminContentAboutPage";
 import ApplicationDocumentsPage from "../modules/public/pages/ApplicationDocumentsPage";
 import ContactPage from "../modules/public/pages/ContactPage";
 import EligibilityPage from "../modules/public/pages/EligibilityPage";
@@ -94,6 +95,7 @@ export default function AppRoutes() {
           <Route path="rooms" element={<AdminRoomManagement />} />
           <Route path="buildings" element={<AdminBuildingManagement />} />
           <Route path="buildings/:buildingCode" element={<AdminBuildingDetailPage />} />
+          <Route path="content/about" element={<AdminContentAboutPage />} />
         </Route>
 
         <Route

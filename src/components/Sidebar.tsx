@@ -7,6 +7,7 @@ import {
   ClipboardList,
   CreditCard,
   DoorOpen,
+  FileText,
   FilePenLine,
   History,
   Hotel,
@@ -120,8 +121,11 @@ const adminMenu: MenuItem[] = [
     to: "/admin/rooms",
     icon: School,
   },
-  
-  
+  {
+    label: "Quản lý nội dung",
+    to: "/admin/content/about",
+    icon: FileText,
+  },
 ];
 
 const studentMenu: MenuItem[] = [

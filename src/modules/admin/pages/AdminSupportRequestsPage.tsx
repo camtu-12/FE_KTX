@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { useOutletContext, useSearchParams } from "react-router-dom";
 import {
   listAdminSupportRequests,
-  updateAdminSupportRequestStatus,
+  processSupportRequest,
   type SupportRequestStatus,
   type SupportRequestType,
   type StudentSupportRequest,
@@ -210,8 +210,7 @@ export default function AdminSupportRequestsPage() {
     if (!processItem) return;
     setIsSaving(true);
     try {
-      await updateAdminSupportRequestStatus(processItem.id, {
-        status,
+      await processSupportRequest(processItem.id, status === "approved" ? "approve" : "reject", {
         admin_note: adminNote.trim() || undefined,
       });
       setProcessItem(null);
