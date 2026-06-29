@@ -38,6 +38,8 @@ export default function AdminLayout() {
     location.pathname === "/admin/occupancy-periods";
   const isRoomManagementPage = location.pathname === "/admin/rooms";
   const isBuildingManagementPage = location.pathname === "/admin/buildings";
+  const isAdmissionCandidatePage = location.pathname === "/admin/admission-candidates";
+  const isDormReservationPage = location.pathname === "/admin/dorm-reservations";
   const isSearchEnabled =
     isRegistrationsPage ||
     isAssignRoomListPage ||
@@ -48,14 +50,20 @@ export default function AdminLayout() {
     isSupportRequestPage ||
     isExtensionPage ||
     isRoomManagementPage ||
-    isBuildingManagementPage;
+    isBuildingManagementPage ||
+    isAdmissionCandidatePage ||
+    isDormReservationPage;
   const searchPlaceholder = isRoomManagementPage
     ? "Tìm theo số phòng..."
     : isBuildingManagementPage
       ? "Tìm theo mã, tên hoặc địa chỉ tòa..."
-      : isAssignRoomListPage || isBedManagementPage || isOccupancyManagementPage || isViolationManagementPage || isPaymentManagementPage || isSupportRequestPage || isExtensionPage
-        ? "Tìm theo MSSV hoặc họ tên"
-        : "Tìm theo MSSV, họ tên hoặc email";
+      : isAdmissionCandidatePage
+      ? "Tìm mã hồ sơ, họ tên, CCCD, email, SĐT..."
+      : isDormReservationPage
+        ? "Tìm mã giữ chỗ, mã hồ sơ, họ tên, CCCD..."
+        : isAssignRoomListPage || isBedManagementPage || isOccupancyManagementPage || isViolationManagementPage || isPaymentManagementPage || isSupportRequestPage || isExtensionPage
+          ? "Tìm theo MSSV hoặc họ tên"
+          : "Tìm theo MSSV, họ tên hoặc email";
 
   const handleLogout = () => {
     clearAuthStorage();

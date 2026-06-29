@@ -28,7 +28,6 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import heroBanner from "../../../assets/tuade.png";
-import dormImage from "../../../assets/ktx.png";
 import {
   getRegistrationPeriods,
   type RegistrationPeriodData,

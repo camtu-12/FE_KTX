@@ -32,6 +32,9 @@ import LoginPage from "../modules/auth/pages/LoginPage";
 import RegisterPage from "../modules/auth/pages/RegisterPage";
 import AboutPage from "../modules/public/pages/AboutPage";
 import AdminContentAboutPage from "../modules/admin/pages/AdminContentAboutPage";
+import AdmissionCandidateManagementPage from "../modules/admin/pages/AdmissionCandidateManagementPage";
+import DormReservationManagementPage from "../modules/admin/pages/DormReservationManagementPage";
+import FreshmanReservationPage from "../modules/public/pages/FreshmanReservationPage";
 import ApplicationDocumentsPage from "../modules/public/pages/ApplicationDocumentsPage";
 import ContactPage from "../modules/public/pages/ContactPage";
 import EligibilityPage from "../modules/public/pages/EligibilityPage";
@@ -62,6 +65,7 @@ export default function AppRoutes() {
           <Route path="dieu-kien-noi-tru" element={<EligibilityPage />} />
           <Route path="ho-so-can-chuan-bi" element={<ApplicationDocumentsPage />} />
           <Route path="quy-trinh-xet-duyet" element={<RegistrationProcessPage />} />
+          <Route path="freshman-reservation" element={<FreshmanReservationPage />} />
         </Route>
 
         <Route path="/login" element={<LoginPage />} />
@@ -96,6 +100,8 @@ export default function AppRoutes() {
           <Route path="buildings" element={<AdminBuildingManagement />} />
           <Route path="buildings/:buildingCode" element={<AdminBuildingDetailPage />} />
           <Route path="content/about" element={<AdminContentAboutPage />} />
+          <Route path="admission-candidates" element={<AdmissionCandidateManagementPage />} />
+          <Route path="dorm-reservations" element={<DormReservationManagementPage />} />
         </Route>
 
         <Route

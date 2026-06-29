@@ -163,11 +163,11 @@ export default function RegistrationStatusCard({ period }: Props) {
       {status === "active" ? (
         <div className="mt-5 flex justify-end">
           <Link
-            to="/register"
+            to={period.allow_admission_candidates ? "/freshman-reservation" : "/register"}
             className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-extrabold text-white shadow-[0_10px_24px_rgba(0,0,0,0.12)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_16px_32px_rgba(0,0,0,0.18)]"
             style={{ backgroundColor: cfg.accent }}
           >
-            Đăng ký ngay
+            {period.allow_admission_candidates ? "Đăng ký giữ chỗ" : "Đăng ký ngay"}
             <ArrowRight size={15} />
           </Link>
         </div>

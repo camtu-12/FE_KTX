@@ -50,6 +50,22 @@ const statusMeta: Record<PaymentStatus, { label: string; className: string }> = 
 
 const getTodayValue = () => new Date().toISOString().slice(0, 10);
 
+const QUARTER_MONTHS: Record<string, number[]> = {
+  "1": [1, 2, 3],
+  "2": [4, 5, 6],
+  "3": [7, 8, 9],
+  "4": [10, 11, 12],
+};
+
+const getQuarterFromMonth = (month: number) => Math.ceil(month / 3);
+
+const BILLING_RULES = [
+  "Thu tiền theo quý (3 tháng/lần).",
+  "Vào giữa tháng: đóng full tháng đó + tiền cả quý tiếp theo.",
+  "Không hoàn tiền khi sinh viên rời ký túc xá trước hạn.",
+  "Rời vào tháng 11 (quý 4): không hoàn tiền tháng 12.",
+];
+
 const parseMoneyValue = (value: string) => {
   const normalized = value.replace(/\D/g, "");
   const parsed = Number(normalized);
@@ -94,7 +110,7 @@ export default function PaymentManagementPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [roomForm, setRoomForm] = useState({
-    month: String(new Date().getMonth() + 1),
+    quarter: String(getQuarterFromMonth(new Date().getMonth() + 1)),
     year: String(new Date().getFullYear()),
     amount: "",
     dueDate: getTodayValue(),
@@ -211,12 +227,17 @@ export default function PaymentManagementPage() {
     setIsSubmitting(true);
 
     try {
-      await generateRoomFeeBills({
-        month: Number(roomForm.month),
-        year: Number(roomForm.year),
-        amount,
-        due_date: roomForm.dueDate,
-      });
+      const months = QUARTER_MONTHS[roomForm.quarter] ?? [];
+      const firstMonth = months[0];
+      if (firstMonth) {
+        // 1 hóa đơn duy nhất mỗi quý, số tiền nhập vào là số tiền/quý
+        await generateRoomFeeBills({
+          month: firstMonth,
+          year: Number(roomForm.year),
+          amount,
+          due_date: roomForm.dueDate,
+        });
+      }
       await loadData();
     } catch {
       setErrorMessage("Không thể tạo hóa đơn tiền phòng. Vui lòng kiểm tra dữ liệu.");
@@ -360,9 +381,12 @@ export default function PaymentManagementPage() {
             <div className="mt-4 space-y-4">
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block">
-                  <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Tháng</span>
-                  <select value={roomForm.month} onChange={(event) => setRoomForm((current) => ({ ...current, month: event.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10">
-                    {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => <option key={month} value={month}>Tháng {month}</option>)}
+                  <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Quý</span>
+                  <select value={roomForm.quarter} onChange={(event) => setRoomForm((current) => ({ ...current, quarter: event.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10">
+                    <option value="1">Quý 1 (Tháng 1–3)</option>
+                    <option value="2">Quý 2 (Tháng 4–6)</option>
+                    <option value="3">Quý 3 (Tháng 7–9)</option>
+                    <option value="4">Quý 4 (Tháng 10–12)</option>
                   </select>
                 </label>
                 <label className="block">
@@ -387,21 +411,34 @@ export default function PaymentManagementPage() {
               </label>
               <button type="submit" disabled={isSubmitting} className="auth-btn-gloss inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#244cb8] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(36,76,184,0.24)] disabled:opacity-60">
                 <Plus className="h-4 w-4" />
-                <span className="auth-btn-gloss__content">Tạo hóa đơn</span>
+                <span className="auth-btn-gloss__content">Tạo hóa đơn quý</span>
               </button>
+
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <p className="mb-1.5 text-xs font-bold uppercase tracking-[0.10em] text-amber-700">Quy tắc thu tiền</p>
+                <ul className="space-y-1">
+                  {BILLING_RULES.map((rule) => (
+                    <li key={rule} className="flex items-start gap-1.5 text-xs font-semibold text-amber-800">
+                      <span className="mt-0.5 shrink-0">•</span>
+                      <span>{rule}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           </form>
 
           <BillTable
             isLoading={isLoading}
-            headings={["Sinh viên", "Phòng", "Kỳ", "Số tiền", "Hạn đóng", "Trạng thái", "Hành động"]}
+            headings={["Sinh viên", "Phòng", "Quý", "Số tiền", "Miễn/Giảm", "Hạn đóng", "Trạng thái", "Hành động"]}
             rows={visibleRoomBills.map((bill) => ({
               key: `room-${bill.id}`,
               cells: [
                 <StudentCell key="student" student={bill.student} />,
                 formatRoomName(bill.room),
-                `Tháng ${bill.month}/${bill.year}`,
-                moneyFormatter.format(bill.amount),
+                `Quý ${getQuarterFromMonth(bill.month)}/${bill.year}`,
+                <RoomFeeAmountCell key="amount" bill={bill} />,
+                <DiscountCell key="discount" discountPercent={bill.discountPercent} discountReason={bill.discountReason} />,
                 formatDate(bill.dueDate),
                 <StatusBadge key="status" status={bill.status} />,
                 bill.status === "paid" ? "-" : <ConfirmButton key="confirm" onClick={() => openConfirm({ source: "room", id: bill.id, name: bill.student?.fullName || "hóa đơn" })} />,
@@ -534,6 +571,34 @@ function StudentCell({ student }: { student: RoomFeeBill["student"] }) {
     <div>
       <p className="font-bold text-[#1f3152]">{student?.fullName || "-"}</p>
       <p className="mt-1 text-xs font-semibold text-[#6f84ad]">{student?.studentCode || "-"}</p>
+    </div>
+  );
+}
+
+function RoomFeeAmountCell({ bill }: { bill: RoomFeeBill }) {
+  const hasDiscount = (bill.discountPercent ?? 0) > 0 && (bill.originalAmount ?? 0) > 0;
+  return (
+    <div className="text-sm">
+      {hasDiscount ? (
+        <>
+          <p className="text-xs text-[#9aafcf] line-through">{moneyFormatter.format(bill.originalAmount!)}</p>
+          <p className="font-bold text-[#1f3152]">{moneyFormatter.format(bill.amount)}</p>
+        </>
+      ) : (
+        <p className="font-bold text-[#1f3152]">{moneyFormatter.format(bill.amount)}</p>
+      )}
+    </div>
+  );
+}
+
+function DiscountCell({ discountPercent, discountReason }: { discountPercent: number | null; discountReason: string | null }) {
+  if (!discountPercent || discountPercent <= 0) {
+    return <span className="text-sm text-[#9aafcf]">-</span>;
+  }
+  return (
+    <div className="text-sm">
+      <p className="font-bold text-emerald-600">Giảm {discountPercent}%</p>
+      {discountReason ? <p className="text-xs text-[#6f84ad]">{discountReason}</p> : null}
     </div>
   );
 }

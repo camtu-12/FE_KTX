@@ -124,6 +124,9 @@ export type RegistrationPeriodPayload = {
   bed_selection_days?: number | null;
   processing_days?: number | null;
   initial_payment_due_days?: number | null;
+  round_number?: number | null;
+  allow_admission_candidates?: boolean;
+  requires_student_code?: boolean;
 };
 
 export type RegistrationPeriodData = RegistrationPeriodPayload & {
@@ -136,6 +139,9 @@ export type RegistrationPeriodData = RegistrationPeriodPayload & {
   reject_proposal_count?: number;
   review_count?: number;
   pending_criteria_count?: number;
+  allow_admission_candidates?: boolean;
+  requires_student_code?: boolean;
+  round_number?: number | null;
   created_at?: string;
   updated_at?: string;
 };

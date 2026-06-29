@@ -112,6 +112,9 @@ const emptyForm: RegistrationPeriodPayload = {
   bed_selection_days: null,
   processing_days: null,
   initial_payment_due_days: null,
+  round_number: null,
+  allow_admission_candidates: false,
+  requires_student_code: true,
 };
 
 type FormError = Partial<Record<keyof RegistrationPeriodPayload, string>>;
@@ -372,6 +375,9 @@ export default function AdminRegistrationPeriodsPage() {
       bed_selection_days: period.bed_selection_days ?? null,
       processing_days: period.processing_days ?? null,
       initial_payment_due_days: period.initial_payment_due_days ?? null,
+      round_number: period.round_number ?? null,
+      allow_admission_candidates: period.allow_admission_candidates ?? false,
+      requires_student_code: period.requires_student_code ?? true,
     });
     setFormErrors({});
     setApiError(null);
@@ -1134,6 +1140,35 @@ export default function AdminRegistrationPeriodsPage() {
                       </div>
                     </div>
                   </>
+
+                  {/* Tân sinh viên */}
+                  <div className="rounded-xl border border-[#cfdcf0] bg-[#f7faff] p-2.5">
+                    <p className="mb-2 text-xs font-semibold text-[#324B76]">Cài đặt tân sinh viên</p>
+                    <div className="space-y-2.5">
+                      <label className="flex cursor-pointer items-center gap-2.5">
+                        <input
+                          type="checkbox"
+                          checked={form.allow_admission_candidates ?? false}
+                          onChange={(e) => setForm((prev) => ({ ...prev, allow_admission_candidates: e.target.checked }))}
+                          className="h-4 w-4 rounded border-[#cfdcf0] accent-[#244cb8]"
+                        />
+                        <span className="text-xs font-semibold text-[#324B76]">
+                          Cho phép tân sinh viên chưa có MSSV đăng ký
+                        </span>
+                      </label>
+                      <label className="flex cursor-pointer items-center gap-2.5">
+                        <input
+                          type="checkbox"
+                          checked={form.requires_student_code ?? true}
+                          onChange={(e) => setForm((prev) => ({ ...prev, requires_student_code: e.target.checked }))}
+                          className="h-4 w-4 rounded border-[#cfdcf0] accent-[#244cb8]"
+                        />
+                        <span className="text-xs font-semibold text-[#324B76]">
+                          Yêu cầu MSSV khi đăng ký
+                        </span>
+                      </label>
+                    </div>
+                  </div>
               </div>
 
               </div>

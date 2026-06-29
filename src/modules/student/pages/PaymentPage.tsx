@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { CalendarDays, CreditCard, Zap } from "lucide-react";
+import { CalendarDays, CreditCard, MapPin, Receipt, Zap } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { confirmFreeRoomFeeBill, createVnpayPayment, getStudentPayments, verifyVnpayPayment, type PaymentStatus, type StudentPaymentItem, type StudentPayments } from "../../../api/paymentApi";
@@ -19,11 +19,11 @@ const statusMeta: Record<PaymentStatus, { label: string; className: string }> = 
   },
   paid: {
     label: "Đã thanh toán",
-    className: "border border-emerald-200 bg-emerald-50 text-emerald-700",
+    className: "border border-green-200 bg-green-50 text-green-700",
   },
   overdue: {
     label: "Quá hạn",
-    className: "border border-rose-200 bg-rose-50 text-rose-700",
+    className: "border border-gray-200 bg-gray-100 text-gray-700",
   },
 };
 
@@ -34,11 +34,42 @@ const formatPeriodMonth = (value: string) => {
   return month && year ? `${month}/${year}` : value;
 };
 
+const parsePeriod = (value: string): { month: number; year: number } | null => {
+  const dash = value.match(/^(\d{4})-(\d{1,2})$/);
+  if (dash) return { year: Number(dash[1]), month: Number(dash[2]) };
+  const thang = value.match(/[Tt]háng\s+(\d{1,2})\/(\d{4})/);
+  if (thang) return { month: Number(thang[1]), year: Number(thang[2]) };
+  return null;
+};
+
+type QuarterGroup = { key: string; label: string; items: StudentPaymentItem[]; total: number };
+
+const groupByQuarter = (items: StudentPaymentItem[]): QuarterGroup[] => {
+  const map = new Map<string, QuarterGroup>();
+  for (const item of items) {
+    const p = parsePeriod(item.period);
+    const q = p ? Math.ceil(p.month / 3) : 0;
+    const year = p?.year ?? 0;
+    const key = `${year}-Q${q}`;
+    const label = p ? `Quý ${q}/${year}` : item.period;
+    if (!map.has(key)) map.set(key, { key, label, items: [], total: 0 });
+    const group = map.get(key)!;
+    group.items.push(item);
+    group.total += item.amount;
+  }
+  return Array.from(map.values()).sort((a, b) => b.key.localeCompare(a.key));
+};
+
 const getRoomLabel = (room: StudentPaymentItem["room"]) => (room ? `${room.buildingCode}${room.roomNumber}` : "-");
 
 function StatusBadge({ status }: { status: PaymentStatus }) {
   return (
-    <span className={`inline-flex items-center rounded-full px-3 py-1.5 text-xs font-bold ${statusMeta[status].className}`}>
+    <span className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold ${statusMeta[status].className}`}>
+      <span
+        className={`h-2.5 w-2.5 rounded-full ${
+          status === "paid" ? "bg-green-600" : status === "unpaid" ? "bg-amber-500" : "bg-gray-500"
+        }`}
+      />
       {statusMeta[status].label}
     </span>
   );
@@ -46,8 +77,8 @@ function StatusBadge({ status }: { status: PaymentStatus }) {
 
 function BillIcon({ source }: { source: StudentPaymentItem["source"] }) {
   return (
-    <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[#c8d8ef] bg-white text-[#244cb8] shadow-[0_10px_20px_rgba(36,76,184,0.12)]">
-      {source === "electricity" ? <Zap className="h-5 w-5" /> : <CreditCard className="h-5 w-5" />}
+    <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-600 shadow-sm">
+      {source === "electricity" ? <Zap className="h-6 w-6" /> : <Receipt className="h-6 w-6" />}
     </span>
   );
 }
@@ -297,21 +328,89 @@ export default function PaymentPage() {
         ))}
       </div>
 
-      <PaymentSection
-        title="HÓA ĐƠN CẦN THANH TOÁN"
-        items={activeTabData.unpaidItems}
-        emptyText={activeTabData.unpaidEmptyText}
-        payingKey={payingKey}
-        onPayOnline={handleVnpayPayment}
-        onConfirmFree={handleConfirmFree}
-      />
-
-      <PaymentSection
-        title="LỊCH SỬ THANH TOÁN"
-        items={activeTabData.paidItems}
-        emptyText={activeTabData.paidEmptyText}
-      />
+      {activeTab === "room_fee" ? (
+        <>
+          <QuarterGroupedSection
+            title="HÓA ĐƠN CẦN THANH TOÁN"
+            groups={groupByQuarter(unpaidRoomFeeItems)}
+            emptyText="Không có hóa đơn tiền phòng cần thanh toán."
+            payingKey={payingKey}
+            onPayOnline={handleVnpayPayment}
+            onConfirmFree={handleConfirmFree}
+          />
+          <QuarterGroupedSection
+            title="LỊCH SỬ THANH TOÁN"
+            groups={groupByQuarter(paidRoomFeeItems)}
+            emptyText="Chưa có lịch sử thanh toán tiền phòng."
+          />
+        </>
+      ) : (
+        <>
+          <PaymentSection
+            title="HÓA ĐƠN CẦN THANH TOÁN"
+            items={unpaidElectricityItems}
+            emptyText="Không có hóa đơn tiền điện cần thanh toán."
+            payingKey={payingKey}
+            onPayOnline={handleVnpayPayment}
+            onConfirmFree={handleConfirmFree}
+          />
+          <PaymentSection
+            title="LỊCH SỬ THANH TOÁN"
+            items={paidElectricityItems}
+            emptyText="Chưa có lịch sử thanh toán tiền điện."
+          />
+        </>
+      )}
     </motion.section>
+  );
+}
+
+function QuarterGroupedSection({
+  title,
+  groups,
+  emptyText,
+  payingKey,
+  onPayOnline,
+  onConfirmFree,
+}: {
+  title: string;
+  groups: QuarterGroup[];
+  emptyText: string;
+  payingKey?: string;
+  onPayOnline?: (item: StudentPaymentItem) => void;
+  onConfirmFree?: (item: StudentPaymentItem) => void;
+}) {
+  return (
+    <section className="rounded-[26px] border border-gray-200 bg-white p-5 shadow-sm">
+      <h2 className="text-2xl font-bold text-gray-900">{title}</h2>
+      <div className="mt-5 space-y-5">
+        {groups.length ? (
+          groups.map((group) => (
+            <div key={group.key} className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+              <div className="flex min-h-[44px] items-center justify-between gap-4 border-b border-gray-200 bg-gray-100 px-5 py-2.5">
+                <span className="text-base font-bold text-gray-900">{group.label}</span>
+                <span className="text-sm font-bold text-gray-700">Tổng: {moneyFormatter.format(group.total)}</span>
+              </div>
+              <div className="space-y-4 p-4">
+                {group.items.map((item) => (
+                  <PaymentItemCard
+                    key={`${item.source}-${item.id}`}
+                    item={item}
+                    isPaying={payingKey === `${item.source}-${item.id}`}
+                    onPayOnline={onPayOnline}
+                    onConfirmFree={onConfirmFree}
+                  />
+                ))}
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm font-semibold text-gray-500">
+            {emptyText}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -379,41 +478,74 @@ function PaymentItemCard({
 
   const hasDiscount = item.source === "room_fee" && (item.discountPercent ?? 0) > 0 && (item.originalAmount ?? 0) > 0;
   const isFree = item.source === "room_fee" && item.amount === 0;
+  const originalAmount = hasDiscount ? item.originalAmount! : item.amount;
+  const discountAmount = hasDiscount ? item.originalAmount! - item.amount : 0;
+  const displayTitle = (() => {
+    if (item.source !== "room_fee") return item.title;
+    const p = parsePeriod(item.period);
+    return p ? `Tiền phòng Quý ${Math.ceil(p.month / 3)}/${p.year}` : item.title;
+  })();
 
   return (
-    <article className="rounded-[22px] border border-[#d6e2f1] bg-white p-4 shadow-[0_14px_30px_rgba(36,76,184,0.10)]">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex gap-3">
-          <BillIcon source={item.source} />
-          <div>
-            <h3 className="text-lg font-bold text-[#1f3152]">{item.title}</h3>
-            <p className="mt-1 text-sm font-semibold text-[#6f84ad]">
-              Phòng {item.room ? `${item.room.buildingCode}${item.room.roomNumber}` : "-"} · Hạn thanh toán {formatDate(item.dueDate)}
-            </p>
+    <article className="rounded-3xl border border-gray-200 bg-white p-5 shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg sm:p-7">
+      <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(200px,32%)] md:items-center">
+        <div className="min-w-0 space-y-4">
+          <div className="flex min-w-0 items-start gap-5">
+            <BillIcon source={item.source} />
+            <div className="min-w-0 space-y-3">
+              <h3 className="text-3xl font-bold leading-tight text-gray-700">{displayTitle}</h3>
+              <div className="space-y-2 text-base font-medium text-gray-500">
+                <span className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-blue-600/70" />
+                  Phòng {item.room ? `${item.room.buildingCode}${item.room.roomNumber}` : "-"}
+                </span>
+                <span className="flex items-center gap-2">
+                  <CalendarDays className="h-4 w-4 text-blue-600/70" />
+                  Hạn thanh toán {formatDate(item.dueDate)}
+                </span>
+              </div>
+              {item.status === "paid" ? (
+                <p className="text-base font-medium text-gray-500">
+                  Đã thanh toán: {item.paidAt ? formatDate(item.paidAt) : "-"} · {item.paymentMethod || "-"} {item.transactionCode ? `· ${item.transactionCode}` : ""}
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="max-w-xl space-y-3 pl-0 sm:pl-[4.75rem]">
+            <div className="flex items-center justify-between gap-6 text-base font-medium text-gray-600">
+              <span>Giá gốc</span>
+              <span>{moneyFormatter.format(originalAmount)}</span>
+            </div>
             {hasDiscount ? (
-              <p className="mt-1 text-sm font-semibold text-emerald-600">
-                Miễn/giảm {item.discountPercent}% · {item.discountReason ?? "Diện ưu tiên"}
-              </p>
+              <div className="flex items-center justify-between gap-6 text-base font-semibold text-green-600">
+                <span>
+                  Giảm {item.discountPercent}%{item.discountReason ? ` (${item.discountReason})` : ""}
+                </span>
+                <span>-{moneyFormatter.format(discountAmount)}</span>
+              </div>
             ) : null}
-            {item.status === "paid" ? (
-              <p className="mt-1 text-sm font-semibold text-[#6f84ad]">
-                Đã thanh toán: {item.paidAt ? formatDate(item.paidAt) : "-"} · {item.paymentMethod || "-"} {item.transactionCode ? `· ${item.transactionCode}` : ""}
-              </p>
-            ) : null}
+            <div className="border-t border-gray-200 pt-4">
+              <div className="flex items-end justify-between gap-6">
+                <span className="text-lg font-extrabold text-gray-700">Tổng phải trả</span>
+                <span className="text-2xl font-extrabold text-blue-600">{moneyFormatter.format(item.amount)}</span>
+              </div>
+            </div>
           </div>
         </div>
-        <div className="flex flex-col items-start gap-2 sm:items-end">
-          {hasDiscount ? (
-            <p className="text-sm font-semibold text-[#9aafcf] line-through">{moneyFormatter.format(item.originalAmount!)}</p>
-          ) : null}
-          <p className="text-xl font-bold text-[#244cb8]">{moneyFormatter.format(item.amount)}</p>
+
+        <div className="flex flex-col items-start justify-center gap-4 rounded-3xl border border-blue-100 bg-blue-50 p-6 shadow-sm transition-all duration-300 hover:-translate-y-0.5 md:items-center md:text-center">
           <StatusBadge status={item.status} />
+          <div className="space-y-1.5">
+            <p className="text-sm font-medium text-gray-500">Tổng phải thanh toán</p>
+            <p className="text-5xl font-extrabold tracking-tight text-blue-600">{moneyFormatter.format(item.amount)}</p>
+          </div>
           {item.status !== "paid" && isFree && onConfirmFree ? (
             <button
               type="button"
               onClick={() => onConfirmFree(item)}
               disabled={isPaying}
-              className="inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-[0_12px_24px_rgba(5,150,105,0.22)] transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-green-600 px-5 text-sm font-semibold text-white shadow-sm transition-all duration-300 hover:scale-[1.02] hover:shadow-lg active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 md:w-[220px]"
             >
               {isPaying ? "Đang xác nhận..." : "Xác nhận miễn phí"}
             </button>
@@ -422,7 +554,7 @@ function PaymentItemCard({
               type="button"
               onClick={() => onPayOnline(item)}
               disabled={isPaying}
-              className="inline-flex items-center gap-2 rounded-2xl bg-[#244cb8] px-4 py-2 text-sm font-bold text-white shadow-[0_12px_24px_rgba(36,76,184,0.22)] transition hover:bg-[#1d3f9e] disabled:cursor-not-allowed disabled:opacity-70"
+              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm transition-all duration-300 hover:scale-[1.02] hover:shadow-lg active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 md:w-[220px]"
             >
               <CreditCard className="h-4 w-4" />
               {isPaying ? "Đang tạo..." : "Thanh toán VNPay"}

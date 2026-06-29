@@ -9,6 +9,7 @@ import {
   DoorOpen,
   FileText,
   FilePenLine,
+  GraduationCap,
   History,
   Hotel,
   LayoutDashboard,
@@ -122,6 +123,14 @@ const adminMenu: MenuItem[] = [
     icon: School,
   },
   {
+    label: "Tân sinh viên",
+    icon: GraduationCap,
+    children: [
+      { label: "Hồ sơ trúng tuyển", to: "/admin/admission-candidates" },
+      { label: "Hồ sơ giữ chỗ KTX", to: "/admin/dorm-reservations" },
+    ],
+  },
+  {
     label: "Quản lý nội dung",
     to: "/admin/content/about",
     icon: FileText,
@@ -182,10 +191,13 @@ export default function Sidebar({ role }: SidebarProps) {
   const isPaymentGroupActive = location.pathname.startsWith("/admin/payments");
   const isExtensionGroupActive =
     location.pathname === "/admin/extensions" || location.pathname === "/admin/occupancy-periods";
+  const isFreshmanGroupActive =
+    location.pathname === "/admin/admission-candidates" || location.pathname === "/admin/dorm-reservations";
   const [isRegistrationGroupOpen, setIsRegistrationGroupOpen] = useState(isRegistrationGroupActive);
   const [isViolationGroupOpen, setIsViolationGroupOpen] = useState(isViolationGroupActive);
   const [isPaymentGroupOpen, setIsPaymentGroupOpen] = useState(isPaymentGroupActive);
   const [isExtensionGroupOpen, setIsExtensionGroupOpen] = useState(isExtensionGroupActive);
+  const [isFreshmanGroupOpen, setIsFreshmanGroupOpen] = useState(isFreshmanGroupActive);
 
   useEffect(() => {
     if (role !== "student") {
@@ -250,6 +262,7 @@ export default function Sidebar({ role }: SidebarProps) {
               const isPaymentGroup = item.label === "Quản lý thanh toán";
               const isViolationGroup = item.label === "Quản lý hoạt động";
               const isExtensionGroup = item.label === "Gia hạn lưu trú";
+              const isFreshmanGroup = item.label === "Tân sinh viên";
               const isOpen = isRegistrationGroup
                 ? isRegistrationGroupOpen || isRegistrationGroupActive
                 : isViolationGroup
@@ -258,7 +271,9 @@ export default function Sidebar({ role }: SidebarProps) {
                     ? isPaymentGroupOpen || isPaymentGroupActive
                     : isExtensionGroup
                       ? isExtensionGroupOpen || isExtensionGroupActive
-                      : false;
+                      : isFreshmanGroup
+                        ? isFreshmanGroupOpen || isFreshmanGroupActive
+                        : false;
               const isGroupActive =
                 item.children.some((child) => child.to === location.pathname) ||
                 (isPaymentGroup && isPaymentGroupActive);
@@ -280,6 +295,9 @@ export default function Sidebar({ role }: SidebarProps) {
                       }
                       if (isExtensionGroup) {
                         setIsExtensionGroupOpen((current) => !current);
+                      }
+                      if (isFreshmanGroup) {
+                        setIsFreshmanGroupOpen((current) => !current);
                       }
                     }}
                     className={[

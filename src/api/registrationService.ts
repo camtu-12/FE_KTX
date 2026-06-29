@@ -81,7 +81,8 @@ const toPublicAssetUrl = (value?: string | null) => {
 
   // Only build URLs for relative paths
   const normalized = String(value).replace(/^\/+/, "");
-  const cleanPath = normalized.replace(/^(api\/|storage\/)/, '');
+  // Strip optional 'api/' prefix AND 'storage/' prefix together
+  const cleanPath = normalized.replace(/^(?:api\/)?storage\//, "");
   
   // Local development
   if (!API_BASE.includes('railway.app')) {
