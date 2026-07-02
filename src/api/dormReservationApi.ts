@@ -486,7 +486,6 @@ export const rankDormReservations = async (
   free_beds: number;
   approved: number;
   waitlist: number;
-  pending_priority_count: number;
 }> => {
   const res = await API.post("/admin/dorm-reservations/rank", {
     registration_period_id: registrationPeriodId,
@@ -496,7 +495,6 @@ export const rankDormReservations = async (
     free_beds: number;
     approved: number;
     waitlist: number;
-    pending_priority_count: number;
   };
 };
 

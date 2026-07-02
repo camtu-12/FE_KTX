@@ -11,7 +11,7 @@ const http = axios.create({
   },
 });
 
-export type PaymentStatus = "unpaid" | "paid" | "overdue";
+export type PaymentStatus = "unpaid" | "paid" | "overdue" | "exempted";
 
 export type PaymentStudent = {
   id: number;
@@ -33,11 +33,15 @@ export type RoomFeeBill = {
   registrationId: number;
   month: number;
   year: number;
+  isQuarterly: boolean;
   amount: number;
   originalAmount: number | null;
   discountPercent: number | null;
   discountAmount: number;
   discountReason: string | null;
+  adminNote: string | null;
+  exemptedBy: string | null;
+  exemptedAt: string | null;
   createdAt: string;
   dueDate: string;
   paymentMethod: string;
@@ -84,6 +88,7 @@ export type StudentPaymentItem = {
   source: "room_fee" | "electricity";
   title: string;
   period: string;
+  isQuarterly?: boolean;
   amount: number;
   originalAmount?: number | null;
   discountPercent?: number | null;
@@ -153,11 +158,15 @@ type ApiRoomFeeBill = {
   registration_id?: number | string | null;
   month?: number | string | null;
   year?: number | string | null;
+  is_quarterly?: boolean | null;
   amount?: number | string | null;
   original_amount?: number | string | null;
   discount_percent?: number | string | null;
   discount_amount?: number | string | null;
   discount_reason?: string | null;
+  admin_note?: string | null;
+  exempted_by?: string | null;
+  exempted_at?: string | null;
   created_at?: string | null;
   due_date?: string | null;
   payment_method?: string | null;
@@ -192,6 +201,7 @@ type ApiStudentPaymentItem = {
   source?: string | null;
   title?: string | null;
   period?: string | null;
+  is_quarterly?: boolean | null;
   amount?: number | string | null;
   original_amount?: number | string | null;
   discount_percent?: number | string | null;
@@ -230,6 +240,7 @@ const normalizeStatus = (status: string | null | undefined): PaymentStatus => {
   const value = (status ?? "unpaid").trim().toLowerCase();
   if (value === "paid") return "paid";
   if (value === "overdue") return "overdue";
+  if (value === "exempted") return "exempted";
   return "unpaid";
 };
 
@@ -259,11 +270,15 @@ const normalizeRoomFeeBill = (item: ApiRoomFeeBill): RoomFeeBill => ({
   registrationId: toNumber(item.registration_id),
   month: toNumber(item.month),
   year: toNumber(item.year),
+  isQuarterly: item.is_quarterly !== false,
   amount: toNumber(item.amount),
   originalAmount: item.original_amount != null ? toNumber(item.original_amount) : null,
   discountPercent: item.discount_percent != null ? toNumber(item.discount_percent) : null,
   discountAmount: toNumber(item.discount_amount),
   discountReason: item.discount_reason ?? null,
+  adminNote: item.admin_note ?? null,
+  exemptedBy: item.exempted_by ?? null,
+  exemptedAt: item.exempted_at ?? null,
   createdAt: item.created_at ?? "",
   dueDate: item.due_date ?? "",
   paymentMethod: item.payment_method ?? "",
@@ -353,6 +368,72 @@ export const confirmRoomFeePayment = async (
   return normalizeRoomFeeBill(response.data);
 };
 
+export const exemptRoomFeeBill = async (id: number, payload: { admin_note?: string; exempted_by?: string }): Promise<RoomFeeBill> => {
+  const response = await http.put<ApiRoomFeeBill>(`/room-fee-bills/${id}/exempt`, payload);
+  return normalizeRoomFeeBill(response.data);
+};
+
+export const applyOneTimeDiscount = async (
+  id: number,
+  payload: { discount_percent: number; reason?: string },
+): Promise<RoomFeeBill> => {
+  const response = await http.put<ApiRoomFeeBill>(`/room-fee-bills/${id}/apply-discount`, payload);
+  return normalizeRoomFeeBill(response.data);
+};
+
+export type PaymentPlanType = "installment" | "discount";
+
+export type StudentPaymentPlan = {
+  id: number;
+  studentId: number;
+  type: PaymentPlanType;
+  isActive: boolean;
+  discountPercent: number | null;
+  reason: string | null;
+  activatedAt: string | null;
+  deactivatedAt: string | null;
+};
+
+type ApiStudentPaymentPlan = {
+  id: number;
+  student_id?: number | string | null;
+  type?: string | null;
+  is_active?: boolean | number | null;
+  discount_percent?: number | string | null;
+  reason?: string | null;
+  activated_at?: string | null;
+  deactivated_at?: string | null;
+};
+
+const normalizePaymentPlan = (item: ApiStudentPaymentPlan): StudentPaymentPlan => ({
+  id: toNumber(item.id),
+  studentId: toNumber(item.student_id),
+  type: item.type === "discount" ? "discount" : "installment",
+  isActive: Boolean(item.is_active),
+  discountPercent: item.discount_percent != null ? toNumber(item.discount_percent) : null,
+  reason: item.reason ?? null,
+  activatedAt: item.activated_at ?? null,
+  deactivatedAt: item.deactivated_at ?? null,
+});
+
+export const listStudentPaymentPlans = async (studentId: number): Promise<StudentPaymentPlan[]> => {
+  const response = await http.get<ApiStudentPaymentPlan[]>(`/admin/students/${studentId}/payment-plans`);
+  return Array.isArray(response.data) ? response.data.map(normalizePaymentPlan) : [];
+};
+
+export const createStudentPaymentPlan = async (
+  studentId: number,
+  payload: { type: PaymentPlanType; discount_percent?: number; reason?: string },
+): Promise<StudentPaymentPlan> => {
+  const response = await http.post<ApiStudentPaymentPlan>(`/admin/students/${studentId}/payment-plans`, payload);
+  return normalizePaymentPlan(response.data);
+};
+
+export const deactivateStudentPaymentPlan = async (id: number): Promise<StudentPaymentPlan> => {
+  const response = await http.put<ApiStudentPaymentPlan>(`/admin/payment-plans/${id}/deactivate`, {});
+  return normalizePaymentPlan(response.data);
+};
+
 export const confirmFreeRoomFeeBill = async (id: number, email: string): Promise<StudentPaymentItem> => {
   const response = await http.post<ApiStudentPaymentItem>(`/student/payments/room-fee-bills/${id}/confirm-free`, { email });
   const item = response.data;
@@ -361,6 +442,7 @@ export const confirmFreeRoomFeeBill = async (id: number, email: string): Promise
     source: "room_fee",
     title: item.title ?? "",
     period: item.period ?? "",
+    isQuarterly: item.is_quarterly !== false,
     amount: toNumber(item.amount),
     originalAmount: item.original_amount != null ? toNumber(item.original_amount) : null,
     discountPercent: item.discount_percent != null ? toNumber(item.discount_percent) : null,
@@ -427,6 +509,7 @@ export const getStudentPayments = async (email: string): Promise<StudentPayments
         source: item.source === "electricity" ? "electricity" : "room_fee",
         title: item.title ?? "",
         period: item.period ?? "",
+        isQuarterly: item.is_quarterly !== false,
         amount: toNumber(item.amount),
         originalAmount: item.original_amount != null ? toNumber(item.original_amount) : null,
         discountPercent: item.discount_percent != null ? toNumber(item.discount_percent) : null,

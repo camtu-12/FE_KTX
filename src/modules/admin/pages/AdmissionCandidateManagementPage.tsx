@@ -3,11 +3,10 @@ import {
   AlertCircle,
   CheckCircle2,
   ChevronDown,
-  Download,
+  Eye,
   FileSpreadsheet,
   GraduationCap,
   Loader2,
-  Plus,
   RefreshCw,
   Trash2,
   Upload,
@@ -15,15 +14,13 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useOutletContext } from "react-router-dom";
 import {
   bulkEnrollCandidates,
-  createAdminCandidate,
   deleteAdminCandidate,
-  downloadEnrollTemplate,
   enrollCandidate,
   getAdminCandidates,
-  updateAdminCandidate,
   type AdmissionCandidate,
   type BulkEnrollResult,
   type CandidatePayload,
@@ -31,27 +28,24 @@ import {
   type EnrollPayload,
 } from "../../../api/admissionCandidateApi";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
+import { formatDate } from "../../../utils/dateFormat";
 
 const primaryBtn =
   "inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_45%,#31b7d4_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(36,76,184,0.20)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50";
 const secondaryBtn =
   "inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#fff_0%,#f5f9ff_100%)] px-4 text-sm font-semibold text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.09)] transition hover:-translate-y-0.5 disabled:opacity-50";
-const dangerBtn =
-  "inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 text-sm font-semibold text-rose-700 transition hover:-translate-y-0.5 disabled:opacity-50";
 const inputCls =
   "w-full rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-3 py-1.5 text-sm text-[#1f3152] focus:border-[#244cb8] focus:outline-none";
+const iconBtn =
+  "inline-flex h-12 w-12 items-center justify-center rounded-xl border border-[#bfd2ec] bg-white text-[#244cb8] shadow-[0_10px_22px_rgba(36,76,184,0.08)] transition duration-200 hover:-translate-y-0.5 hover:border-[#9ebce5] hover:bg-[#f3f8ff]";
+const deleteIconBtn =
+  "inline-flex h-12 w-12 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-600 shadow-[0_10px_22px_rgba(244,63,94,0.08)] transition duration-200 hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60";
 
 const STATUS_LABELS: Record<CandidateStatus, string> = {
   admitted: "Trúng tuyển",
   enrolled: "Đã nhập học",
   cancelled: "Đã huỷ",
 };
-const STATUS_COLORS: Record<CandidateStatus, string> = {
-  admitted: "border-blue-200 bg-blue-50 text-blue-700",
-  enrolled: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  cancelled: "border-rose-200 bg-rose-50 text-rose-700",
-};
-
 type FormErrors = Partial<Record<string, string>>;
 
 const emptyPayload: CandidatePayload = {
@@ -108,12 +102,10 @@ export default function AdmissionCandidateManagementPage() {
   const [apiError, setApiError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
 
-  // create/edit modal
+  // detail modal
   const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<CandidatePayload>(emptyPayload);
   const [formErrors, setFormErrors] = useState<FormErrors>({});
-  const [saving, setSaving] = useState(false);
 
   // enroll modal
   const [enrollTarget, setEnrollTarget] = useState<AdmissionCandidate | null>(null);
@@ -130,7 +122,6 @@ export default function AdmissionCandidateManagementPage() {
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkResult, setBulkResult] = useState<BulkEnrollResult | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
-  const [templateLoading, setTemplateLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const showToast = (type: "success" | "error", msg: string) => {
@@ -160,17 +151,8 @@ export default function AdmissionCandidateManagementPage() {
 
   useEffect(() => { void load(1); }, [load]);
 
-  // ── Create / Edit ──────────────────────────────────────────────────────────
-  const openCreate = () => {
-    setEditingId(null);
-    setForm(emptyPayload);
-    setFormErrors({});
-    setApiError(null);
-    setShowForm(true);
-  };
-
-  const openEdit = (c: AdmissionCandidate) => {
-    setEditingId(c.id);
+  // ── Detail ────────────────────────────────────────────────────────────────
+  const openDetail = (c: AdmissionCandidate) => {
     setForm({
       admission_code: c.admissionCode,
       expected_student_code: c.expectedStudentCode,
@@ -192,42 +174,6 @@ export default function AdmissionCandidateManagementPage() {
     setShowForm(true);
   };
 
-  const handleSave = async () => {
-    const errs: FormErrors = {};
-    if (!form.admission_code.trim()) errs.admission_code = "Bắt buộc.";
-    if (!form.full_name.trim()) errs.full_name = "Bắt buộc.";
-    if (!form.date_of_birth) errs.date_of_birth = "Bắt buộc.";
-    if (Object.keys(errs).length) { setFormErrors(errs); return; }
-
-    setSaving(true);
-    setApiError(null);
-    try {
-      if (editingId !== null) {
-        const updated = await updateAdminCandidate(editingId, form);
-        setCandidates((prev) => prev.map((c) => (c.id === editingId ? updated : c)));
-        showToast("success", "Đã cập nhật hồ sơ thí sinh.");
-      } else {
-        const created = await createAdminCandidate(form);
-        setCandidates((prev) => [created, ...prev]);
-        setTotal((t) => t + 1);
-        showToast("success", "Đã thêm hồ sơ thí sinh.");
-      }
-      setShowForm(false);
-    } catch (err: unknown) {
-      const data = (err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } })?.response?.data;
-      const fe = data?.errors;
-      if (fe) {
-        const mapped: FormErrors = {};
-        for (const [k, v] of Object.entries(fe)) mapped[k] = Array.isArray(v) ? v[0] : String(v);
-        setFormErrors(mapped);
-      } else {
-        setApiError(data?.message ?? "Lưu thất bại.");
-      }
-    } finally {
-      setSaving(false);
-    }
-  };
-
   // ── Delete ─────────────────────────────────────────────────────────────────
   const handleDelete = async (id: number) => {
     setDeletingId(id);
@@ -245,19 +191,6 @@ export default function AdmissionCandidateManagementPage() {
   };
 
   // ── Enroll ─────────────────────────────────────────────────────────────────
-  const openEnroll = (c: AdmissionCandidate) => {
-    setEnrollTarget(c);
-    setEnrollForm({
-      ...emptyEnroll,
-      student_code: c.expectedStudentCode ?? "",
-      email: c.email,
-      phone: c.phone,
-      permanent_address: c.permanentAddress,
-      course_year: c.courseYear,
-    });
-    setEnrollErrors({});
-  };
-
   const handleEnroll = async () => {
     const errs: FormErrors = {};
     if (!enrollForm.student_code.trim()) errs.student_code = "Bắt buộc.";
@@ -300,17 +233,6 @@ export default function AdmissionCandidateManagementPage() {
     setBulkError(null);
   };
 
-  const handleDownloadTemplate = async () => {
-    setTemplateLoading(true);
-    try {
-      await downloadEnrollTemplate();
-    } catch {
-      showToast("error", "Không thể tải template.");
-    } finally {
-      setTemplateLoading(false);
-    }
-  };
-
   const handleBulkSubmit = async () => {
     if (!bulkFile) return;
     setBulkLoading(true);
@@ -343,6 +265,8 @@ export default function AdmissionCandidateManagementPage() {
       />
     </FieldGroup>
   );
+
+  const detailInputCls = `${inputCls} disabled:cursor-default disabled:bg-[#f7faff] disabled:text-[#1f3152] disabled:opacity-100`;
 
   return (
     <motion.section
@@ -431,56 +355,66 @@ export default function AdmissionCandidateManagementPage() {
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-base font-bold text-[#1a2d52]">{c.fullName}</span>
-                    <span className={`rounded-lg border px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[c.status]}`}>
-                      {STATUS_LABELS[c.status]}
-                    </span>
-                  </div>
+                  <p className="text-base font-bold text-[#1a2d52]">{c.fullName}</p>
                   <p className="mt-0.5 font-mono text-xs text-[#62789f]">{c.admissionCode}</p>
-                  <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-[#7c8fb5]">
-                    <span>Ngày sinh: <strong className="text-[#1f3152]">{c.dateOfBirth}</strong></span>
-                    {c.majorName && <span>Ngành: <strong className="text-[#1f3152]">{c.majorName}</strong></span>}
-                    {c.courseYear && <span>Khoá: <strong className="text-[#1f3152]">{c.courseYear}</strong></span>}
-                    {c.phone && <span>SĐT: <strong className="text-[#1f3152]">{c.phone}</strong></span>}
-                  </div>
-                  {c.status === "enrolled" && c.student && (
-                    <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                      MSSV: {c.student.studentCode} — {c.student.fullName}
-                    </div>
-                  )}
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
                   {c.status === "admitted" && (
                     <>
-                      <button type="button" onClick={() => openEdit(c)} className={`${secondaryBtn} h-9 px-3 text-xs`}>
-                        Sửa
+                      <button
+                        type="button"
+                        onClick={() => openDetail(c)}
+                        className={iconBtn}
+                        aria-label="Xem chi tiết"
+                        title="Xem chi tiết"
+                      >
+                        <Eye className="h-5 w-5 stroke-[2.25]" aria-hidden="true" />
                       </button>
                       <button
                         type="button"
                         disabled={deletingId === c.id}
                         onClick={() => void handleDelete(c.id)}
-                        className={`${dangerBtn} h-9 px-3 text-xs`}
+                        className={deleteIconBtn}
+                        aria-label="Xóa hồ sơ"
+                        title="Xóa hồ sơ"
                       >
-                        {deletingId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                        {deletingId === c.id ? <Loader2 className="h-5 w-5 animate-spin" /> : <Trash2 className="h-5 w-5" />}
                       </button>
                     </>
                   )}
                   {c.status === "enrolled" && (
-                    <button type="button" onClick={() => openEdit(c)} className={`${secondaryBtn} h-9 px-3 text-xs`}>
-                      Xem / Sửa
+                    <button
+                      type="button"
+                      onClick={() => openDetail(c)}
+                      className={iconBtn}
+                      aria-label="Xem chi tiết"
+                      title="Xem chi tiết"
+                    >
+                      <Eye className="h-5 w-5 stroke-[2.25]" aria-hidden="true" />
                     </button>
                   )}
                   {c.status === "cancelled" && (
-                    <button
-                      type="button"
-                      disabled={deletingId === c.id}
-                      onClick={() => void handleDelete(c.id)}
-                      className={`${dangerBtn} h-9 px-3 text-xs`}
-                    >
-                      {deletingId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Xóa
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => openDetail(c)}
+                        className={iconBtn}
+                        aria-label="Xem chi tiết"
+                        title="Xem chi tiết"
+                      >
+                        <Eye className="h-5 w-5 stroke-[2.25]" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deletingId === c.id}
+                        onClick={() => void handleDelete(c.id)}
+                        className={deleteIconBtn}
+                        aria-label="Xóa hồ sơ"
+                        title="Xóa hồ sơ"
+                      >
+                        {deletingId === c.id ? <Loader2 className="h-5 w-5 animate-spin" /> : <Trash2 className="h-5 w-5" />}
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -510,17 +444,18 @@ export default function AdmissionCandidateManagementPage() {
       )}
 
       {/* ── Bulk Import Modal ── */}
-      <AnimatePresence>
-        {showBulkModal && (
+      {createPortal(
+        <AnimatePresence>
+          {showBulkModal && (
           <motion.div
             key="bulk-overlay"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-3"
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-3"
             onClick={() => { if (!bulkLoading) setShowBulkModal(false); }}
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.96, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 16 }}
-              className="flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-[24px] border border-[#c1d6f4] bg-white shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
+              className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-[24px] border border-[#c1d6f4] bg-white shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
@@ -532,44 +467,6 @@ export default function AdmissionCandidateManagementPage() {
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 [scrollbar-gutter:stable] space-y-4">
-                {/* Instructions */}
-                <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800 space-y-1">
-                  <p className="font-semibold text-sm">Danh sách sinh viên từ phòng đào tạo (.xlsx, .xls)</p>
-                  <p>Hàng đầu tiên là tiêu đề cột. Tối đa 1000 dòng mỗi lần import.</p>
-                  <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-0.5">
-                    <span className="font-semibold text-blue-900">Cột bắt buộc:</span><span />
-                    <span><code className="rounded bg-blue-100 px-1">student_code</code></span><span>MSSV</span>
-                    <span><code className="rounded bg-blue-100 px-1">full_name</code></span><span>Họ và tên</span>
-                    <span><code className="rounded bg-blue-100 px-1">date_of_birth</code></span><span>Ngày sinh (YYYY-MM-DD)</span>
-                    <span><code className="rounded bg-blue-100 px-1">class_name</code></span><span>Lớp</span>
-                    <span className="font-semibold text-blue-900 mt-1">Cột không bắt buộc:</span><span />
-                    <span><code className="rounded bg-blue-100 px-1">gender</code></span><span>Giới tính (male / female)</span>
-                    <span><code className="rounded bg-blue-100 px-1">faculty</code></span><span>Khoa</span>
-                    <span><code className="rounded bg-blue-100 px-1">course_year</code></span><span>Khoá học (vd: 2026-2030)</span>
-                    <span><code className="rounded bg-blue-100 px-1">email</code></span><span>Email</span>
-                    <span><code className="rounded bg-blue-100 px-1">phone</code></span><span>SĐT</span>
-                    <span><code className="rounded bg-blue-100 px-1">cccd</code></span><span>CCCD (tự động liên kết hồ sơ giữ chỗ)</span>
-                    <span><code className="rounded bg-blue-100 px-1">cccd_issued_date</code></span><span>Ngày cấp CCCD</span>
-                    <span><code className="rounded bg-blue-100 px-1">cccd_issued_place</code></span><span>Nơi cấp CCCD</span>
-                    <span><code className="rounded bg-blue-100 px-1">nationality</code></span><span>Quốc tịch</span>
-                    <span><code className="rounded bg-blue-100 px-1">ethnicity</code></span><span>Dân tộc</span>
-                    <span><code className="rounded bg-blue-100 px-1">religion</code></span><span>Tôn giáo</span>
-                    <span><code className="rounded bg-blue-100 px-1">permanent_address</code></span><span>Địa chỉ thường trú</span>
-                  </div>
-                  <p className="mt-2 text-blue-700">Nếu cột <code className="rounded bg-blue-100 px-1">cccd</code> khớp với hồ sơ giữ chỗ KTX, hệ thống tự động liên kết và cập nhật trạng thái nhập học.</p>
-                </div>
-
-                {/* Template download */}
-                <button
-                  type="button"
-                  disabled={templateLoading}
-                  onClick={() => void handleDownloadTemplate()}
-                  className={`${secondaryBtn} w-full justify-center`}
-                >
-                  {templateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                  Tải file template mẫu
-                </button>
-
                 {/* File input */}
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-[#324B76]">Chọn file Excel</label>
@@ -674,16 +571,19 @@ export default function AdmissionCandidateManagementPage() {
               </div>
             </motion.div>
           </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
 
-      {/* ── Create/Edit Modal ── */}
-      <AnimatePresence>
-        {showForm && (
+      {/* ── Detail Modal ── */}
+      {createPortal(
+        <AnimatePresence>
+          {showForm && (
           <motion.div
             key="form-overlay"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-3"
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-3"
             onClick={() => setShowForm(false)}
           >
             <motion.div
@@ -692,9 +592,7 @@ export default function AdmissionCandidateManagementPage() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex shrink-0 items-center justify-between border-b border-[#eef3fb] px-5 py-3">
-                <h2 className="text-lg font-bold text-[#1a2d52]">
-                  {editingId !== null ? "Sửa hồ sơ thí sinh" : "Thêm hồ sơ thí sinh"}
-                </h2>
+                <h2 className="text-lg font-bold text-[#1a2d52]">Chi tiết hồ sơ trúng tuyển</h2>
                 <button type="button" onClick={() => setShowForm(false)} className="text-[#7c8fb5] hover:text-[#1a2d52]">
                   <X className="h-5 w-5" />
                 </button>
@@ -705,18 +603,18 @@ export default function AdmissionCandidateManagementPage() {
                 )}
                 <div className="space-y-3">
                   <FieldGroup label="Mã hồ sơ trúng tuyển *" error={formErrors.admission_code}>
-                    <input type="text" value={form.admission_code} onChange={(e) => setForm((p) => ({ ...p, admission_code: e.target.value }))} className={inputCls} placeholder="01_TT_XTS_GBTT_00319" disabled={editingId !== null} />
+                    <input type="text" value={form.admission_code} onChange={(e) => setForm((p) => ({ ...p, admission_code: e.target.value }))} className={detailInputCls} placeholder="01_TT_XTS_GBTT_00319" disabled />
                   </FieldGroup>
                   <FieldGroup label="Họ và tên *" error={formErrors.full_name}>
-                    <input type="text" value={form.full_name} onChange={(e) => setForm((p) => ({ ...p, full_name: e.target.value }))} className={inputCls} />
+                    <input type="text" value={form.full_name} onChange={(e) => setForm((p) => ({ ...p, full_name: e.target.value }))} className={detailInputCls} disabled />
                   </FieldGroup>
                   <div className="grid grid-cols-2 gap-3">
                     <FieldGroup label="Ngày sinh *" error={formErrors.date_of_birth}>
-                      <input type="date" value={form.date_of_birth} onChange={(e) => setForm((p) => ({ ...p, date_of_birth: e.target.value }))} className={inputCls} />
+                      <input type="text" value={formatDate(form.date_of_birth)} readOnly className={detailInputCls} disabled />
                     </FieldGroup>
                     <FieldGroup label="Giới tính" error={formErrors.gender}>
                       <div className="relative">
-                        <select value={form.gender ?? ""} onChange={(e) => setForm((p) => ({ ...p, gender: (e.target.value as "male" | "female") || null }))} className={`${inputCls} appearance-none pr-7`}>
+                        <select value={form.gender ?? ""} onChange={(e) => setForm((p) => ({ ...p, gender: (e.target.value as "male" | "female") || null }))} className={`${detailInputCls} appearance-none pr-7`} disabled>
                           <option value="">Chưa chọn</option>
                           <option value="male">Nam</option>
                           <option value="female">Nữ</option>
@@ -727,47 +625,45 @@ export default function AdmissionCandidateManagementPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <FieldGroup label="CCCD" error={formErrors.cccd}>
-                      <input type="text" value={form.cccd ?? ""} onChange={(e) => setForm((p) => ({ ...p, cccd: e.target.value || null }))} className={inputCls} />
+                      <input type="text" value={form.cccd ?? ""} onChange={(e) => setForm((p) => ({ ...p, cccd: e.target.value || null }))} className={detailInputCls} disabled />
                     </FieldGroup>
                     <FieldGroup label="SĐT" error={formErrors.phone}>
-                      <input type="tel" value={form.phone ?? ""} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value || null }))} className={inputCls} />
+                      <input type="tel" value={form.phone ?? ""} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value || null }))} className={detailInputCls} disabled />
                     </FieldGroup>
                   </div>
                   <FieldGroup label="Email" error={formErrors.email}>
-                    <input type="email" value={form.email ?? ""} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value || null }))} className={inputCls} />
+                    <input type="email" value={form.email ?? ""} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value || null }))} className={detailInputCls} disabled />
                   </FieldGroup>
                   <div className="grid grid-cols-2 gap-3">
                     <FieldGroup label="Ngành học">
-                      <input type="text" value={form.major_name ?? ""} onChange={(e) => setForm((p) => ({ ...p, major_name: e.target.value || null }))} className={inputCls} placeholder="Tên ngành" />
+                      <input type="text" value={form.major_name ?? ""} onChange={(e) => setForm((p) => ({ ...p, major_name: e.target.value || null }))} className={detailInputCls} placeholder="Tên ngành" disabled />
                     </FieldGroup>
                     <FieldGroup label="Mã ngành">
-                      <input type="text" value={form.major_code ?? ""} onChange={(e) => setForm((p) => ({ ...p, major_code: e.target.value || null }))} className={inputCls} />
+                      <input type="text" value={form.major_code ?? ""} onChange={(e) => setForm((p) => ({ ...p, major_code: e.target.value || null }))} className={detailInputCls} disabled />
                     </FieldGroup>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <FieldGroup label="Khoá (vd: 2026-2030)">
-                      <input type="text" value={form.course_year ?? ""} onChange={(e) => setForm((p) => ({ ...p, course_year: e.target.value || null }))} className={inputCls} />
+                      <input type="text" value={form.course_year ?? ""} onChange={(e) => setForm((p) => ({ ...p, course_year: e.target.value || null }))} className={detailInputCls} disabled />
                     </FieldGroup>
                     <FieldGroup label="Năm học (vd: 2026-2027)">
-                      <input type="text" value={form.school_year ?? ""} onChange={(e) => setForm((p) => ({ ...p, school_year: e.target.value || null }))} className={inputCls} />
+                      <input type="text" value={form.school_year ?? ""} onChange={(e) => setForm((p) => ({ ...p, school_year: e.target.value || null }))} className={detailInputCls} disabled />
                     </FieldGroup>
                   </div>
                   <FieldGroup label="Địa chỉ thường trú">
-                    <input type="text" value={form.permanent_address ?? ""} onChange={(e) => setForm((p) => ({ ...p, permanent_address: e.target.value || null }))} className={inputCls} />
+                    <input type="text" value={form.permanent_address ?? ""} onChange={(e) => setForm((p) => ({ ...p, permanent_address: e.target.value || null }))} className={detailInputCls} disabled />
                   </FieldGroup>
                 </div>
               </div>
               <div className="flex shrink-0 justify-end gap-2 border-t border-[#eef3fb] px-5 py-3">
-                <button type="button" onClick={() => setShowForm(false)} className="rounded-xl border border-[#d6e2f1] bg-white px-4 py-1.5 text-sm font-semibold text-[#5d7299] hover:bg-[#f5f9ff]">Hủy</button>
-                <button type="button" disabled={saving} onClick={() => void handleSave()} className={`${primaryBtn} h-9`}>
-                  {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {editingId !== null ? "Lưu thay đổi" : "Thêm hồ sơ"}
-                </button>
+                <button type="button" onClick={() => setShowForm(false)} className="rounded-xl border border-[#d6e2f1] bg-white px-4 py-1.5 text-sm font-semibold text-[#5d7299] hover:bg-[#f5f9ff]">Đóng</button>
               </div>
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
+        </AnimatePresence>,
+        document.body,
+      )}
 
       {/* ── Enroll Modal ── */}
       <AnimatePresence>
@@ -791,7 +687,7 @@ export default function AdmissionCandidateManagementPage() {
                 {/* Candidate summary */}
                 <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm">
                   <p className="font-semibold text-[#1a2d52]">{enrollTarget.fullName}</p>
-                  <p className="text-xs text-[#62789f]">{enrollTarget.admissionCode} · Ngày sinh: {enrollTarget.dateOfBirth}</p>
+                  <p className="text-xs text-[#62789f]">{enrollTarget.admissionCode} · Ngày sinh: {formatDate(enrollTarget.dateOfBirth)}</p>
                 </div>
 
                 <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">

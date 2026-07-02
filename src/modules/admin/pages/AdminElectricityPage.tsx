@@ -86,6 +86,10 @@ const statusMeta: Record<PaymentStatus, { label: string; className: string }> = 
     label: "Quá hạn",
     className: "border border-rose-200 bg-rose-50 text-rose-700",
   },
+  exempted: {
+    label: "Đã miễn",
+    className: "border border-sky-200 bg-sky-50 text-sky-700",
+  },
 };
 
 const getCurrentMonthValue = () => new Date().toISOString().slice(0, 7);

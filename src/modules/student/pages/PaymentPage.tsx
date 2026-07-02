@@ -25,6 +25,10 @@ const statusMeta: Record<PaymentStatus, { label: string; className: string }> = 
     label: "Quá hạn",
     className: "border border-gray-200 bg-gray-100 text-gray-700",
   },
+  exempted: {
+    label: "Đã miễn",
+    className: "border border-sky-200 bg-sky-50 text-sky-700",
+  },
 };
 
 type PaymentTab = "room_fee" | "electricity";
@@ -67,7 +71,7 @@ function StatusBadge({ status }: { status: PaymentStatus }) {
     <span className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold ${statusMeta[status].className}`}>
       <span
         className={`h-2.5 w-2.5 rounded-full ${
-          status === "paid" ? "bg-green-600" : status === "unpaid" ? "bg-amber-500" : "bg-gray-500"
+          status === "paid" ? "bg-green-600" : status === "unpaid" ? "bg-amber-500" : status === "exempted" ? "bg-sky-500" : "bg-gray-500"
         }`}
       />
       {statusMeta[status].label}
@@ -188,9 +192,9 @@ export default function PaymentPage() {
 
   const roomFeeItems = useMemo(() => payments?.items.filter((item) => item.source === "room_fee") ?? [], [payments?.items]);
   const electricityItems = useMemo(() => payments?.items.filter((item) => item.source === "electricity") ?? [], [payments?.items]);
-  const unpaidRoomFeeItems = useMemo(() => roomFeeItems.filter((item) => item.status !== "paid"), [roomFeeItems]);
+  const unpaidRoomFeeItems = useMemo(() => roomFeeItems.filter((item) => item.status !== "paid" && item.status !== "exempted"), [roomFeeItems]);
   const unpaidElectricityItems = useMemo(() => electricityItems.filter((item) => item.status !== "paid"), [electricityItems]);
-  const paidRoomFeeItems = useMemo(() => roomFeeItems.filter((item) => item.status === "paid"), [roomFeeItems]);
+  const paidRoomFeeItems = useMemo(() => roomFeeItems.filter((item) => item.status === "paid" || item.status === "exempted"), [roomFeeItems]);
   const paidElectricityItems = useMemo(() => electricityItems.filter((item) => item.status === "paid"), [electricityItems]);
   const activeTabData =
     activeTab === "room_fee"
@@ -483,7 +487,8 @@ function PaymentItemCard({
   const displayTitle = (() => {
     if (item.source !== "room_fee") return item.title;
     const p = parsePeriod(item.period);
-    return p ? `Tiền phòng Quý ${Math.ceil(p.month / 3)}/${p.year}` : item.title;
+    if (!p) return item.title;
+    return item.isQuarterly === false ? `Tiền phòng tháng ${p.month}/${p.year}` : `Tiền phòng Quý ${Math.ceil(p.month / 3)}/${p.year}`;
   })();
 
   return (
@@ -540,7 +545,7 @@ function PaymentItemCard({
             <p className="text-sm font-medium text-gray-500">Tổng phải thanh toán</p>
             <p className="text-5xl font-extrabold tracking-tight text-blue-600">{moneyFormatter.format(item.amount)}</p>
           </div>
-          {item.status !== "paid" && isFree && onConfirmFree ? (
+          {item.status !== "paid" && item.status !== "exempted" && isFree && onConfirmFree ? (
             <button
               type="button"
               onClick={() => onConfirmFree(item)}
@@ -549,7 +554,7 @@ function PaymentItemCard({
             >
               {isPaying ? "Đang xác nhận..." : "Xác nhận miễn phí"}
             </button>
-          ) : item.status !== "paid" && !isFree && onPayOnline ? (
+          ) : item.status !== "paid" && item.status !== "exempted" && !isFree && onPayOnline ? (
             <button
               type="button"
               onClick={() => onPayOnline(item)}

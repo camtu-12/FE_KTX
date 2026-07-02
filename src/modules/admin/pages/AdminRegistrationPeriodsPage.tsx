@@ -248,11 +248,13 @@ function validate(
 
   // Rule 2: Kênh quanh năm chỉ được mở sau khi đợt chính đã đóng
   if (form.channel === "rolling" && !errors.school_year) {
-    const mainClosed = periods.some(
-      (p) => p.channel === "main" && p.school_year === form.school_year?.trim() && p.status === "closed",
+    const mainPeriod = periods.find(
+      (p) => p.channel === "main" && p.school_year === form.school_year?.trim(),
     );
-    if (!mainClosed)
+    if (!mainPeriod || mainPeriod.status !== "closed")
       errors.channel = "Kênh quanh năm chỉ được mở sau khi đợt chính đã đóng.";
+    else if (!normalizePeriodDate(mainPeriod.stay_end_date))
+      errors.stay_end_date = "Đợt chính chưa có ngày kết thúc lưu trú, vui lòng cập nhật đợt chính trước.";
   }
 
   // Rule 3: Thời gian nhận đơn không được trùng
@@ -348,6 +350,21 @@ export default function AdminRegistrationPeriodsPage() {
   useEffect(() => {
     void load();
   }, []);
+
+  // Đợt "quanh năm" luôn theo đúng mốc kết thúc lưu trú của đợt "chính" cùng năm học
+  // (chu kỳ lưu trú theo năm học, không tự chọn riêng) — tự điền và khoá field này.
+  useEffect(() => {
+    if (form.channel !== "rolling") return;
+    const mainPeriod = periods.find(
+      (p) => p.channel === "main" && p.school_year === form.school_year?.trim(),
+    );
+    const mainStayEnd = toDateInputValue(mainPeriod?.stay_end_date) || "";
+    if (mainStayEnd !== (toDateInputValue(form.stay_end_date) || "")) {
+      setForm((prev) => ({ ...prev, stay_end_date: mainStayEnd }));
+      setFormErrors((prev) => ({ ...prev, stay_end_date: undefined }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.channel, form.school_year, periods]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -1132,11 +1149,22 @@ export default function AdminRegistrationPeriodsPage() {
                           if (endVal) { const d = new Date(endVal); d.setDate(d.getDate() + 1); return d; }
                           const d = new Date(); d.setHours(0,0,0,0); return d;
                         })())}
-                        {field("stay_end_date", "Kết thúc lưu trú", "date", undefined, (() => {
-                          const stayStartVal = toDateInputValue(form.stay_start_date);
-                          if (stayStartVal) { const d = new Date(stayStartVal); d.setDate(d.getDate() + 1); return d; }
-                          const d = new Date(); d.setHours(0,0,0,0); return d;
-                        })())}
+                        {form.channel === "rolling" ? (
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold text-[#324B76]">Kết thúc lưu trú</label>
+                            <div className="w-full cursor-not-allowed rounded-xl border border-[#cfdcf0] bg-[#eef2f8] px-3 py-1.5 text-sm text-[#5d7299]">
+                              {form.stay_end_date ? getDateFieldText(form.stay_end_date) : "Chưa xác định (đợt chính chưa có ngày kết thúc)"}
+                            </div>
+                            <p className="mt-1 text-[11px] text-[#8598bd]">Tự động theo đợt chính cùng năm học, không thể chỉnh sửa.</p>
+                            {formErrors.stay_end_date && <p className="mt-1 text-xs text-rose-600">{formErrors.stay_end_date}</p>}
+                          </div>
+                        ) : (
+                          field("stay_end_date", "Kết thúc lưu trú", "date", undefined, (() => {
+                            const stayStartVal = toDateInputValue(form.stay_start_date);
+                            if (stayStartVal) { const d = new Date(stayStartVal); d.setDate(d.getDate() + 1); return d; }
+                            const d = new Date(); d.setHours(0,0,0,0); return d;
+                          })())
+                        )}
                       </div>
                     </div>
                   </>

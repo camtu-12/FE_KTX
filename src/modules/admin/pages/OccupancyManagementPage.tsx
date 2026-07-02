@@ -1384,12 +1384,16 @@ export default function OccupancyManagementPage() {
                                 </span>
                                 <span
                                   className={`rounded-full border px-2.5 py-0.5 text-xs font-bold ${
-                                    occupancyDetail.current_invoice.status === "paid"
+                                    occupancyDetail.current_invoice.status === "paid" || occupancyDetail.current_invoice.status === "exempted"
                                       ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                                       : "border-amber-200 bg-amber-50 text-amber-700"
                                   }`}
                                 >
-                                  {occupancyDetail.current_invoice.status === "paid" ? "Đã thanh toán" : "Chưa thanh toán"}
+                                  {occupancyDetail.current_invoice.status === "paid"
+                                    ? "Đã thanh toán"
+                                    : occupancyDetail.current_invoice.status === "exempted"
+                                      ? "Đã miễn"
+                                      : "Chưa thanh toán"}
                                 </span>
                               </div>
                             </div>

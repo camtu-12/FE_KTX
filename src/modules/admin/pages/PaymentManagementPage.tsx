@@ -46,6 +46,10 @@ const statusMeta: Record<PaymentStatus, { label: string; className: string }> = 
     label: "Quá hạn",
     className: "border border-rose-200 bg-rose-50 text-rose-700",
   },
+  exempted: {
+    label: "Đã miễn",
+    className: "border border-sky-200 bg-sky-50 text-sky-700",
+  },
 };
 
 const getTodayValue = () => new Date().toISOString().slice(0, 10);
@@ -198,7 +202,7 @@ export default function PaymentManagementPage() {
   );
 
   const unpaidTotal = [...roomBills, ...electricityBills]
-    .filter((bill) => bill.status !== "paid")
+    .filter((bill) => bill.status !== "paid" && bill.status !== "exempted")
     .reduce((sum, bill) => sum + bill.amount, 0);
   const paidTotal = [...roomBills, ...electricityBills]
     .filter((bill) => bill.status === "paid")
@@ -441,7 +445,7 @@ export default function PaymentManagementPage() {
                 <DiscountCell key="discount" discountPercent={bill.discountPercent} discountReason={bill.discountReason} />,
                 formatDate(bill.dueDate),
                 <StatusBadge key="status" status={bill.status} />,
-                bill.status === "paid" ? "-" : <ConfirmButton key="confirm" onClick={() => openConfirm({ source: "room", id: bill.id, name: bill.student?.fullName || "hóa đơn" })} />,
+                bill.status === "paid" || bill.status === "exempted" ? "-" : <ConfirmButton key="confirm" onClick={() => openConfirm({ source: "room", id: bill.id, name: bill.student?.fullName || "hóa đơn" })} />,
               ],
             }))}
           />

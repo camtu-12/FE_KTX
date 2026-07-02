@@ -6,7 +6,9 @@ import { createPortal } from "react-dom";
 import { useOutletContext, useSearchParams } from "react-router-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import {
+  applyOneTimeDiscount,
   confirmRoomFeePayment,
+  exemptRoomFeeBill,
   generateRoomFeeBills,
   getPaymentSettings,
   listRoomFeeBills,
@@ -15,6 +17,7 @@ import {
   updatePaymentSettings,
 } from "../../../api/paymentApi";
 import { formatDate } from "../../../utils/dateFormat";
+import StudentPaymentPlanModal from "../components/StudentPaymentPlanModal";
 
 type StatusFilter = PaymentStatus | "all";
 type FilterMenuType = "room" | "quarter" | "year" | "status";
@@ -27,15 +30,18 @@ type RoomFeeForm = {
 
 type RoomFeeBill = {
   id: number;
+  studentId: number;
   studentCode: string;
   fullName: string;
   room: string;
   month: number;
   year: number;
+  isQuarterly: boolean;
   amount: number;
   originalAmount: number | null;
   discountPercent: number | null;
   discountReason: string | null;
+  adminNote: string | null;
   createdAt: string;
   dueDate: string;
   status: PaymentStatus;
@@ -80,12 +86,14 @@ const statusOptions: Array<{ value: StatusFilter; label: string }> = [
   { value: "unpaid", label: "Chưa thanh toán" },
   { value: "paid", label: "Đã thanh toán" },
   { value: "overdue", label: "Quá hạn" },
+  { value: "exempted", label: "Đã miễn" },
 ];
 
 const statusMeta: Record<PaymentStatus, { label: string; className: string }> = {
   unpaid: { label: "Chưa thanh toán", className: "border border-amber-200 bg-amber-50 text-amber-700" },
   paid: { label: "Đã thanh toán", className: "border border-emerald-200 bg-emerald-50 text-emerald-700" },
   overdue: { label: "Quá hạn", className: "border border-rose-200 bg-rose-50 text-rose-700" },
+  exempted: { label: "Đã miễn", className: "border border-sky-200 bg-sky-50 text-sky-700" },
 };
 
 const formatRoomName = (bill: ApiRoomFeeBill) =>
@@ -93,15 +101,18 @@ const formatRoomName = (bill: ApiRoomFeeBill) =>
 
 const mapRoomFeeBill = (bill: ApiRoomFeeBill): RoomFeeBill => ({
   id: bill.id,
+  studentId: bill.studentId,
   studentCode: bill.student?.studentCode || "-",
   fullName: bill.student?.fullName || "-",
   room: formatRoomName(bill),
   month: bill.month,
   year: bill.year,
+  isQuarterly: bill.isQuarterly,
   amount: bill.amount,
   originalAmount: bill.originalAmount ?? null,
   discountPercent: bill.discountPercent ?? null,
   discountReason: bill.discountReason ?? null,
+  adminNote: bill.adminNote ?? null,
   createdAt: bill.createdAt,
   dueDate: bill.dueDate,
   status: bill.status,
@@ -130,7 +141,9 @@ export default function AdminRoomFeePage() {
   const queryStatus = searchParams.get("status");
   const queryYear = searchParams.get("year");
   const initialStatusFilter: StatusFilter =
-    queryStatus === "unpaid" || queryStatus === "paid" || queryStatus === "overdue" ? queryStatus : "all";
+    queryStatus === "unpaid" || queryStatus === "paid" || queryStatus === "overdue" || queryStatus === "exempted"
+      ? queryStatus
+      : "all";
   const initialYearFilter =
     queryYear && Number(queryYear) >= 2020 && Number(queryYear) <= 2100 ? String(Number(queryYear)) : String(currentYear);
 
@@ -155,6 +168,14 @@ export default function AdminRoomFeePage() {
   const [createResult, setCreateResult] = useState<{ createdCount: number; skippedCount: number } | null>(null);
   const [formError, setFormError] = useState("");
   const [feeError, setFeeError] = useState("");
+  const [isExemptFormOpen, setIsExemptFormOpen] = useState(false);
+  const [exemptNote, setExemptNote] = useState("");
+  const [exemptError, setExemptError] = useState("");
+  const [isDiscountFormOpen, setIsDiscountFormOpen] = useState(false);
+  const [discountFormValue, setDiscountFormValue] = useState("");
+  const [discountReasonValue, setDiscountReasonValue] = useState("");
+  const [discountError, setDiscountError] = useState("");
+  const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
   const [monthlyRoomFee, setMonthlyRoomFee] = useState(ROOM_FEE_PER_MONTH);
   const [feeFormValue, setFeeFormValue] = useState(String(ROOM_FEE_PER_MONTH));
   const [form, setForm] = useState<RoomFeeForm>({
@@ -326,6 +347,41 @@ export default function AdminRoomFeePage() {
     } catch { setFormError("Không thể xác nhận thanh toán. Vui lòng thử lại."); }
   };
 
+  const openExemptForm = () => { setExemptNote(""); setExemptError(""); setIsExemptFormOpen(true); };
+  const closeExemptForm = () => { setIsExemptFormOpen(false); setExemptError(""); };
+
+  const handleExemptBill = async () => {
+    if (!selectedBill) return;
+    try {
+      const updated = mapRoomFeeBill(await exemptRoomFeeBill(selectedBill.id, { admin_note: exemptNote || undefined }));
+      setBills((cur) => cur.map((b) => (b.id === selectedBill.id ? updated : b)));
+      setSelectedBill(updated);
+      window.dispatchEvent(new Event("ktx-payments-updated"));
+      setIsExemptFormOpen(false);
+    } catch { setExemptError("Không thể miễn hóa đơn này. Vui lòng thử lại."); }
+  };
+
+  const openDiscountForm = () => { setDiscountFormValue(""); setDiscountReasonValue(""); setDiscountError(""); setIsDiscountFormOpen(true); };
+  const closeDiscountForm = () => { setIsDiscountFormOpen(false); setDiscountError(""); };
+
+  const handleApplyDiscount = async () => {
+    if (!selectedBill) return;
+    const percent = Number(discountFormValue);
+    if (!Number.isFinite(percent) || percent <= 0 || percent > 100) {
+      setDiscountError("Vui lòng nhập % giảm hợp lệ (0-100).");
+      return;
+    }
+    try {
+      const updated = mapRoomFeeBill(
+        await applyOneTimeDiscount(selectedBill.id, { discount_percent: percent, reason: discountReasonValue || undefined }),
+      );
+      setBills((cur) => cur.map((b) => (b.id === selectedBill.id ? updated : b)));
+      setSelectedBill(updated);
+      window.dispatchEvent(new Event("ktx-payments-updated"));
+      setIsDiscountFormOpen(false);
+    } catch { setDiscountError("Không thể giảm giá hóa đơn này. Vui lòng thử lại."); }
+  };
+
   const roomHeader = (
     <div className="inline-flex items-center justify-center gap-2">
       <span>Phòng</span>
@@ -442,7 +498,7 @@ export default function AdminRoomFeePage() {
               <span key="code" className="text-[15px] font-semibold text-[#24407f]">{bill.studentCode}</span>,
               <span key="name" className="line-clamp-2 text-sm font-semibold text-[#1f3152]">{bill.fullName}</span>,
               bill.room,
-              `Quý ${getQuarterFromMonth(bill.month)}`,
+              bill.isQuarterly ? `Quý ${getQuarterFromMonth(bill.month)}` : `Tháng ${bill.month}`,
               bill.year,
               formatDate(bill.dueDate),
               <StatusBadge key="status" status={bill.status} />,
@@ -592,11 +648,18 @@ export default function AdminRoomFeePage() {
                       <InfoLine label="MSSV" value={selectedBill.studentCode} />
                       <InfoLine label="Họ tên" value={selectedBill.fullName} />
                       <InfoLine label="Phòng" value={selectedBill.room} />
-                      <InfoLine label="Mức phí áp dụng" value={`${formatMoney(selectedBill.amount)}/quý`} />
+                      <InfoLine label="Mức phí áp dụng" value={`${formatMoney(selectedBill.amount)}${selectedBill.isQuarterly ? "/quý" : "/tháng"}`} />
                       <InfoLine label="Trạng thái" value={<StatusBadge status={selectedBill.status} />} />
                     </div>
                     <div className="space-y-3">
-                      <InfoLine label="Kỳ thanh toán" value={`Quý ${getQuarterFromMonth(selectedBill.month)}/${selectedBill.year}`} />
+                      <InfoLine
+                        label="Kỳ thanh toán"
+                        value={
+                          selectedBill.isQuarterly
+                            ? `Quý ${getQuarterFromMonth(selectedBill.month)}/${selectedBill.year}`
+                            : `Tháng ${selectedBill.month}/${selectedBill.year}`
+                        }
+                      />
                       <InfoLine label="Ngày tạo hóa đơn" value={formatDate(selectedBill.createdAt)} />
                       <InfoLine label="Hạn thanh toán" value={formatDate(selectedBill.dueDate)} />
                       {selectedBill.status === "paid" && selectedBill.paidAt ? (
@@ -612,20 +675,81 @@ export default function AdminRoomFeePage() {
                           Giảm {selectedBill.discountPercent}%{selectedBill.discountReason ? ` · ${selectedBill.discountReason}` : ""}
                         </span>
                         {selectedBill.originalAmount != null ? (
-                          <span className="text-xs font-semibold text-[#9aafcf] line-through">{formatMoney(selectedBill.originalAmount)}/tháng</span>
+                          <span className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-[#9aafcf] line-through">
+                              {formatMoney(selectedBill.originalAmount)}{selectedBill.isQuarterly ? "/quý" : "/tháng"}
+                            </span>
+                            <span className="text-sm font-bold text-emerald-800">{formatMoney(selectedBill.amount)}</span>
+                          </span>
                         ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+                  {selectedBill.status === "exempted" && selectedBill.adminNote ? (
+                    <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-3">
+                      <p className="text-xs font-bold uppercase tracking-[0.10em] text-sky-700">Ghi chú miễn</p>
+                      <p className="mt-1.5 text-sm font-semibold text-sky-800">{selectedBill.adminNote}</p>
+                    </div>
+                  ) : null}
+                  {isExemptFormOpen ? (
+                    <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-3">
+                      <label className="block">
+                        <span className="text-xs font-bold uppercase tracking-[0.10em] text-sky-700">Lý do miễn (không bắt buộc)</span>
+                        <input value={exemptNote} onChange={(e) => setExemptNote(e.target.value)} className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10" placeholder="Vd: Gia đình khó khăn — theo yêu cầu hỗ trợ #12" />
+                      </label>
+                      {exemptError ? <p className="mt-2 text-xs font-semibold text-[#cc3c4f]">{exemptError}</p> : null}
+                      <div className="mt-3 flex justify-end gap-2">
+                        <button type="button" onClick={closeExemptForm} className="rounded-xl border border-[#c8d8ef] bg-white px-4 py-2 text-xs font-semibold text-[#24407f]">Hủy</button>
+                        <button type="button" onClick={() => void handleExemptBill()} className="rounded-xl bg-sky-600 px-4 py-2 text-xs font-semibold text-white hover:brightness-110">Xác nhận miễn</button>
+                      </div>
+                    </div>
+                  ) : null}
+                  {isDiscountFormOpen ? (
+                    <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="block">
+                          <span className="text-xs font-bold uppercase tracking-[0.10em] text-emerald-700">% giảm</span>
+                          <input type="number" min={0} max={100} value={discountFormValue} onChange={(e) => setDiscountFormValue(e.target.value)} className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10" />
+                        </label>
+                        <label className="block">
+                          <span className="text-xs font-bold uppercase tracking-[0.10em] text-emerald-700">Lý do</span>
+                          <input value={discountReasonValue} onChange={(e) => setDiscountReasonValue(e.target.value)} className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10" placeholder="Vd: Hỗ trợ sinh viên khó khăn" />
+                        </label>
+                      </div>
+                      {discountError ? <p className="mt-2 text-xs font-semibold text-[#cc3c4f]">{discountError}</p> : null}
+                      <div className="mt-3 flex justify-end gap-2">
+                        <button type="button" onClick={closeDiscountForm} className="rounded-xl border border-[#c8d8ef] bg-white px-4 py-2 text-xs font-semibold text-[#24407f]">Hủy</button>
+                        <button type="button" onClick={() => void handleApplyDiscount()} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:brightness-110">Áp dụng giảm giá</button>
                       </div>
                     </div>
                   ) : null}
                 </div>
                 <div className="mt-4 flex flex-wrap justify-end gap-3">
+                  <button type="button" onClick={() => setIsPlanModalOpen(true)} className="rounded-2xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-5 py-2.5 text-sm font-semibold text-[#24407f] shadow-[0_8px_18px_rgba(36,76,184,0.10)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white">Quản lý chế độ đặc biệt</button>
+                  {selectedBill.status === "unpaid" || selectedBill.status === "overdue" ? (
+                    <>
+                      <button type="button" onClick={openDiscountForm} className="rounded-2xl border border-emerald-300 bg-emerald-50 px-5 py-2.5 text-sm font-semibold text-emerald-700 shadow-[0_8px_18px_rgba(16,185,129,0.10)] transition duration-200 hover:-translate-y-0.5 hover:bg-emerald-100">Giảm giá tức thời</button>
+                      <button type="button" onClick={openExemptForm} className="rounded-2xl border border-sky-300 bg-sky-50 px-5 py-2.5 text-sm font-semibold text-sky-700 shadow-[0_8px_18px_rgba(14,165,233,0.10)] transition duration-200 hover:-translate-y-0.5 hover:bg-sky-100">Miễn hóa đơn này</button>
+                    </>
+                  ) : null}
                   {selectedBill.status === "unpaid" ? (
                     <button type="button" onClick={() => void confirmPayment(selectedBill.id)} className="auth-btn-gloss rounded-2xl bg-[linear-gradient(135deg,#1f9a60_0%,#35bf7a_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_20px_rgba(31,154,96,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110"><span className="auth-btn-gloss__content">Xác nhận thanh toán</span></button>
                   ) : null}
-                  <button type="button" onClick={() => setSelectedBill(null)} className="rounded-2xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-5 py-2.5 text-sm font-semibold text-[#24407f] shadow-[0_8px_18px_rgba(36,76,184,0.10)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white">Đóng</button>
+                  <button type="button" onClick={() => { setSelectedBill(null); setIsExemptFormOpen(false); setIsDiscountFormOpen(false); }} className="rounded-2xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-5 py-2.5 text-sm font-semibold text-[#24407f] shadow-[0_8px_18px_rgba(36,76,184,0.10)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white">Đóng</button>
                 </div>
               </motion.div>
             </div>,
+            document.body,
+          )
+        : null}
+
+      {isPlanModalOpen && selectedBill
+        ? createPortal(
+            <StudentPaymentPlanModal
+              studentId={selectedBill.studentId}
+              studentLabel={`${selectedBill.studentCode} · ${selectedBill.fullName}`}
+              onClose={() => setIsPlanModalOpen(false)}
+            />,
             document.body,
           )
         : null}

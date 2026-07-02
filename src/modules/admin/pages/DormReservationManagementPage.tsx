@@ -4,6 +4,8 @@ import {
   ArrowRight,
   Award,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
   Eye,
   FileText,
@@ -12,7 +14,7 @@ import {
   Shuffle,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import {
   approveReservation,
@@ -30,6 +32,7 @@ import {
 } from "../../../api/dormReservationApi";
 import { getRegistrationPeriods } from "../../../api/registrationApi";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
+import { createPortal } from "react-dom";
 
 const API_ORIGIN = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000")
   .replace(/\/+$/, "")
@@ -72,6 +75,7 @@ const STATUS_COLORS: Record<ReservationStatus, string> = {
 };
 
 type Period = { id: number; name: string; allowAdmissionCandidates: boolean };
+type PreviewImage = { url: string; label: string };
 
 export default function DormReservationManagementPage() {
   const { headerSearchValue: search } = useOutletContext<AdminLayoutOutletContext>();
@@ -109,13 +113,14 @@ export default function DormReservationManagementPage() {
   // ranking panel
   const [rankPeriodId, setRankPeriodId] = useState<number | "">("");
   const [rankLoading, setRankLoading] = useState(false);
-  const [rankResult, setRankResult] = useState<{ approved: number; waitlist: number; freeBeds: number; pendingPriority: number } | null>(null);
+  const [rankResult, setRankResult] = useState<{ approved: number; waitlist: number; freeBeds: number } | null>(null);
+  const [rankBlockedCount, setRankBlockedCount] = useState<number | null>(null);
 
   // priority action loading in detail modal
   const [priorityActionId, setPriorityActionId] = useState<number | null>(null);
 
   // image lightbox
-  const [previewImg, setPreviewImg] = useState<{ url: string; label: string } | null>(null);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
   const showToast = (type: "success" | "error", msg: string) => {
     setToast({ type, msg });
@@ -253,13 +258,18 @@ export default function DormReservationManagementPage() {
     if (!rankPeriodId) return;
     setRankLoading(true);
     setRankResult(null);
+    setRankBlockedCount(null);
     try {
       const res = await rankDormReservations(Number(rankPeriodId));
-      setRankResult({ approved: res.approved, waitlist: res.waitlist, freeBeds: res.free_beds, pendingPriority: res.pending_priority_count });
+      setRankResult({ approved: res.approved, waitlist: res.waitlist, freeBeds: res.free_beds });
       showToast("success", `Đã xếp hạng: ${res.approved} duyệt, ${res.waitlist} chờ.`);
       void load(1);
     } catch (err: unknown) {
-      showToast("error", (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Xếp hạng thất bại.");
+      const data = (err as { response?: { data?: { message?: string; pending_priority_count?: number } } })?.response?.data;
+      if (typeof data?.pending_priority_count === "number" && data.pending_priority_count > 0) {
+        setRankBlockedCount(data.pending_priority_count);
+      }
+      showToast("error", data?.message ?? "Xếp hạng thất bại.");
     } finally {
       setRankLoading(false);
     }
@@ -304,6 +314,44 @@ export default function DormReservationManagementPage() {
       setPriorityActionId(null);
     }
   };
+
+  const previewImages = useMemo<PreviewImage[]>(() => {
+    if (!detail) return [];
+
+    const images: PreviewImage[] = [
+      { url: resolveUrl(detail.avatarUrl), label: "Ảnh đại diện" },
+      { url: resolveUrl(detail.cccdFrontUrl), label: "CCCD mặt trước" },
+      { url: resolveUrl(detail.cccdBackUrl), label: "CCCD mặt sau" },
+    ].filter((image) => image.url);
+
+    detail.reservationPriorities?.forEach((priority) => {
+      priority.evidences?.forEach((evidence) => {
+        const fileUrl = resolveUrl(evidence.fileUrl);
+        const isPdf = evidence.mimeType === "application/pdf" || evidence.fileUrl.endsWith(".pdf");
+        if (!fileUrl || isPdf) return;
+        images.push({
+          url: fileUrl,
+          label: evidence.originalName ?? priority.criteria?.name ?? "Minh chứng",
+        });
+      });
+    });
+
+    return images;
+  }, [detail]);
+
+  const previewImg = previewIndex == null ? null : previewImages[previewIndex] ?? null;
+  const openPreviewImage = (url: string, label: string) => {
+    const index = previewImages.findIndex((image) => image.url === url && image.label === label);
+    setPreviewIndex(index >= 0 ? index : 0);
+  };
+  const showPreviousPreview = () => setPreviewIndex((current) => {
+    if (current == null || previewImages.length === 0) return current;
+    return (current - 1 + previewImages.length) % previewImages.length;
+  });
+  const showNextPreview = () => setPreviewIndex((current) => {
+    if (current == null || previewImages.length === 0) return current;
+    return (current + 1) % previewImages.length;
+  });
 
   return (
     <motion.section
@@ -377,10 +425,15 @@ export default function DormReservationManagementPage() {
                   Xếp hạng
                 </button>
               </div>
+              {rankBlockedCount !== null && (
+                <div className="flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>Còn <strong>{rankBlockedCount}</strong> minh chứng ưu tiên chưa xác minh. Vui lòng xác minh (hoặc từ chối) tất cả minh chứng trước khi xếp hạng.</span>
+                </div>
+              )}
               {rankResult && (
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs text-emerald-800">
                   Duyệt <strong>{rankResult.approved}</strong> · Chờ <strong>{rankResult.waitlist}</strong> · Chỗ trống <strong>{rankResult.freeBeds}</strong>
-                  {rankResult.pendingPriority > 0 && <span className="ml-1 text-amber-700">· ⚠ {rankResult.pendingPriority} minh chứng chưa xác minh</span>}
                 </div>
               )}
             </div>
@@ -453,14 +506,15 @@ export default function DormReservationManagementPage() {
       )}
 
       {/* ── Detail Modal ── */}
-      <AnimatePresence>
-        {detail && (
-          <motion.div key="detail" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-3"
-            onClick={() => setDetail(null)}>
-            <motion.div initial={{ opacity: 0, scale: 0.96, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 16 }}
-              className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-[24px] border border-[#c1d6f4] bg-white shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
-              onClick={(e) => e.stopPropagation()}>
+      {createPortal(
+        <AnimatePresence>
+          {detail && (
+            <motion.div key="detail" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-3"
+              onClick={() => setDetail(null)}>
+              <motion.div initial={{ opacity: 0, scale: 0.96, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 16 }}
+                className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-[24px] border border-[#c1d6f4] bg-white shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
+                onClick={(e) => e.stopPropagation()}>
               <div className="flex shrink-0 items-center justify-between border-b border-[#eef3fb] px-5 py-3">
                 <h2 className="text-lg font-bold text-[#1a2d52]">Chi tiết hồ sơ giữ chỗ</h2>
                 <button type="button" onClick={() => setDetail(null)} className="text-[#7c8fb5] hover:text-[#1a2d52]"><X className="h-5 w-5" /></button>
@@ -548,7 +602,7 @@ export default function DormReservationManagementPage() {
                             {url ? (
                               <button
                                 type="button"
-                                onClick={() => setPreviewImg({ url, label })}
+                                onClick={() => openPreviewImage(url, label)}
                                 className="group relative aspect-[4/3] w-full overflow-hidden rounded-xl border border-[#dce7f6] bg-[#f5f9ff]"
                               >
                                 <img src={url} alt={label} className="h-full w-full object-cover" />
@@ -602,7 +656,7 @@ export default function DormReservationManagementPage() {
                                       </a>
                                     ) : (
                                       <button key={ev.id} type="button"
-                                        onClick={() => setPreviewImg({ url: evUrl, label: ev.originalName ?? "Minh chứng" })}
+                                        onClick={() => openPreviewImage(evUrl, ev.originalName ?? "Minh chứng")}
                                         className="group relative h-14 w-14 overflow-hidden rounded-lg border border-[#dce7f6] bg-[#f5f9ff]">
                                         <img src={evUrl} alt={ev.originalName ?? ""} className="h-full w-full object-cover" />
                                         <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover:bg-black/30">
@@ -665,20 +719,23 @@ export default function DormReservationManagementPage() {
                   )}
                 </div>
               )}
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
 
       {/* ── Reject Dialog ── */}
-      <AnimatePresence>
-        {rejectTarget && (
-          <motion.div key="reject" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-3"
-            onClick={() => setRejectTarget(null)}>
-            <motion.div initial={{ opacity: 0, scale: 0.96, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 16 }}
-              className="w-full max-w-md rounded-[24px] border border-rose-200 bg-white p-6 shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
-              onClick={(e) => e.stopPropagation()}>
+      {createPortal(
+        <AnimatePresence>
+          {rejectTarget && (
+            <motion.div key="reject" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-3"
+              onClick={() => setRejectTarget(null)}>
+              <motion.div initial={{ opacity: 0, scale: 0.96, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 16 }}
+                className="w-full max-w-md rounded-[24px] border border-rose-200 bg-white p-6 shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
+                onClick={(e) => e.stopPropagation()}>
               <h2 className="mb-1 text-lg font-bold text-[#1a2d52]">Từ chối hồ sơ</h2>
               <p className="mb-3 text-sm text-[#62789f]">{rejectTarget.candidate?.fullName} — {rejectTarget.reservationCode}</p>
               <label className="mb-1 block text-xs font-semibold text-[#324B76]">Lý do từ chối *</label>
@@ -689,20 +746,23 @@ export default function DormReservationManagementPage() {
                   {rejectLoading && <Loader2 className="h-4 w-4 animate-spin" />} Xác nhận từ chối
                 </button>
               </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
 
       {/* ── Note Dialog ── */}
-      <AnimatePresence>
-        {noteTarget && (
-          <motion.div key="note" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-3"
-            onClick={() => setNoteTarget(null)}>
-            <motion.div initial={{ opacity: 0, scale: 0.96, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 16 }}
-              className="w-full max-w-md rounded-[24px] border border-[#c1d6f4] bg-white p-6 shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
-              onClick={(e) => e.stopPropagation()}>
+      {createPortal(
+        <AnimatePresence>
+          {noteTarget && (
+            <motion.div key="note" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-3"
+              onClick={() => setNoteTarget(null)}>
+              <motion.div initial={{ opacity: 0, scale: 0.96, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 16 }}
+                className="w-full max-w-md rounded-[24px] border border-[#c1d6f4] bg-white p-6 shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
+                onClick={(e) => e.stopPropagation()}>
               <h2 className="mb-3 text-lg font-bold text-[#1a2d52]">Ghi chú admin</h2>
               <textarea value={noteText} onChange={(e) => setNoteText(e.target.value)} rows={4} className={`${inputCls} resize-none`} placeholder="Nhập ghi chú..." />
               <div className="mt-4 flex justify-end gap-2">
@@ -711,30 +771,64 @@ export default function DormReservationManagementPage() {
                   {noteSaving && <Loader2 className="h-4 w-4 animate-spin" />} Lưu ghi chú
                 </button>
               </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
 
       {/* ── Image Lightbox ── */}
-      <AnimatePresence>
-        {previewImg && (
-          <motion.div key="lightbox" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
-            onClick={() => setPreviewImg(null)}>
-            <motion.div initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.92 }}
-              className="relative max-h-[90dvh] max-w-[90vw]"
-              onClick={(e) => e.stopPropagation()}>
+      {createPortal(
+        <AnimatePresence>
+          {previewImg && (
+            <motion.div key="lightbox" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
+              onClick={() => setPreviewIndex(null)}>
+              <motion.div initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.92 }}
+                className="relative max-h-[90dvh] max-w-[90vw]"
+                onClick={(e) => e.stopPropagation()}>
               <p className="mb-2 text-center text-sm font-semibold text-white">{previewImg.label}</p>
-              <img src={previewImg.url} alt={previewImg.label} className="max-h-[80dvh] max-w-full rounded-2xl object-contain shadow-2xl" />
-              <button type="button" onClick={() => setPreviewImg(null)}
+              <div className="relative">
+                <img src={previewImg.url} alt={previewImg.label} className="max-h-[80dvh] max-w-full rounded-2xl object-contain shadow-2xl" />
+                {previewImages.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={showPreviousPreview}
+                      className="absolute left-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-slate-950/28 text-white opacity-70 shadow-[0_12px_24px_rgba(0,0,0,0.28)] backdrop-blur-sm transition hover:bg-slate-950/45 hover:opacity-100"
+                      aria-label="Ảnh trước"
+                      title="Ảnh trước"
+                    >
+                      <ChevronLeft className="h-6 w-6" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={showNextPreview}
+                      className="absolute right-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-slate-950/28 text-white opacity-70 shadow-[0_12px_24px_rgba(0,0,0,0.28)] backdrop-blur-sm transition hover:bg-slate-950/45 hover:opacity-100"
+                      aria-label="Ảnh tiếp theo"
+                      title="Ảnh tiếp theo"
+                    >
+                      <ChevronRight className="h-6 w-6" />
+                    </button>
+                  </>
+                )}
+              </div>
+              {previewImages.length > 1 && previewIndex != null ? (
+                <p className="mt-2 text-center text-xs font-semibold text-white/70">
+                  {previewIndex + 1}/{previewImages.length}
+                </p>
+              ) : null}
+              <button type="button" onClick={() => setPreviewIndex(null)}
                 className="absolute -right-3 -top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white text-[#1a2d52] shadow-lg hover:bg-[#f0f5ff]">
                 <X className="h-4 w-4" />
               </button>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
 
     </motion.section>
   );
