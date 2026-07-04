@@ -159,6 +159,39 @@ const uploadFieldToDocumentField: Record<string, DocumentField> = {
   cccd_back: "cccdBackPhoto",
 };
 
+// Map tên field validate của backend (StoreRegistrationRequest) sang key tương ứng trong FormData,
+// để lỗi trả về từ server hiện đúng ngay dưới ô input và có thể cuộn tới (giống lỗi validate client-side).
+const backendFieldToFormField: Partial<Record<string, keyof FormData>> = {
+  student_code: "mssv",
+  full_name: "fullName",
+  date_of_birth: "birthDate",
+  gender: "gender",
+  class_name: "class",
+  faculty: "department",
+  phone: "phone",
+  cccd: "cccd",
+  cccd_issued_date: "cccdIssueDate",
+  cccd_issued_place: "cccdIssuePlace",
+  nationality: "nationality",
+  ethnicity: "ethnicity",
+  religion: "religion",
+  permanent_address: "address",
+  father_name: "father_name",
+  father_birth_year: "father_birth_year",
+  father_job: "father_job",
+  father_phone: "father_phone",
+  mother_name: "mother_name",
+  mother_birth_year: "mother_birth_year",
+  mother_job: "mother_job",
+  mother_phone: "mother_phone",
+  parent_name: "relationName",
+  parent_phone: "relationPhone",
+  parent_relationship: "relationship",
+  parent_address: "familyContactAddress",
+  stay_from_date: "dormStartDate",
+  stay_to_date: "dormEndDate",
+};
+
 const initialDocumentFiles: Record<DocumentField, File | null> = {
   portraitPhoto: null,
   cccdFrontPhoto: null,
@@ -199,6 +232,11 @@ const relationshipOptions = [
 const dateFieldNames: Array<keyof FormData> = ["birthDate", "cccdIssueDate"];
 
 const dateRegex = /^\d{2}\/\d{2}\/\d{4}$/;
+
+// Khớp rule "min:2" + regex chỉ chữ cái của StoreRegistrationRequest (backend) cho các trường họ tên,
+// để lỗi hiện ngay ở lần submit đầu tiên thay vì phải đợi round-trip lên backend mới thấy.
+const nameFieldNames: Array<keyof FormData> = ["fullName", "father_name", "mother_name"];
+const nameRegex = /^[\p{L}\s]+$/u;
 
 type RequiredRegistrationField = Exclude<keyof FormData, "dormStartDate" | "dormEndDate">;
 
@@ -841,6 +879,33 @@ export default function RegistrationPage() {
     }
   };
 
+  /**
+   * Cuộn + focus tới field/ảnh lỗi đầu tiên theo đúng thứ tự hiển thị trên form
+   * (formFieldLabels đã được khai báo theo đúng thứ tự các mục trên giao diện).
+   * Trả về true nếu đã tìm và cuộn tới được 1 field/ảnh cụ thể.
+   */
+  const scrollToFirstInvalid = (
+    fieldErrorsObj: Partial<Record<keyof FormData, string>>,
+    documentErrorsObj: Partial<Record<DocumentField, string>>,
+  ): boolean => {
+    const orderedFields = Object.keys(formFieldLabels) as RequiredRegistrationField[];
+    const firstInvalidField = orderedFields.find((field) => fieldErrorsObj[field]);
+    if (firstInvalidField) {
+      fieldRefs.current[firstInvalidField]?.focus();
+      fieldRefs.current[firstInvalidField]?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return true;
+    }
+
+    const firstInvalidDocument = documentFieldConfigs.find(({ field }) => documentErrorsObj[field]);
+    if (firstInvalidDocument) {
+      documentRefs.current[firstInvalidDocument.field]?.focus();
+      documentRefs.current[firstInvalidDocument.field]?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return true;
+    }
+
+    return false;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError("");
@@ -857,6 +922,15 @@ export default function RegistrationPage() {
       }
       if (dateFieldNames.includes(field) && !dateRegex.test(formData[field].trim())) {
         nextErrors[field] = `Ngày tháng phải theo định dạng dd/mm/yyyy.`;
+        continue;
+      }
+      if (nameFieldNames.includes(field)) {
+        const trimmedName = formData[field].trim();
+        if (trimmedName.length < 2) {
+          nextErrors[field] = `${formFieldLabels[field]} phải có ít nhất 2 ký tự.`;
+        } else if (!nameRegex.test(trimmedName)) {
+          nextErrors[field] = `${formFieldLabels[field]} chỉ được chứa chữ cái và khoảng trắng.`;
+        }
       }
     }
 
@@ -933,23 +1007,7 @@ export default function RegistrationPage() {
         setSubmitError(commitmentError);
       }
 
-      const firstInvalidField = requiredFields.find((field) => nextErrors[field]);
-      if (firstInvalidField) {
-        fieldRefs.current[firstInvalidField]?.focus();
-        fieldRefs.current[firstInvalidField]?.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
-        return;
-      }
-
-      const firstInvalidDocument = documentFieldConfigs.find(({ field }) => nextDocumentErrors[field]);
-      if (firstInvalidDocument) {
-        documentRefs.current[firstInvalidDocument.field]?.focus();
-        documentRefs.current[firstInvalidDocument.field]?.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
+      if (scrollToFirstInvalid(nextErrors, nextDocumentErrors)) {
         return;
       }
 
@@ -960,8 +1018,13 @@ export default function RegistrationPage() {
             behavior: "smooth",
             block: "center",
           });
+          return;
         }
       }
+
+      // Không có field/ảnh cụ thể nào để cuộn tới (vd. chỉ thiếu xác nhận cam kết)
+      // → cuộn lên đầu trang để admin thấy ngay banner lỗi.
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
@@ -1060,6 +1123,7 @@ export default function RegistrationPage() {
         if (responseData) {
           const responseErrors = responseData.errors as Record<string, unknown> | undefined;
           const nextDocumentErrors: Partial<Record<DocumentField, string>> = {};
+          const nextFieldErrors: Partial<Record<keyof FormData, string>> = {};
 
           if (responseErrors) {
             Object.entries(uploadFieldToDocumentField).forEach(([uploadField, documentField]) => {
@@ -1074,17 +1138,36 @@ export default function RegistrationPage() {
                 ? `Không thể tải ${documentLabels[documentField].toLowerCase()} lên. Vui lòng kiểm tra dung lượng ảnh không vượt quá 2 MB rồi chọn lại.`
                 : firstMessage;
             });
+
+            Object.entries(backendFieldToFormField).forEach(([backendField, formField]) => {
+              const rawMessages = responseErrors[backendField];
+              const firstMessage = Array.isArray(rawMessages) ? rawMessages[0] : rawMessages;
+
+              if (typeof firstMessage === "string" && formField) {
+                nextFieldErrors[formField] = firstMessage;
+              }
+            });
           }
 
-          if (Object.keys(nextDocumentErrors).length > 0) {
+          if (Object.keys(nextFieldErrors).length > 0 || Object.keys(nextDocumentErrors).length > 0) {
+            setErrors((prev) => ({ ...prev, ...nextFieldErrors }));
             setDocumentErrors((prev) => ({ ...prev, ...nextDocumentErrors }));
-            setSubmitError("Vui lòng kiểm tra lại lỗi tại phần hồ sơ ảnh đính kèm.");
+            setSubmitError(
+              Object.keys(nextDocumentErrors).length > 0
+                ? "Vui lòng kiểm tra lại lỗi tại phần hồ sơ ảnh đính kèm."
+                : Object.values(nextFieldErrors)[0] ?? "Vui lòng kiểm tra lại thông tin đã điền.",
+            );
+
+            if (!scrollToFirstInvalid(nextFieldErrors, nextDocumentErrors)) {
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }
             return;
           }
 
           const message = responseData.message;
           if (typeof message === "string") {
             setSubmitError(message);
+            window.scrollTo({ top: 0, behavior: "smooth" });
             return;
           }
 
@@ -1094,12 +1177,14 @@ export default function RegistrationPage() {
 
           if (validationMessages.length > 0) {
             setSubmitError(String(validationMessages[0]));
+            window.scrollTo({ top: 0, behavior: "smooth" });
             return;
           }
         }
       }
 
       setSubmitError(error instanceof Error ? error.message : "Không thể gửi đơn. Vui lòng thử lại.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } finally {
       setIsSubmitting(false);
     }
@@ -1124,17 +1209,17 @@ export default function RegistrationPage() {
     });
   };
 
-  const getFieldClassName = () =>
-    "mt-1 h-11 w-full rounded-xl border border-[#D6E2F1] bg-[#F6F9FD] px-4 text-sm text-[#1F3152] placeholder:text-[#90A2BF] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] transition-all duration-300 ease-out hover:border-[#B9CDEE] hover:bg-white hover:shadow-[0_14px_28px_rgba(36,76,184,0.10)] focus:border-[#244CB8] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#244CB8]/14";
+  const getFieldClassName = (hasError = false) =>
+    `mt-1 h-11 w-full rounded-xl border ${hasError ? "border-red-400" : "border-[#D6E2F1]"} bg-[#F6F9FD] px-4 text-sm text-[#1F3152] placeholder:text-[#90A2BF] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] transition-all duration-300 ease-out ${hasError ? "hover:border-red-400" : "hover:border-[#B9CDEE]"} hover:bg-white hover:shadow-[0_14px_28px_rgba(36,76,184,0.10)] focus:bg-white focus:outline-none ${hasError ? "focus:border-red-500 focus:ring-4 focus:ring-red-500/14" : "focus:border-[#244CB8] focus:ring-4 focus:ring-[#244CB8]/14"}`;
 
-  const getStep2FieldClassName = () =>
-    "mt-1 h-11 w-full rounded-xl border border-[#D6E2F1] bg-[#F6F9FD] px-4 text-sm text-[#1F3152] placeholder:text-[#90A2BF] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] transition-all duration-300 ease-out hover:border-[#B9CDEE] hover:bg-white hover:shadow-[0_14px_28px_rgba(36,76,184,0.10)] focus:border-[#244CB8] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#244CB8]/14";
+  const getStep2FieldClassName = (hasError = false) => getFieldClassName(hasError);
 
   const renderFormField = (config: FormFieldConfig) => {
     const isRequired = true;
     const fieldValue = formData[config.name];
     const isDateField = dateFieldNames.includes(config.name);
-    const className = config.type === "select" ? getStep2FieldClassName() : getFieldClassName();
+    const hasError = Boolean(errors[config.name]);
+    const className = config.type === "select" ? getStep2FieldClassName(hasError) : getFieldClassName(hasError);
     const fieldId = `registration-${String(config.name)}`;
 
     const prefilledFieldNames = new Set<keyof FormData>([

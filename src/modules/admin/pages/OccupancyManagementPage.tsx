@@ -19,6 +19,7 @@ import { createViolation } from "../../../api/violationApi";
 import { formatDate } from "../../../utils/dateFormat";
 import { fetchOccupancyDetail, type OccupancyDetail } from "../../../api/occupancyDetailApi";
 import { searchStudentsForOccupancy } from "../../../api/studentSearchApi";
+import FaceSearchModal from "../components/FaceSearchModal";
 
 type OccupancyStatusFilter = OccupancyStatus | "ALL";
 
@@ -240,7 +241,8 @@ const createOccupancyRowsFromApi = (
 };
 
 export default function OccupancyManagementPage() {
-  const { headerSearchValue, setNavAutocomplete } = useOutletContext<AdminLayoutOutletContext>();
+  const { headerSearchValue, setNavAutocomplete, setOnOpenFaceSearch } = useOutletContext<AdminLayoutOutletContext>();
+  const [isFaceSearchModalOpen, setIsFaceSearchModalOpen] = useState(false);
   const [occupancyRows, setOccupancyRows] = useState<Occupancy[]>([]);
   const [studentRows, setStudentRows] = useState<Student[]>([]);
   const [isLoadingOccupancies, setIsLoadingOccupancies] = useState(true);
@@ -445,6 +447,27 @@ export default function OccupancyManagementPage() {
     occupancyRowsRef.current = occupancyRows;
   }, [occupancyRows]);
 
+  const handleSuggestionSelect = (suggestion: { registration_id: number | null }) => {
+    const occupancy = occupancyRowsRef.current.find((item) => item.id === suggestion.registration_id);
+    if (occupancy) {
+      setOccupancyDetail(null);
+      setShowAllRoomChanges(false);
+      setIsLoadingDetail(true);
+      setSelectedOccupancy(occupancy);
+      setIsStatusFilterOpen(false);
+      if (occupancy.occupancyId) {
+        fetchOccupancyDetail(occupancy.occupancyId)
+          .then((detail) => setOccupancyDetail(detail))
+          .catch(() => setOccupancyDetail(null))
+          .finally(() => setIsLoadingDetail(false));
+      } else {
+        setIsLoadingDetail(false);
+      }
+    }
+    setNavAutocomplete(null);
+    setIsFaceSearchModalOpen(false);
+  };
+
   // Navbar autocomplete — debounced on headerSearchValue
   useEffect(() => {
     const trimmed = headerSearchValue.trim();
@@ -461,25 +484,7 @@ export default function OccupancyManagementPage() {
           setNavAutocomplete({
             suggestions: results,
             isSearching: false,
-            onSelect: (suggestion) => {
-              const occupancy = occupancyRowsRef.current.find((item) => item.id === suggestion.registration_id);
-              if (occupancy) {
-                setOccupancyDetail(null);
-                setShowAllRoomChanges(false);
-                setIsLoadingDetail(true);
-                setSelectedOccupancy(occupancy);
-                setIsStatusFilterOpen(false);
-                if (occupancy.occupancyId) {
-                  fetchOccupancyDetail(occupancy.occupancyId)
-                    .then((detail) => setOccupancyDetail(detail))
-                    .catch(() => setOccupancyDetail(null))
-                    .finally(() => setIsLoadingDetail(false));
-                } else {
-                  setIsLoadingDetail(false);
-                }
-              }
-              setNavAutocomplete(null);
-            },
+            onSelect: handleSuggestionSelect,
             onDismiss: () => setNavAutocomplete(null),
           });
         })
@@ -492,6 +497,12 @@ export default function OccupancyManagementPage() {
   useEffect(() => {
     return () => setNavAutocomplete(null);
   }, [setNavAutocomplete]);
+
+  // Đăng ký nút mở modal tìm kiếm bằng khuôn mặt vào header dùng chung
+  useEffect(() => {
+    setOnOpenFaceSearch(() => () => setIsFaceSearchModalOpen(true));
+    return () => setOnOpenFaceSearch(null);
+  }, [setOnOpenFaceSearch]);
 
   useEffect(() => {
     setActivityAction(availableActivityActions[0] ?? "reminded");
@@ -653,6 +664,28 @@ export default function OccupancyManagementPage() {
     }
   };
 
+  if (isLoadingOccupancies) {
+    return (
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="flex min-h-[calc(100vh-8rem)] flex-col gap-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
+      >
+        <div className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
+          <h1 className="text-[28px] font-bold tracking-tight text-[#1a2d52]">Quản lý lưu trú</h1>
+          <p className="mt-1 text-sm text-[#62789f]">
+            Đang tải danh sách sinh viên đang lưu trú, trạng thái thôi ở và thông tin phòng giường.
+          </p>
+        </div>
+
+        <div className="rounded-[20px] border border-[#d8e4f5] bg-white px-6 py-10 text-center">
+          <div className="text-sm text-[#62789f]">Đang tải dữ liệu, vui lòng chờ...</div>
+        </div>
+      </motion.section>
+    );
+  }
+
   return (
     <>
       <motion.section
@@ -795,13 +828,7 @@ export default function OccupancyManagementPage() {
               </tr>
             </thead>
             <tbody>
-              {isLoadingOccupancies ? (
-                <tr>
-                  <td colSpan={6} className="border-t border-[#e8eef8] px-4 py-14 text-center text-sm font-semibold text-[#5c7094]">
-                    Đang tải dữ liệu lưu trú...
-                  </td>
-                </tr>
-              ) : loadError ? (
+              {loadError ? (
                 <tr>
                   <td colSpan={6} className="border-t border-[#e8eef8] px-4 py-14 text-center text-sm font-semibold text-[#cc3c4f]">
                     {loadError}
@@ -1884,6 +1911,13 @@ export default function OccupancyManagementPage() {
             document.body,
           )
         : null}
+
+      {isFaceSearchModalOpen ? (
+        <FaceSearchModal
+          onClose={() => setIsFaceSearchModalOpen(false)}
+          onSelectStudent={handleSuggestionSelect}
+        />
+      ) : null}
     </>
   );
 }

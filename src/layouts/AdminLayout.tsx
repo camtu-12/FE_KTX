@@ -6,27 +6,32 @@ import Header from "../components/Header";
 import Sidebar from "../components/Sidebar";
 import { clearAuthStorage, getStoredAuth } from "../modules/auth/utils/authStorage";
 import type { NavAutocompleteConfig } from "../types/navAutocomplete";
+import type { PeriodAutocompleteConfig } from "../types/periodAutocomplete";
 
 export type { NavAutocompleteSuggestion, NavAutocompleteConfig } from "../types/navAutocomplete";
+export type { PeriodAutocompleteSuggestion, PeriodAutocompleteConfig } from "../types/periodAutocomplete";
 
 export type AdminLayoutOutletContext = {
   headerSearchValue: string;
   setHeaderSearchValue: Dispatch<SetStateAction<string>>;
   setNavAutocomplete: Dispatch<SetStateAction<NavAutocompleteConfig | null>>;
+  setPeriodAutocomplete: Dispatch<SetStateAction<PeriodAutocompleteConfig | null>>;
+  setOnOpenFaceSearch: Dispatch<SetStateAction<(() => void) | null>>;
 };
 
 export default function AdminLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [headerSearchValue, setHeaderSearchValue] = useState("");
   const [navAutocomplete, setNavAutocomplete] = useState<NavAutocompleteConfig | null>(null);
+  const [periodAutocomplete, setPeriodAutocomplete] = useState<PeriodAutocompleteConfig | null>(null);
+  const [onOpenFaceSearch, setOnOpenFaceSearch] = useState<(() => void) | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const user = getStoredAuth()?.user ?? null;
   const userName = user?.fullName || user?.email || "Admin User";
   const userEmail = user?.email || "admin@stu.edu.vn";
-  const isRegistrationsPage =
-    location.pathname === "/admin/registrations" ||
-    location.pathname === "/admin/registration-periods";
+  const isRegistrationsListPage = location.pathname === "/admin/registrations";
+  const isRegistrationPeriodsPage = location.pathname === "/admin/registration-periods";
   const isAssignRoomListPage = location.pathname === "/admin/assign-room";
   const isBedManagementPage = location.pathname === "/admin/bed-management";
   const isOccupancyManagementPage = location.pathname === "/admin/occupancies";
@@ -41,7 +46,8 @@ export default function AdminLayout() {
   const isAdmissionCandidatePage = location.pathname === "/admin/admission-candidates";
   const isDormReservationPage = location.pathname === "/admin/dorm-reservations";
   const isSearchEnabled =
-    isRegistrationsPage ||
+    isRegistrationsListPage ||
+    isRegistrationPeriodsPage ||
     isAssignRoomListPage ||
     isBedManagementPage ||
     isOccupancyManagementPage ||
@@ -61,9 +67,11 @@ export default function AdminLayout() {
       ? "Tìm mã hồ sơ, họ tên, CCCD, email, SĐT..."
       : isDormReservationPage
         ? "Tìm mã giữ chỗ, mã hồ sơ, họ tên, CCCD..."
-        : isAssignRoomListPage || isBedManagementPage || isOccupancyManagementPage || isViolationManagementPage || isPaymentManagementPage || isSupportRequestPage || isExtensionPage
-          ? "Tìm theo MSSV hoặc họ tên"
-          : "Tìm theo MSSV, họ tên hoặc email";
+        : isRegistrationPeriodsPage
+          ? "Tìm theo năm học, học kỳ..."
+          : isAssignRoomListPage || isBedManagementPage || isOccupancyManagementPage || isViolationManagementPage || isPaymentManagementPage || isSupportRequestPage || isExtensionPage
+            ? "Tìm theo MSSV hoặc họ tên"
+            : "Tìm theo MSSV, họ tên hoặc email";
 
   const handleLogout = () => {
     clearAuthStorage();
@@ -80,6 +88,8 @@ export default function AdminLayout() {
         searchPlaceholder={isSearchEnabled ? searchPlaceholder : undefined}
         onSearchChange={isSearchEnabled ? setHeaderSearchValue : undefined}
         navAutocomplete={isOccupancyManagementPage ? navAutocomplete : null}
+        periodAutocomplete={isRegistrationPeriodsPage ? periodAutocomplete : null}
+        onOpenFaceSearch={isOccupancyManagementPage ? onOpenFaceSearch ?? undefined : undefined}
         onLogout={handleLogout}
         isSidebarOpen={isSidebarOpen}
         onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
@@ -107,7 +117,7 @@ export default function AdminLayout() {
             transition={{ duration: 0.35, delay: 0.08, ease: "easeOut" }}
             className="auth-scrollbar min-w-0 flex-1 overflow-y-auto bg-white/35 px-6 pb-6 pt-1"
           >
-            <Outlet context={{ headerSearchValue, setHeaderSearchValue, setNavAutocomplete }} />
+            <Outlet context={{ headerSearchValue, setHeaderSearchValue, setNavAutocomplete, setPeriodAutocomplete, setOnOpenFaceSearch }} />
           </motion.div>
         </div>
       </div>

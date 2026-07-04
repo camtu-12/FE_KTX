@@ -1,6 +1,8 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ElementType, ReactNode } from "react";
+import { useOutletContext } from "react-router-dom";
+import type { AdminLayoutOutletContext, PeriodAutocompleteSuggestion } from "../../../layouts/AdminLayout";
 import {
   CalendarDays,
   CalendarRange,
@@ -53,6 +55,14 @@ const dashboardStatusDotClass: Record<PeriodStatus, string> = {
   active: "bg-emerald-500",
   closed: "bg-rose-500",
   processing: "bg-amber-500",
+};
+
+// Bản gọn nhẹ của dashboardStatusClass (bỏ shadow) — dùng cho badge nhỏ trong dropdown search.
+const compactStatusBadgeClass: Record<PeriodStatus, string> = {
+  pending: "border border-slate-200 bg-slate-50 text-slate-600",
+  active: "border border-emerald-200 bg-emerald-50 text-emerald-700",
+  closed: "border border-rose-200 bg-rose-50 text-rose-700",
+  processing: "border border-amber-200 bg-amber-50 text-amber-700",
 };
 
 const channelLabel: Record<PeriodChannel, string> = {
@@ -318,6 +328,68 @@ export default function AdminRegistrationPeriodsPage() {
   const [confirmingBatchId, setConfirmingBatchId] = useState<number | null>(null);
   const [confirmRankId, setConfirmRankId] = useState<number | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [highlightedPeriodId, setHighlightedPeriodId] = useState<number | null>(null);
+
+  const { headerSearchValue, setPeriodAutocomplete } = useOutletContext<AdminLayoutOutletContext>();
+  const periodCardRefs = useRef<Record<number, HTMLDivElement | null>>({});
+
+  const handleSelectPeriod = (suggestion: PeriodAutocompleteSuggestion) => {
+    setPeriodAutocomplete(null);
+    periodCardRefs.current[suggestion.id]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedPeriodId(suggestion.id);
+    window.setTimeout(() => {
+      setHighlightedPeriodId((current) => (current === suggestion.id ? null : current));
+    }, 1800);
+  };
+
+  // Search chung ở Header — tìm theo đợt đăng ký (năm học/học kỳ), chỉ áp dụng ở trang này.
+  useEffect(() => {
+    const trimmed = headerSearchValue.trim();
+    if (!trimmed) {
+      setPeriodAutocomplete(null);
+      return;
+    }
+
+    const tokens = trimmed.toLowerCase().split(/\s+/).filter(Boolean);
+
+    const matches = periods.filter((period) => {
+      const haystack = [
+        period.school_year ?? "",
+        period.semester ?? "",
+        `hk${period.semester ?? ""}`,
+        `học kỳ ${period.semester ?? ""}`,
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return tokens.every((token) => haystack.includes(token));
+    });
+
+    const suggestions: PeriodAutocompleteSuggestion[] = matches.slice(0, 8).map((period) => {
+      const periodStatus = period.status as PeriodStatus;
+      return {
+        id: period.id,
+        school_year: period.school_year ?? "",
+        semester: period.semester ?? "",
+        statusLabel: statusLabel[periodStatus] ?? period.status ?? "",
+        statusBadgeClassName: compactStatusBadgeClass[periodStatus] ?? "",
+        dateRangeLabel: `${formatDate(period.start_date)} - ${formatDate(period.end_date)}`,
+      };
+    });
+
+    setPeriodAutocomplete({
+      suggestions,
+      isSearching: false,
+      onSelect: handleSelectPeriod,
+      onDismiss: () => setPeriodAutocomplete(null),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [headerSearchValue, periods]);
+
+  // Dọn dropdown khi rời trang
+  useEffect(() => {
+    return () => setPeriodAutocomplete(null);
+  }, [setPeriodAutocomplete]);
 
   const handleConfirmBatch = async (id: number) => {
     setConfirmingBatchId(id);
@@ -719,10 +791,17 @@ export default function AdminRegistrationPeriodsPage() {
             return (
             <motion.div
               key={period.id}
+              ref={(node) => {
+                periodCardRefs.current[period.id] = node;
+              }}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, delay: index * 0.05, ease: "easeOut" }}
-              className="rounded-[20px] border border-[#d6e2f1] bg-white p-4 shadow-[0_12px_28px_rgba(36,76,184,0.09)] sm:p-5"
+              className={`rounded-[20px] border bg-white p-4 shadow-[0_12px_28px_rgba(36,76,184,0.09)] transition-all duration-500 sm:p-5 ${
+                highlightedPeriodId === period.id
+                  ? "border-[#244cb8] ring-4 ring-[#244cb8]/20"
+                  : "border-[#d6e2f1]"
+              }`}
             >
               {/* Row 1: tên + badge trạng thái */}
               <div className="flex flex-col gap-2.5 xl:flex-row xl:items-start xl:justify-between">
@@ -752,8 +831,8 @@ export default function AdminRegistrationPeriodsPage() {
 
               {/* Thông tin từng dòng */}
               <div className="mt-4 grid items-stretch gap-2.5 sm:grid-cols-2">
-                <DashboardTile icon={GraduationCap} label="Năm học - Học kỳ">
-                  {period.school_year} - HK {period.semester}
+                <DashboardTile icon={GraduationCap} label="Học kỳ - Năm học">
+                  Học kỳ {period.semester} - Năm học {period.school_year}
                 </DashboardTile>
                 <DashboardTile icon={FileText} label="Tổng số đơn">
                   {totalRegistrations} đơn

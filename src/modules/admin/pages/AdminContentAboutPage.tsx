@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import { CheckCircle2, ImagePlus, Loader2, X, XCircle } from "lucide-react";
 import { fetchStaticPage, updateStaticPage } from "../../../api/staticPageApi";
 
@@ -115,23 +116,31 @@ export default function AdminContentAboutPage() {
   const displayImage = previewUrl || currentImage;
 
   const inputBase =
-    "w-full rounded-xl border border-[#d9e4f4] bg-white px-4 py-3 text-sm text-[#1e293b] placeholder-[#94a3b8] outline-none transition focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20";
-
-  if (loading) {
-    return (
-      <div className="flex min-h-[40vh] items-center justify-center">
-        <Loader2 className="h-7 w-7 animate-spin text-[#2563eb]" />
-      </div>
-    );
-  }
+    "w-full rounded-2xl border border-[#d6e2f1] bg-[#f8fbff] px-4 py-3 text-sm font-semibold text-[#1f3152] placeholder:text-[#94a6c4] outline-none transition focus:border-[#244cb8] focus:bg-white focus:ring-4 focus:ring-[#244cb8]/12";
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 py-8">
+    <motion.section
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
+      className="flex min-h-[calc(100vh-8rem)] flex-col space-y-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
+    >
+      <motion.div
+        transition={{ duration: 0.2 }}
+        className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm sm:px-8"
+      >
+        <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">
+          Quản lý nội dung trang Giới thiệu
+        </h1>
+        <p className="mt-1 max-w-3xl text-[13px] leading-6 text-[#62789f] sm:text-sm">
+          Chỉnh sửa nội dung hiển thị tại trang giới thiệu ký túc xá.
+        </p>
+      </motion.div>
 
       {/* Toast */}
       {toast && (
         <div
-          className={`mb-6 flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold shadow-sm ${
+          className={`flex items-center gap-3 rounded-[20px] border px-4 py-3 text-sm font-semibold shadow-[0_12px_28px_rgba(36,76,184,0.09)] ${
             toast.type === "success"
               ? "border-emerald-200 bg-emerald-50 text-emerald-700"
               : "border-rose-200 bg-rose-50 text-rose-700"
@@ -144,149 +153,149 @@ export default function AdminContentAboutPage() {
         </div>
       )}
 
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-extrabold text-[#0f172a]">
-          Quản lý nội dung trang Giới thiệu
-        </h1>
-        <p className="mt-1 text-sm text-[#64748b]">
-          Chỉnh sửa nội dung hiển thị tại trang{" "}
-          <span className="font-medium text-[#2563eb]">/about</span>
-        </p>
-      </div>
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-[#244cb8]" />
+        </div>
+      ) : (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, ease: "easeOut" }}
+          className="space-y-6 rounded-[20px] border border-[#d6e2f1] bg-white p-4 shadow-[0_12px_28px_rgba(36,76,184,0.09)] sm:p-6"
+        >
+          {/* Tiêu đề */}
+          <div>
+            <label className="mb-1.5 block text-sm font-bold text-[#1a2d52]">
+              Tiêu đề <span className="text-rose-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={form.title}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, title: e.target.value }));
+                if (errors.title) setErrors((err) => ({ ...err, title: undefined }));
+              }}
+              placeholder="Tiêu đề trang giới thiệu"
+              className={inputBase}
+            />
+            {errors.title && <p className="mt-1.5 text-xs text-rose-500">{errors.title}</p>}
+          </div>
 
-      {/* Form */}
-      <div className="space-y-6 rounded-2xl border border-[#d9e4f4] bg-white p-6 shadow-[0_8px_24px_rgba(17,40,97,0.06)]">
+          {/* Mô tả ngắn */}
+          <div>
+            <label className="mb-1.5 block text-sm font-bold text-[#1a2d52]">
+              Mô tả ngắn
+            </label>
+            <textarea
+              rows={3}
+              value={form.summary}
+              onChange={(e) => setForm((f) => ({ ...f, summary: e.target.value }))}
+              placeholder="Đoạn mô tả ngắn hiển thị phía dưới tiêu đề (in đậm)"
+              className={`${inputBase} resize-y`}
+            />
+          </div>
 
-        {/* Ảnh đại diện */}
-        <div>
-          <label className="mb-1.5 block text-sm font-semibold text-[#1e293b]">
-            Ảnh đại diện KTX
-          </label>
+          {/* Ảnh đại diện */}
+          <div>
+            <label className="mb-1.5 block text-sm font-bold text-[#1a2d52]">
+              Ảnh đại diện KTX
+            </label>
 
-          {/* Preview */}
-          {displayImage ? (
-            <div className="relative mb-3 overflow-hidden rounded-xl border border-[#d9e4f4]">
-              <img
-                src={displayImage}
-                alt="Preview ảnh đại diện"
-                className="h-96 w-full object-cover"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).src =
-                    "https://placehold.co/900x192/e2e8f0/94a3b8?text=Ảnh+KTX";
-                }}
-              />
-              {/* Badge "Mới" khi đang preview file chưa lưu */}
-              {previewUrl && (
-                <span className="absolute left-3 top-3 rounded-lg bg-[#2563eb] px-2 py-0.5 text-xs font-bold text-white shadow">
-                  Chưa lưu
-                </span>
-              )}
-              {/* Nút xoá preview mới */}
-              {previewUrl && (
-                <button
-                  type="button"
-                  onClick={handleRemoveNewImage}
-                  className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-[#64748b] shadow hover:bg-white hover:text-rose-500"
-                  title="Huỷ ảnh mới"
-                >
-                  <X size={14} strokeWidth={2.5} />
-                </button>
-              )}
+            {/* Preview */}
+            {displayImage ? (
+              <div className="relative mx-auto mb-3 max-w-md overflow-hidden rounded-2xl border border-[#d6e2f1]">
+                <img
+                  src={displayImage}
+                  alt="Preview ảnh đại diện"
+                  className="h-64 w-full object-cover"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src =
+                      "https://placehold.co/900x192/e2e8f0/94a3b8?text=Ảnh+KTX";
+                  }}
+                />
+                {/* Badge "Mới" khi đang preview file chưa lưu */}
+                {previewUrl && (
+                  <span className="absolute left-3 top-3 rounded-lg bg-[#244cb8] px-2 py-0.5 text-xs font-bold text-white shadow">
+                    Chưa lưu
+                  </span>
+                )}
+                {/* Nút xoá preview mới */}
+                {previewUrl && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveNewImage}
+                    className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-[#5470a6] shadow hover:bg-white hover:text-rose-500"
+                    title="Huỷ ảnh mới"
+                  >
+                    <X size={14} strokeWidth={2.5} />
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="mx-auto mb-3 flex h-64 max-w-md items-center justify-center rounded-2xl border-2 border-dashed border-[#d6e2f1] bg-[#f8fbff] text-sm text-[#8aa4cc]">
+                Chưa có ảnh
+              </div>
+            )}
+
+            {/* Nút chọn ảnh */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+            <div className="mx-auto flex max-w-md flex-col items-center text-center">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="auth-btn-gloss inline-flex items-center gap-2 rounded-xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-4 py-2 text-sm font-semibold text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.12)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white"
+              >
+                <ImagePlus size={16} strokeWidth={2.1} />
+                {displayImage ? "Đổi ảnh" : "Chọn ảnh"}
+              </button>
+              <p className="mt-1.5 text-xs text-[#8aa4cc]">
+                JPG, PNG hoặc WebP. Tối đa 5 MB.
+              </p>
             </div>
-          ) : (
-            <div className="mb-3 flex h-96 items-center justify-center rounded-xl border-2 border-dashed border-[#d9e4f4] bg-[#f7faff] text-sm text-[#94a3b8]">
-              Chưa có ảnh
-            </div>
-          )}
+          </div>
 
-          {/* Nút chọn ảnh */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            className="hidden"
-            onChange={handleFileChange}
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center gap-2 rounded-xl border border-[#d9e4f4] bg-[#f7faff] px-4 py-2 text-sm font-semibold text-[#2563eb] transition hover:border-[#2563eb]/40 hover:bg-[#eef3ff]"
-          >
-            <ImagePlus size={16} strokeWidth={2.1} />
-            {displayImage ? "Đổi ảnh" : "Chọn ảnh"}
-          </button>
-          <p className="mt-1.5 text-xs text-[#94a3b8]">
-            JPG, PNG hoặc WebP. Tối đa 5 MB.
-          </p>
-        </div>
+          {/* Nội dung HTML */}
+          <div>
+            <label className="mb-1.5 block text-sm font-bold text-[#1a2d52]">
+              Nội dung <span className="text-rose-500">*</span>
+            </label>
+            <textarea
+              rows={14}
+              value={form.content}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, content: e.target.value }));
+                if (errors.content) setErrors((err) => ({ ...err, content: undefined }));
+              }}
+              placeholder="Nhập nội dung HTML..."
+              className={`${inputBase} resize-y font-mono text-xs leading-6`}
+            />
+            <p className="mt-1.5 text-xs text-[#8aa4cc]">
+              Hỗ trợ định dạng HTML. Dùng &lt;h3&gt; cho tiêu đề phần, &lt;p&gt; cho đoạn văn.
+            </p>
+            {errors.content && <p className="mt-1 text-xs text-rose-500">{errors.content}</p>}
+          </div>
 
-        {/* Tiêu đề */}
-        <div>
-          <label className="mb-1.5 block text-sm font-semibold text-[#1e293b]">
-            Tiêu đề <span className="text-rose-500">*</span>
-          </label>
-          <input
-            type="text"
-            value={form.title}
-            onChange={(e) => {
-              setForm((f) => ({ ...f, title: e.target.value }));
-              if (errors.title) setErrors((err) => ({ ...err, title: undefined }));
-            }}
-            placeholder="Tiêu đề trang giới thiệu"
-            className={inputBase}
-          />
-          {errors.title && <p className="mt-1.5 text-xs text-rose-500">{errors.title}</p>}
-        </div>
-
-        {/* Mô tả ngắn */}
-        <div>
-          <label className="mb-1.5 block text-sm font-semibold text-[#1e293b]">
-            Mô tả ngắn
-          </label>
-          <textarea
-            rows={3}
-            value={form.summary}
-            onChange={(e) => setForm((f) => ({ ...f, summary: e.target.value }))}
-            placeholder="Đoạn mô tả ngắn hiển thị phía dưới tiêu đề (in đậm)"
-            className={`${inputBase} resize-y`}
-          />
-        </div>
-
-        {/* Nội dung HTML */}
-        <div>
-          <label className="mb-1.5 block text-sm font-semibold text-[#1e293b]">
-            Nội dung <span className="text-rose-500">*</span>
-          </label>
-          <textarea
-            rows={14}
-            value={form.content}
-            onChange={(e) => {
-              setForm((f) => ({ ...f, content: e.target.value }));
-              if (errors.content) setErrors((err) => ({ ...err, content: undefined }));
-            }}
-            placeholder="Nhập nội dung HTML..."
-            className={`${inputBase} resize-y font-mono text-xs leading-6`}
-          />
-          <p className="mt-1.5 text-xs text-[#94a3b8]">
-            Hỗ trợ định dạng HTML. Dùng &lt;h3&gt; cho tiêu đề phần, &lt;p&gt; cho đoạn văn.
-          </p>
-          {errors.content && <p className="mt-1 text-xs text-rose-500">{errors.content}</p>}
-        </div>
-
-        {/* Nút lưu */}
-        <div className="flex justify-end border-t border-[#e8f0fb] pt-5">
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="inline-flex items-center gap-2 rounded-xl bg-[#2563eb] px-6 py-2.5 text-sm font-bold text-white shadow-[0_8px_20px_rgba(37,99,235,0.28)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#1d4ed8] hover:shadow-[0_12px_28px_rgba(37,99,235,0.36)] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            {saving ? "Đang lưu..." : "Lưu thay đổi"}
-          </button>
-        </div>
-      </div>
-    </div>
+          {/* Nút lưu */}
+          <div className="flex justify-end border-t border-[#e6eef8] pt-5">
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="auth-btn-gloss inline-flex items-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-6 py-2.5 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition-all duration-300 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_22px_40px_rgba(36,76,184,0.34)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:brightness-100"
+            >
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+              {saving ? "Đang lưu..." : "Lưu thay đổi"}
+            </button>
+          </div>
+        </motion.div>
+      )}
+    </motion.section>
   );
 }

@@ -1,6 +1,7 @@
 import {
   Bell,
   BellRing,
+  Camera,
   CheckCheck,
   ChevronDown,
   Home,
@@ -18,7 +19,10 @@ import {
   Zap,
 } from "lucide-react";
 import type { NavAutocompleteConfig } from "../types/navAutocomplete";
+import type { PeriodAutocompleteConfig } from "../types/periodAutocomplete";
 import AppBrand from "./AppBrand";
+import StudentResultList from "./StudentResultList";
+import PeriodResultList from "./PeriodResultList";
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -37,13 +41,6 @@ import {
 
 export type HeaderRole = "admin" | "student";
 
-const navStatusMeta: Record<string, { label: string; badge: string }> = {
-  ACTIVE: { label: "Đang lưu trú", badge: "border border-emerald-200 bg-emerald-50 text-emerald-700" },
-  CHECKOUT_REQUESTED: { label: "Yêu cầu thôi ở", badge: "border border-amber-200 bg-amber-50 text-amber-700" },
-  CHECKED_OUT: { label: "Đã thôi ở", badge: "border border-slate-200 bg-slate-50 text-slate-600" },
-  FORCED_CHECKOUT: { label: "Buộc thôi ở", badge: "border border-rose-200 bg-rose-50 text-rose-700" },
-};
-
 type HeaderProps = {
   role: HeaderRole;
   userName: string;
@@ -53,6 +50,8 @@ type HeaderProps = {
   searchPlaceholder?: string;
   onSearchChange?: (value: string) => void;
   navAutocomplete?: NavAutocompleteConfig | null;
+  periodAutocomplete?: PeriodAutocompleteConfig | null;
+  onOpenFaceSearch?: () => void;
   onLogout: () => void;
   isSidebarOpen?: boolean;
   onToggleSidebar?: () => void;
@@ -108,6 +107,8 @@ export default function Header({
   searchPlaceholder,
   onSearchChange,
   navAutocomplete,
+  periodAutocomplete,
+  onOpenFaceSearch,
   onLogout,
   isSidebarOpen = true,
   onToggleSidebar,
@@ -173,14 +174,19 @@ export default function Header({
     };
   }, [isUserMenuOpen]);
 
-  // Click outside / ESC for nav autocomplete dropdown
+  // Click outside / ESC for nav autocomplete dropdown (search sinh viên hoặc đợt đăng ký)
   useEffect(() => {
-    if (!navAutocomplete?.suggestions.length) return;
+    const activeAutocomplete = navAutocomplete?.suggestions.length
+      ? navAutocomplete
+      : periodAutocomplete?.suggestions.length
+        ? periodAutocomplete
+        : null;
+    if (!activeAutocomplete) return;
     const handleClick = (e: MouseEvent) => {
-      if (!navSearchRef.current?.contains(e.target as Node)) navAutocomplete?.onDismiss();
+      if (!navSearchRef.current?.contains(e.target as Node)) activeAutocomplete.onDismiss();
     };
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") navAutocomplete?.onDismiss();
+      if (e.key === "Escape") activeAutocomplete.onDismiss();
     };
     document.addEventListener("mousedown", handleClick);
     document.addEventListener("keydown", handleEsc);
@@ -188,7 +194,7 @@ export default function Header({
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleEsc);
     };
-  }, [navAutocomplete]);
+  }, [navAutocomplete, periodAutocomplete]);
 
   // Click outside for notification panel
   useEffect(() => {
@@ -356,7 +362,7 @@ export default function Header({
                 placeholder={searchPlaceholder ?? "Tìm kiếm"}
                 className="w-full bg-transparent text-sm text-[#1f3152] outline-none placeholder:text-[#94a6c4]"
               />
-              {navAutocomplete?.isSearching ? (
+              {navAutocomplete?.isSearching || periodAutocomplete?.isSearching ? (
                 <Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-[#7c8fb5]" />
               ) : searchValue ? (
                 <button
@@ -368,68 +374,29 @@ export default function Header({
                   <X className="h-3.5 w-3.5" />
                 </button>
               ) : null}
+
+              {onOpenFaceSearch ? (
+                <button
+                  type="button"
+                  onClick={onOpenFaceSearch}
+                  className="flex-shrink-0 rounded-full border border-[#d6e2f1] bg-white p-1.5 text-[#5470a6] transition hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]"
+                  aria-label="Tìm kiếm bằng khuôn mặt"
+                  title="Tìm kiếm bằng khuôn mặt"
+                >
+                  <Camera className="h-4 w-4" />
+                </button>
+              ) : null}
             </label>
 
             {navAutocomplete && navAutocomplete.suggestions.length > 0 && (
               <div className="absolute left-0 right-0 top-full z-50 mt-1.5 rounded-2xl border border-[#d3e0f2] bg-white shadow-[0_16px_40px_rgba(27,56,122,0.18)]">
-                {navAutocomplete.suggestions.map((suggestion) => {
-                  const statusInfo = suggestion.occupancy_status ? navStatusMeta[suggestion.occupancy_status] : null;
-                  const initials2 = suggestion.full_name.charAt(0).toUpperCase();
-                  return (
-                    <div
-                      key={suggestion.id}
-                      className="group relative flex cursor-pointer items-center gap-3 border-b border-[#f0f4fb] px-3 py-2.5 last:border-0 transition hover:bg-[#f5f9ff]"
-                      onClick={() => navAutocomplete.onSelect(suggestion)}
-                    >
-                      {suggestion.avatar_url ? (
-                        <img src={suggestion.avatar_url} alt="" className="h-10 w-10 flex-shrink-0 rounded-full border border-[#d3e0f2] object-cover" />
-                      ) : (
-                        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#dde9ff]">
-                          <span className="text-sm font-bold text-[#5573a0]">{initials2}</span>
-                        </div>
-                      )}
+                <StudentResultList suggestions={navAutocomplete.suggestions} onSelect={navAutocomplete.onSelect} />
+              </div>
+            )}
 
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-[#1b3766]">{suggestion.full_name}</p>
-                        <p className="text-xs text-[#8aa4cc]">{suggestion.student_code}</p>
-                      </div>
-
-                      {suggestion.building_code && suggestion.room_number && (
-                        <span className="flex-shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">
-                          {suggestion.building_code}{suggestion.room_number}
-                        </span>
-                      )}
-
-                      {/* Hover tooltip */}
-                      <div className="pointer-events-none invisible absolute left-[calc(100%+10px)] top-0 z-[60] w-[220px] rounded-2xl border border-[#d3e0f2] bg-white p-4 opacity-0 shadow-[0_16px_40px_rgba(27,56,122,0.18)] transition-all duration-150 group-hover:visible group-hover:opacity-100">
-                        {suggestion.avatar_url ? (
-                          <img src={suggestion.avatar_url} alt="" className="mx-auto h-20 w-20 rounded-full border border-[#d3e0f2] object-cover" />
-                        ) : (
-                          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#dde9ff]">
-                            <span className="text-3xl font-bold text-[#5573a0]">{initials2}</span>
-                          </div>
-                        )}
-                        <div className="mt-3 space-y-1.5 text-sm">
-                          <p className="text-center font-bold text-[#1b3766]">{suggestion.full_name}</p>
-                          {suggestion.faculty && (
-                            <p className="text-[#5570a0]">Khoa: <span className="font-semibold text-[#1b3766]">{suggestion.faculty}</span></p>
-                          )}
-                          {suggestion.current_year && (
-                            <p className="text-[#5570a0]">Năm học: <span className="font-semibold text-[#1b3766]">Năm {suggestion.current_year}</span></p>
-                          )}
-                          {statusInfo && (
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <span className="text-[#5570a0]">Trạng thái:</span>
-                              <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${statusInfo.badge}`}>
-                                {statusInfo.label}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+            {periodAutocomplete && periodAutocomplete.suggestions.length > 0 && (
+              <div className="absolute left-0 right-0 top-full z-50 mt-1.5 rounded-2xl border border-[#d3e0f2] bg-white shadow-[0_16px_40px_rgba(27,56,122,0.18)]">
+                <PeriodResultList suggestions={periodAutocomplete.suggestions} onSelect={periodAutocomplete.onSelect} />
               </div>
             )}
           </div>

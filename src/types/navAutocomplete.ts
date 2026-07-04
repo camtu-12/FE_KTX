@@ -10,6 +10,7 @@ export type NavAutocompleteSuggestion = {
   occupancy_status: string | null;
   occupancy_id: number | null;
   registration_id: number | null;
+  similarity?: number;
 };
 
 export type NavAutocompleteConfig = {
