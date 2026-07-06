@@ -1,4 +1,4 @@
-import { API } from "./registrationApi";
+import apiClient from "../lib/apiClient";
 
 export type StudentSearchResult = {
   id: number;
@@ -18,7 +18,7 @@ export const searchStudentsForOccupancy = async (
   q: string,
   limit = 8,
 ): Promise<StudentSearchResult[]> => {
-  const res = await API.get<StudentSearchResult[]>("/admin/students/search", {
+  const res = await apiClient.get<StudentSearchResult[]>("/admin/students/search", {
     params: { q, limit },
   });
   return Array.isArray(res.data) ? res.data : [];

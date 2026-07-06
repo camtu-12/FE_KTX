@@ -1,5 +1,5 @@
 import type { NavAutocompleteSuggestion } from "../types/navAutocomplete";
-import { API } from "./registrationApi";
+import apiClient from "../lib/apiClient";
 
 type FaceSearchResult = {
   student: Omit<NavAutocompleteSuggestion, "similarity">;
@@ -10,7 +10,7 @@ export const searchStudentsByFace = async (image: Blob): Promise<NavAutocomplete
   const formData = new FormData();
   formData.append("image", image, "face.jpg");
 
-  const res = await API.post<{ results: FaceSearchResult[] }>("/admin/students/face-search", formData, {
+  const res = await apiClient.post<{ results: FaceSearchResult[] }>("/admin/students/face-search", formData, {
     headers: { "Content-Type": "multipart/form-data" },
   });
 

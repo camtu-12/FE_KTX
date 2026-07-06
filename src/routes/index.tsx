@@ -46,12 +46,14 @@ import StudentDashboardPage from "../modules/student/pages/StudentDashboardPage"
 import SelectBedPage from "../modules/student/pages/SelectBedPage";
 import BedSelectionPage from "../modules/student/pages/BedSelectionPage";
 import MyRoomPage from "../modules/student/pages/MyRoomPage";
+import StudentProfilePage from "../modules/student/pages/StudentProfilePage";
 import PaymentPage from "../modules/student/pages/PaymentPage";
 import MyActivitiesPage from "../modules/student/pages/MyActivitiesPage";
 import StudentSupportPage from "../modules/student/pages/StudentSupportPage";
 import StudentExtensionPage from "../modules/student/pages/StudentExtensionPage";
 import ProtectedRoute from "./ProtectedRoute";
 import ForgotPassword from "../modules/auth/pages/ForgotPassword";
+import ChangePasswordPage from "../modules/auth/pages/ChangePasswordPage";
 
 export default function AppRoutes() {
   return (
@@ -102,6 +104,7 @@ export default function AppRoutes() {
           <Route path="content/about" element={<AdminContentAboutPage />} />
           <Route path="admission-candidates" element={<AdmissionCandidateManagementPage />} />
           <Route path="dorm-reservations" element={<DormReservationManagementPage />} />
+          <Route path="change-password" element={<ChangePasswordPage />} />
         </Route>
 
         <Route
@@ -113,6 +116,7 @@ export default function AppRoutes() {
           }
         >
           <Route path="dashboard" element={<StudentDashboardPage />} />
+          <Route path="profile" element={<StudentProfilePage />} />
           <Route path="registration" element={<RegistrationPage />} />
           <Route path="room-status" element={<RoomStatusPage />} />
           <Route path="room" element={<MyRoomPage />} />
@@ -122,6 +126,7 @@ export default function AppRoutes() {
           <Route path="extension" element={<StudentExtensionPage />} />
           <Route path="select-bed" element={<SelectBedPage />} />
           <Route path="bed-selection" element={<BedSelectionPage />} />
+          <Route path="change-password" element={<ChangePasswordPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -13,7 +13,7 @@ import {
   X,
   ArrowUp,
 } from "lucide-react";
-import { useOutletContext, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 import { createPortal } from "react-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import { listRooms, createRoom, updateRoom, deleteRoom, updateBedStatus, transferBedOccupancy, getRoomBeds, type BedPayload, type RoomPayload, type BedDetail, type BedStudent } from "../../../api/roomApi";
@@ -287,7 +287,9 @@ function SelectField(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
 }
 
 export default function AdminRoomManagement() {
-  const { headerSearchValue } = useOutletContext<AdminLayoutOutletContext>();
+  const { headerSearchValue, setHeaderSearchValue } = useOutletContext<AdminLayoutOutletContext>();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryBuilding = searchParams.get("building") ?? "all";
   const queryFloor = searchParams.get("floor") ?? "all";
@@ -342,6 +344,18 @@ export default function AdminRoomManagement() {
   }, []);
 
   // Rooms are kept in sync with backend; localStorage sync removed.
+
+  useEffect(() => {
+    const routeState = location.state as { presetRoomCode?: string } | null;
+    const presetRoomCode = routeState?.presetRoomCode;
+
+    if (!presetRoomCode) {
+      return;
+    }
+
+    setHeaderSearchValue(presetRoomCode);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate, setHeaderSearchValue]);
 
   useEffect(() => {
     let mounted = true;
@@ -637,6 +651,20 @@ export default function AdminRoomManagement() {
 
   const isFullBlocked = Boolean(fullStatusError);
   const isAvailableBlocked = Boolean(availableStatusError);
+
+  const isEmptyBedsFullError = Boolean(
+    roomForm.status === "FULL"
+      && editingRoom?.status !== "MAINTENANCE"
+      && formOccupiedBeds > 0
+      && formEmptyBeds > 0,
+  );
+
+  const handleGoToAssignRoom = () => {
+    if (!editingRoom) return;
+    const roomGender = getRoomGender(editingRoom, buildings);
+    const presetGenderFilter = roomGender === "MALE" ? "male" : roomGender === "FEMALE" ? "female" : "all";
+    navigate("/admin/assign-room", { state: { presetGenderFilter, roomLabel: getRoomCode(editingRoom) } });
+  };
 
   const isRoomStatusBlocked = Boolean(isFullBlocked || isAvailableBlocked || isCapacityTooSmall);
   const isRoomSubmitBlocked = Boolean(isRoomStatusBlocked || isCapacityInvalid || isCapacityOdd || isMaintenanceMetaMissing);
@@ -1574,10 +1602,13 @@ export default function AdminRoomManagement() {
                           </p>
                         </div>
                         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                          {[
-                            { key: "left", label: "Cửa sổ dãy trái", groups: bunkBedGroups.filter((_, index) => index % 2 === 0) },
-                            { key: "right", label: "Cửa sổ dãy phải", groups: bunkBedGroups.filter((_, index) => index % 2 === 1) },
-                          ].map((column) => (
+                          {(() => {
+                            const midpoint = Math.ceil(bunkBedGroups.length / 2);
+                            return [
+                              { key: "left", label: "Cửa sổ dãy trái", groups: bunkBedGroups.slice(0, midpoint) },
+                              { key: "right", label: "Cửa sổ dãy phải", groups: bunkBedGroups.slice(midpoint) },
+                            ];
+                          })().map((column) => (
                             <div key={column.key} className="flex h-full flex-col gap-4">
                               <div className="flex-1 space-y-4">
                                 {column.groups.map((group) => (
@@ -2330,9 +2361,20 @@ export default function AdminRoomManagement() {
                         <option value="MAINTENANCE">Bảo trì</option>
                       </SelectField>
                       {isRoomStatusBlocked ? (
-                        <p className="mt-2 text-xs font-medium text-amber-700">
-                          {blockedStatusMessage}
-                        </p>
+                        <div className="mt-2 space-y-2">
+                          <p className="text-xs font-medium text-amber-700">
+                            {blockedStatusMessage}
+                          </p>
+                          {isFullBlocked && isEmptyBedsFullError ? (
+                            <button
+                              type="button"
+                              onClick={handleGoToAssignRoom}
+                              className="inline-flex h-8 items-center justify-center rounded-lg bg-amber-600 px-3 text-xs font-semibold text-white transition hover:bg-amber-700"
+                            >
+                              Đi tới Phân phòng
+                            </button>
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
 
@@ -2403,9 +2445,18 @@ export default function AdminRoomManagement() {
                   </div>
 
                   {roomFormError ? (
-                    <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
-                      {roomFormError}
-                    </p>
+                    <div className="space-y-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+                      <p className="text-sm font-medium text-red-700">{roomFormError}</p>
+                      {isEmptyBedsFullError ? (
+                        <button
+                          type="button"
+                          onClick={handleGoToAssignRoom}
+                          className="inline-flex h-8 items-center justify-center rounded-lg bg-red-600 px-3 text-xs font-semibold text-white transition hover:bg-red-700"
+                        >
+                          Đi tới Phân phòng
+                        </button>
+                      ) : null}
+                    </div>
                   ) : null}
 
                   <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">

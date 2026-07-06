@@ -1,12 +1,5 @@
-import axios from "axios";
+import apiClient from "../lib/apiClient";
 import type { Building, BuildingFloor, BuildingStatus, FloorGender, FloorStatus } from "../types/building";
-
-const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
-const API_ROOT = API_BASE.endsWith("/api") ? API_BASE : `${API_BASE}/api`;
-
-const http = axios.create({
-  baseURL: API_ROOT,
-});
 
 type ApiFloor = {
   id?: number;
@@ -75,31 +68,31 @@ const normalizeBuilding = (building: ApiBuilding): Building => ({
 });
 
 export const listBuildings = async (): Promise<Building[]> => {
-  const response = await http.get<ApiBuilding[]>("/buildings");
+  const response = await apiClient.get<ApiBuilding[]>("/buildings");
   return Array.isArray(response.data) ? response.data.map(normalizeBuilding) : [];
 };
 
 export const getBuilding = async (buildingCode: string): Promise<Building> => {
-  const response = await http.get<ApiBuilding>(`/buildings/${encodeURIComponent(buildingCode)}`);
+  const response = await apiClient.get<ApiBuilding>(`/buildings/${encodeURIComponent(buildingCode)}`);
   return normalizeBuilding(response.data);
 };
 
 export const createBuilding = async (payload: BuildingPayload): Promise<Building> => {
-  const response = await http.post<ApiBuilding>("/buildings", payload);
+  const response = await apiClient.post<ApiBuilding>("/buildings", payload);
   return normalizeBuilding(response.data);
 };
 
 export const updateBuilding = async (buildingCode: string, payload: BuildingPayload): Promise<Building> => {
-  const response = await http.put<ApiBuilding>(`/buildings/${encodeURIComponent(buildingCode)}`, payload);
+  const response = await apiClient.put<ApiBuilding>(`/buildings/${encodeURIComponent(buildingCode)}`, payload);
   return normalizeBuilding(response.data);
 };
 
 export const deleteBuilding = async (buildingCode: string): Promise<void> => {
-  await http.delete(`/buildings/${encodeURIComponent(buildingCode)}`);
+  await apiClient.delete(`/buildings/${encodeURIComponent(buildingCode)}`);
 };
 
 export const createFloor = async (buildingCode: string, payload: FloorPayload): Promise<BuildingFloor> => {
-  const response = await http.post<ApiFloor>(`/buildings/${encodeURIComponent(buildingCode)}/floors`, payload);
+  const response = await apiClient.post<ApiFloor>(`/buildings/${encodeURIComponent(buildingCode)}/floors`, payload);
   return normalizeFloor(response.data);
 };
 
@@ -108,10 +101,10 @@ export const updateFloor = async (
   floorNumber: number,
   payload: FloorPayload,
 ): Promise<BuildingFloor> => {
-  const response = await http.put<ApiFloor>(`/buildings/${encodeURIComponent(buildingCode)}/floors/${floorNumber}`, payload);
+  const response = await apiClient.put<ApiFloor>(`/buildings/${encodeURIComponent(buildingCode)}/floors/${floorNumber}`, payload);
   return normalizeFloor(response.data);
 };
 
 export const deleteFloor = async (buildingCode: string, floorNumber: number): Promise<void> => {
-  await http.delete(`/buildings/${encodeURIComponent(buildingCode)}/floors/${floorNumber}`);
+  await apiClient.delete(`/buildings/${encodeURIComponent(buildingCode)}/floors/${floorNumber}`);
 };

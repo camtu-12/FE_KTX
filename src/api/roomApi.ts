@@ -1,11 +1,6 @@
-import axios from "axios";
+import apiClient from "../lib/apiClient";
 
 const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
-const API_ROOT = API_BASE.endsWith("/api") ? API_BASE : `${API_BASE}/api`;
-
-const http = axios.create({
-  baseURL: API_ROOT,
-});
 
 export type RoomStatus = "AVAILABLE" | "FULL" | "MAINTENANCE";
 export type BedStatus = "ACTIVE" | "MAINTENANCE";
@@ -127,26 +122,26 @@ const normalizeRoom = (room: ApiRoom): RoomApi => ({
 });
 
 export const listRooms = async (): Promise<RoomApi[]> => {
-  const response = await http.get<ApiRoom[]>('/rooms');
+  const response = await apiClient.get<ApiRoom[]>('/rooms');
   return Array.isArray(response.data) ? response.data.map(normalizeRoom) : [];
 };
 
 export const createRoom = async (payload: RoomPayload): Promise<RoomApi> => {
-  const response = await http.post<ApiRoom>('/rooms', payload);
+  const response = await apiClient.post<ApiRoom>('/rooms', payload);
   return normalizeRoom(response.data);
 };
 
 export const updateRoom = async (roomId: number, payload: RoomPayload): Promise<RoomApi> => {
-  const response = await http.put<ApiRoom>(`/rooms/${roomId}`, payload);
+  const response = await apiClient.put<ApiRoom>(`/rooms/${roomId}`, payload);
   return normalizeRoom(response.data);
 };
 
 export const deleteRoom = async (roomId: number): Promise<void> => {
-  await http.delete(`/rooms/${roomId}`);
+  await apiClient.delete(`/rooms/${roomId}`);
 };
 
 export const updateBedStatus = async (roomId: number, bedId: number, payload: BedPayload): Promise<RoomApi> => {
-  const response = await http.put<ApiRoom>(`/rooms/${roomId}/beds/${bedId}`, payload);
+  const response = await apiClient.put<ApiRoom>(`/rooms/${roomId}/beds/${bedId}`, payload);
   return normalizeRoom(response.data);
 };
 
@@ -155,7 +150,7 @@ export const transferBedOccupancy = async (
   bedId: number,
   payload: TransferBedPayload,
 ): Promise<RoomApi> => {
-  const response = await http.put<ApiRoom>(`/rooms/${roomId}/beds/${bedId}/transfer`, payload);
+  const response = await apiClient.put<ApiRoom>(`/rooms/${roomId}/beds/${bedId}/transfer`, payload);
   return normalizeRoom(response.data);
 };
 
@@ -346,7 +341,7 @@ const normalizeBedDetail = (bed: ApiBedDetail): BedDetail => {
 };
 
 export const getRoomBeds = async (roomId: number): Promise<RoomBedsResponse> => {
-  const response = await http.get<ApiRoomBedsResponse>(`/rooms/${roomId}/beds`);
+  const response = await apiClient.get<ApiRoomBedsResponse>(`/rooms/${roomId}/beds`);
   const data = response.data;
   return {
     room_id: data.room_id,

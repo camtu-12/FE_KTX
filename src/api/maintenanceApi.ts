@@ -1,12 +1,5 @@
-import axios from "axios";
+import apiClient from "../lib/apiClient";
 import type { RoomApi } from "./roomApi";
-
-const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
-const API_ROOT = API_BASE.endsWith("/api") ? API_BASE : `${API_BASE}/api`;
-
-const http = axios.create({
-  baseURL: API_ROOT,
-});
 
 export type MaintenanceStudent = {
   id: number;
@@ -93,24 +86,24 @@ export type StartRoomMaintenancePayload = {
 };
 
 export const getBedMaintenancePlan = async (roomId: number, bedId: number): Promise<BedMaintenancePlan> => {
-  const response = await http.get<BedMaintenancePlan>(`/maintenance/rooms/${roomId}/beds/${bedId}/plan`);
+  const response = await apiClient.get<BedMaintenancePlan>(`/maintenance/rooms/${roomId}/beds/${bedId}/plan`);
   return response.data;
 };
 
 export const startBedMaintenance = async (roomId: number, bedId: number, targetBedId: number): Promise<RoomApi> => {
-  const response = await http.post<RoomApi>(`/maintenance/rooms/${roomId}/beds/${bedId}/start`, {
+  const response = await apiClient.post<RoomApi>(`/maintenance/rooms/${roomId}/beds/${bedId}/start`, {
     target_bed_id: targetBedId,
   });
   return response.data;
 };
 
 export const completeBedMaintenance = async (roomId: number, bedId: number): Promise<RoomApi> => {
-  const response = await http.post<RoomApi>(`/maintenance/rooms/${roomId}/beds/${bedId}/complete`);
+  const response = await apiClient.post<RoomApi>(`/maintenance/rooms/${roomId}/beds/${bedId}/complete`);
   return response.data;
 };
 
 export const getRoomMaintenancePlan = async (roomId: number): Promise<RoomMaintenancePlan> => {
-  const response = await http.get<RoomMaintenancePlan>(`/maintenance/rooms/${roomId}/plan`);
+  const response = await apiClient.get<RoomMaintenancePlan>(`/maintenance/rooms/${roomId}/plan`);
   return response.data;
 };
 
@@ -118,16 +111,26 @@ export const startRoomMaintenance = async (
   roomId: number,
   payload: StartRoomMaintenancePayload,
 ): Promise<RoomApi> => {
-  const response = await http.post<RoomApi>(`/maintenance/rooms/${roomId}/start`, payload);
+  const response = await apiClient.post<RoomApi>(`/maintenance/rooms/${roomId}/start`, payload);
   return response.data;
 };
 
 export const completeRoomMaintenance = async (roomId: number): Promise<RoomApi> => {
-  const response = await http.post<RoomApi>(`/maintenance/rooms/${roomId}/complete`);
+  const response = await apiClient.post<RoomApi>(`/maintenance/rooms/${roomId}/complete`);
   return response.data;
 };
 
 export const completeRoomMaintenanceStudent = async (roomId: number, occupancyId: number): Promise<RoomApi> => {
-  const response = await http.post<RoomApi>(`/maintenance/rooms/${roomId}/complete-student/${occupancyId}`);
+  const response = await apiClient.post<RoomApi>(`/maintenance/rooms/${roomId}/complete-student/${occupancyId}`);
+  return response.data;
+};
+
+export type MaintenanceRequestRoom = {
+  room_id: number;
+  room_code: string;
+};
+
+export const getMaintenanceRequestRoom = async (requestId: number): Promise<MaintenanceRequestRoom> => {
+  const response = await apiClient.get<MaintenanceRequestRoom>(`/maintenance/requests/${requestId}/room`);
   return response.data;
 };

@@ -4,7 +4,7 @@ import { Outlet, useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import Sidebar from "../components/Sidebar";
 import { clearAuthStorage, getStoredAuth } from "../modules/auth/utils/authStorage";
-import { checkStudentCodeExists } from "../modules/auth/services/auth.api";
+import { fetchStudentProfile } from "../api/studentProfileApi";
 
 export default function StudentLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -23,10 +23,10 @@ export default function StudentLayout() {
 
     (async () => {
       try {
-        const res = await checkStudentCodeExists(studentCode);
+        const profile = await fetchStudentProfile();
         if (!mounted) return;
-        if (res?.exists && res.student?.full_name) {
-          setDisplayName(res.student.full_name);
+        if (profile.student?.full_name) {
+          setDisplayName(profile.student.full_name);
         }
       } catch {
         // ignore

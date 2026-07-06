@@ -1,4 +1,4 @@
-import { API } from "./registrationApi";
+import apiClient from "../lib/apiClient";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -28,28 +28,28 @@ export type OccupancyPeriodPayload = {
 // ─── API calls ───────────────────────────────────────────────────────────────
 
 export const getOccupancyPeriods = (): Promise<OccupancyPeriod[]> =>
-  API.get("/occupancy-periods").then((res) => res.data as OccupancyPeriod[]);
+  apiClient.get("/occupancy-periods").then((res) => res.data as OccupancyPeriod[]);
 
 export const getOccupancyPeriod = (id: number): Promise<OccupancyPeriod> =>
-  API.get(`/occupancy-periods/${id}`).then((res) => res.data as OccupancyPeriod);
+  apiClient.get(`/occupancy-periods/${id}`).then((res) => res.data as OccupancyPeriod);
 
 export const createOccupancyPeriod = (payload: OccupancyPeriodPayload): Promise<OccupancyPeriod> =>
-  API.post("/occupancy-periods", payload).then((res) => res.data as OccupancyPeriod);
+  apiClient.post("/occupancy-periods", payload).then((res) => res.data as OccupancyPeriod);
 
 export const updateOccupancyPeriod = (id: number, payload: Partial<OccupancyPeriodPayload>): Promise<OccupancyPeriod> =>
-  API.put(`/occupancy-periods/${id}`, payload).then((res) => res.data as OccupancyPeriod);
+  apiClient.put(`/occupancy-periods/${id}`, payload).then((res) => res.data as OccupancyPeriod);
 
 export const openOccupancyPeriod = (id: number): Promise<OccupancyPeriod> =>
-  API.put(`/occupancy-periods/${id}/open`).then((res) => res.data as OccupancyPeriod);
+  apiClient.put(`/occupancy-periods/${id}/open`).then((res) => res.data as OccupancyPeriod);
 
 export const closeOccupancyPeriod = (id: number): Promise<OccupancyPeriod> =>
-  API.put(`/occupancy-periods/${id}/close`).then((res) => res.data as OccupancyPeriod);
+  apiClient.put(`/occupancy-periods/${id}/close`).then((res) => res.data as OccupancyPeriod);
 
 export const deleteOccupancyPeriod = (id: number): Promise<void> =>
-  API.delete(`/occupancy-periods/${id}`).then(() => undefined);
+  apiClient.delete(`/occupancy-periods/${id}`).then(() => undefined);
 
 export const getOpenOccupancyPeriod = (): Promise<OccupancyPeriod | null> =>
-  API.get("/occupancy-periods").then((res) => {
+  apiClient.get("/occupancy-periods").then((res) => {
     const list = res.data as OccupancyPeriod[];
     return list.find((p) => p.status === "open") ?? null;
   });

@@ -1,9 +1,4 @@
-import axios from "axios";
-
-const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
-const API_ROOT = API_BASE.endsWith("/api") ? API_BASE : `${API_BASE}/api`;
-
-export const API = axios.create({ baseURL: API_ROOT });
+import apiClient from "../lib/apiClient";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -137,28 +132,28 @@ export const getAdminCandidates = async (params?: {
   status?: CandidateStatus | "";
   page?: number;
 }): Promise<PaginatedResponse<AdmissionCandidate>> => {
-  const res = await API.get("/admin/admission-candidates", { params });
+  const res = await apiClient.get("/admin/admission-candidates", { params });
   const raw = res.data as PaginatedResponse<ApiCandidate>;
   return { ...raw, data: raw.data.map(normalizeCandidate) };
 };
 
 export const getAdminCandidate = async (id: number): Promise<AdmissionCandidate> => {
-  const res = await API.get(`/admin/admission-candidates/${id}`);
+  const res = await apiClient.get(`/admin/admission-candidates/${id}`);
   return normalizeCandidate(res.data as ApiCandidate);
 };
 
 export const createAdminCandidate = async (payload: CandidatePayload): Promise<AdmissionCandidate> => {
-  const res = await API.post("/admin/admission-candidates", payload);
+  const res = await apiClient.post("/admin/admission-candidates", payload);
   return normalizeCandidate(res.data as ApiCandidate);
 };
 
 export const updateAdminCandidate = async (id: number, payload: Partial<CandidatePayload>): Promise<AdmissionCandidate> => {
-  const res = await API.put(`/admin/admission-candidates/${id}`, payload);
+  const res = await apiClient.put(`/admin/admission-candidates/${id}`, payload);
   return normalizeCandidate(res.data as ApiCandidate);
 };
 
 export const deleteAdminCandidate = async (id: number): Promise<{ message: string }> => {
-  const res = await API.delete(`/admin/admission-candidates/${id}`);
+  const res = await apiClient.delete(`/admin/admission-candidates/${id}`);
   return res.data as { message: string };
 };
 
@@ -166,7 +161,7 @@ export const enrollCandidate = async (
   id: number,
   payload: EnrollPayload,
 ): Promise<{ message: string; candidate: AdmissionCandidate; student: { id: number; student_code: string; full_name: string } }> => {
-  const res = await API.post(`/admin/admission-candidates/${id}/enroll`, payload);
+  const res = await apiClient.post(`/admin/admission-candidates/${id}/enroll`, payload);
   const data = res.data as { message: string; candidate: ApiCandidate; student: { id: number; student_code: string; full_name: string } };
   return { message: data.message, candidate: normalizeCandidate(data.candidate), student: data.student };
 };
@@ -188,7 +183,7 @@ export type BulkEnrollResult = {
 };
 
 export const downloadEnrollTemplate = async (): Promise<void> => {
-  const res = await API.get("/admin/admission-candidates/import-template", {
+  const res = await apiClient.get("/admin/admission-candidates/import-template", {
     responseType: "blob",
   });
   const url = URL.createObjectURL(res.data as Blob);
@@ -204,7 +199,7 @@ export const downloadEnrollTemplate = async (): Promise<void> => {
 export const bulkEnrollCandidates = async (file: File): Promise<BulkEnrollResult> => {
   const formData = new FormData();
   formData.append("file", file);
-  const res = await API.post("/admin/admission-candidates/bulk-enroll", formData, {
+  const res = await apiClient.post("/admin/admission-candidates/bulk-enroll", formData, {
     headers: { "Content-Type": "multipart/form-data" },
   });
   return res.data as BulkEnrollResult;

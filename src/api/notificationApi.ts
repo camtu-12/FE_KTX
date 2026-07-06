@@ -1,4 +1,4 @@
-import { API } from "./registrationApi";
+import apiClient from "../lib/apiClient";
 
 export type NotificationItem = {
   recipient_id: number;
@@ -25,36 +25,36 @@ export type AdminNotificationItem = {
 
 // ── Student notifications ──
 
-export const getMyNotifications = (email: string, limit = 20): Promise<NotificationItem[]> =>
-  API.get("/student/notifications", { params: { email, limit } }).then(
+export const getMyNotifications = (limit = 20): Promise<NotificationItem[]> =>
+  apiClient.get("/student/notifications", { params: { limit } }).then(
     (res) => (Array.isArray(res.data) ? (res.data as NotificationItem[]) : []),
   );
 
-export const getUnreadCount = (email: string): Promise<number> =>
-  API.get("/student/notifications/unread-count", { params: { email } }).then(
+export const getUnreadCount = (): Promise<number> =>
+  apiClient.get("/student/notifications/unread-count").then(
     (res) => ((res.data as { count: number }).count ?? 0),
   );
 
-export const markNotificationRead = (recipientId: number, email: string): Promise<void> =>
-  API.put(`/student/notifications/${recipientId}/read`, {}, { params: { email } }).then(() => {});
+export const markNotificationRead = (recipientId: number): Promise<void> =>
+  apiClient.put(`/student/notifications/${recipientId}/read`).then(() => {});
 
-export const markAllNotificationsRead = (email: string): Promise<void> =>
-  API.put("/student/notifications/read-all", {}, { params: { email } }).then(() => {});
+export const markAllNotificationsRead = (): Promise<void> =>
+  apiClient.put("/student/notifications/read-all").then(() => {});
 
 // ── Admin notifications ──
 
 export const getAdminNotifications = (limit = 30): Promise<AdminNotificationItem[]> =>
-  API.get("/admin/notifications", { params: { limit } }).then(
+  apiClient.get("/admin/notifications", { params: { limit } }).then(
     (res) => (Array.isArray(res.data) ? (res.data as AdminNotificationItem[]) : []),
   );
 
 export const getAdminUnreadCount = (): Promise<number> =>
-  API.get("/admin/notifications/unread-count").then(
+  apiClient.get("/admin/notifications/unread-count").then(
     (res) => ((res.data as { count: number }).count ?? 0),
   );
 
 export const markAdminNotificationRead = (id: number): Promise<void> =>
-  API.put(`/admin/notifications/${id}/read`).then(() => {});
+  apiClient.put(`/admin/notifications/${id}/read`).then(() => {});
 
 export const markAllAdminNotificationsRead = (): Promise<void> =>
-  API.put("/admin/notifications/read-all").then(() => {});
+  apiClient.put("/admin/notifications/read-all").then(() => {});

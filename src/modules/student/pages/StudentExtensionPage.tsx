@@ -107,7 +107,7 @@ export default function StudentExtensionPage() {
     if (!email) return;
     setLoadingHistory(true);
     try {
-      const data = await getMyExtensions(email);
+      const data = await getMyExtensions();
       setExtensions(data);
     } finally {
       setLoadingHistory(false);
@@ -118,7 +118,7 @@ export default function StudentExtensionPage() {
     if (!email) return;
     setLoadingEligibility(true);
     try {
-      const data = await checkExtensionEligibility(email);
+      const data = await checkExtensionEligibility();
       setEligibility(data);
     } catch {
       setEligibility(null);
@@ -172,7 +172,7 @@ export default function StudentExtensionPage() {
     }
     setSubmitting(true);
     try {
-      const result = await submitExtension({ email, reason: reason.trim() });
+      const result = await submitExtension({ reason: reason.trim() });
       if (result.status === "approved") {
         showToast("success", "Gia hạn tự động thành công. Ngày kết thúc lưu trú đã được cập nhật.");
       } else {
@@ -212,6 +212,7 @@ export default function StudentExtensionPage() {
         <ExtensionPeriodBanner loading={loadingPeriod} period={activePeriod} />
 
         <QuickActionGrid
+          hasOpenPeriod={!!activePeriod}
           loadingEligibility={loadingEligibility}
           passedCount={passedCount}
           totalCount={conditionRows.length}
@@ -222,12 +223,14 @@ export default function StudentExtensionPage() {
           onOpenHistory={() => setIsHistoryModalOpen(true)}
         />
 
-        <ExtensionSubmitCard
-          canSubmit={canSubmit}
-          disabledReason={disabledReason}
-          submittedExtension={submittedExtension}
-          onOpenRequest={() => setIsRequestModalOpen(true)}
-        />
+        {(!!activePeriod || !!submittedExtension) && (
+          <ExtensionSubmitCard
+            canSubmit={canSubmit}
+            disabledReason={disabledReason}
+            submittedExtension={submittedExtension}
+            onOpenRequest={() => setIsRequestModalOpen(true)}
+          />
+        )}
 
       </motion.section>
 
@@ -451,6 +454,7 @@ export function EligibilitySummaryCard({
 }
 
 function QuickActionGrid({
+  hasOpenPeriod,
   loadingEligibility,
   passedCount,
   totalCount,
@@ -460,6 +464,7 @@ function QuickActionGrid({
   onOpenEligibility,
   onOpenHistory,
 }: {
+  hasOpenPeriod: boolean;
   loadingEligibility: boolean;
   passedCount: number;
   totalCount: number;
@@ -483,15 +488,17 @@ function QuickActionGrid({
     : `${passedCount}/${totalCount} điều kiện đạt`;
 
   return (
-    <section className="grid gap-3 md:grid-cols-2">
-      <QuickActionCard
-        icon={<ClipboardList className="h-5 w-5" />}
-        title="Điều kiện gia hạn"
-        subtitle={subtitle}
-        tone={eligibilityTone}
-        onClick={onOpenEligibility}
-        disabled={loadingEligibility || totalCount === 0}
-      />
+    <section className={`grid gap-3 ${hasOpenPeriod ? "md:grid-cols-2" : "md:grid-cols-1"}`}>
+      {hasOpenPeriod && (
+        <QuickActionCard
+          icon={<ClipboardList className="h-5 w-5" />}
+          title="Điều kiện gia hạn"
+          subtitle={subtitle}
+          tone={eligibilityTone}
+          onClick={onOpenEligibility}
+          disabled={loadingEligibility || totalCount === 0}
+        />
+      )}
       <QuickActionCard
         icon={<Clock3 className="h-5 w-5" />}
         title="Lịch sử yêu cầu"

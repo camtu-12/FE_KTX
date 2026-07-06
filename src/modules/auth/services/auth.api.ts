@@ -126,18 +126,6 @@ export const register = async (data: RegisterRequest) => {
   return json;
 };
 
-export const forgotPassword = async (email: string) => {
-  const res = await fetch(`${API}/forgot-password`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ email }),
-  });
-
-  return res.json();
-};
-
 export const sendOtp = async (data: { email: string }) => {
   const res = await fetch(`${API}/send-otp`, {
     method: "POST",

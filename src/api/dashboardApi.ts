@@ -1,9 +1,4 @@
-import axios from "axios";
-
-const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
-const API_ROOT = API_BASE.endsWith("/api") ? API_BASE : `${API_BASE}/api`;
-
-export const API = axios.create({ baseURL: API_ROOT });
+import apiClient from "../lib/apiClient";
 
 export type DashboardStats = {
   total_students: number;
@@ -94,13 +89,13 @@ export type DashboardFinance = {
 };
 
 export async function fetchDashboard(): Promise<DashboardData> {
-  const response = await API.get<DashboardData>("/admin/dashboard");
+  const response = await apiClient.get<DashboardData>("/admin/dashboard");
   console.log("Dashboard Overview Response:", response.data);
   return response.data;
 }
 
 export async function fetchDashboardFinance(month: number, year: number): Promise<DashboardFinance> {
-  const { data } = await API.get<DashboardFinance>("/admin/dashboard/finance", {
+  const { data } = await apiClient.get<DashboardFinance>("/admin/dashboard/finance", {
     params: { month, year },
   });
   return data;
@@ -110,7 +105,7 @@ export async function fetchDashboardRevenueTrend(
   month: number,
   year: number,
 ): Promise<DashboardRevenueTrendItem[]> {
-  const { data } = await API.get<DashboardRevenueTrendItem[]>("/admin/dashboard/revenue-trend", {
+  const { data } = await apiClient.get<DashboardRevenueTrendItem[]>("/admin/dashboard/revenue-trend", {
     params: { month, year },
   });
   return data;

@@ -1,11 +1,4 @@
-import axios from "axios";
-
-const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
-const API_ROOT = API_BASE.endsWith("/api") ? API_BASE : `${API_BASE}/api`;
-
-const http = axios.create({
-  baseURL: API_ROOT,
-});
+import apiClient from "../lib/apiClient";
 
 export type SupportRequestType =
   | "room_change"
@@ -90,7 +83,6 @@ export type StudentSupportRequest = {
 };
 
 export type CreateSupportRequestPayload = {
-  email: string;
   request_type: SupportRequestType;
   title: string;
   content: string;
@@ -218,23 +210,23 @@ const normalizeSupportRequest = (item: ApiSupportRequest): StudentSupportRequest
 
 // ── Student ──────────────────────────────────────────────────────────────────
 
-export const listMySupportRequests = async (email: string): Promise<StudentSupportRequest[]> => {
-  const response = await http.get<ApiSupportRequest[]>("/student/support-requests", { params: { email } });
+export const listMySupportRequests = async (): Promise<StudentSupportRequest[]> => {
+  const response = await apiClient.get<ApiSupportRequest[]>("/student/support-requests");
   return Array.isArray(response.data) ? response.data.map(normalizeSupportRequest) : [];
 };
 
-export const getMySupportRequest = async (id: number, email: string): Promise<StudentSupportRequest> => {
-  const response = await http.get<ApiSupportRequest>(`/student/support-requests/${id}`, { params: { email } });
+export const getMySupportRequest = async (id: number): Promise<StudentSupportRequest> => {
+  const response = await apiClient.get<ApiSupportRequest>(`/student/support-requests/${id}`);
   return normalizeSupportRequest(response.data);
 };
 
 export const createSupportRequest = async (payload: CreateSupportRequestPayload): Promise<StudentSupportRequest> => {
-  const response = await http.post<ApiSupportRequest>("/student/support-requests", payload);
+  const response = await apiClient.post<ApiSupportRequest>("/student/support-requests", payload);
   return normalizeSupportRequest(response.data);
 };
 
 export const getRoommateTargetInfo = async (studentCode: string): Promise<RoommateTargetInfo> => {
-  const response = await http.get<RoommateTargetInfo>("/student/support-requests/roommate-target", {
+  const response = await apiClient.get<RoommateTargetInfo>("/student/support-requests/roommate-target", {
     params: { student_code: studentCode },
   });
   return response.data;
@@ -247,7 +239,7 @@ export const listAdminSupportRequests = async (params?: {
   request_type?: SupportRequestType | "ALL";
   search?: string;
 }): Promise<StudentSupportRequest[]> => {
-  const response = await http.get<ApiSupportRequest[]>("/admin/support-requests", {
+  const response = await apiClient.get<ApiSupportRequest[]>("/admin/support-requests", {
     params: {
       status: params?.status && params.status !== "ALL" ? params.status : undefined,
       request_type: params?.request_type && params.request_type !== "ALL" ? params.request_type : undefined,
@@ -262,7 +254,7 @@ export const processSupportRequest = async (
   action: "process" | "approve" | "reject" | "complete",
   payload: { admin_note?: string },
 ): Promise<StudentSupportRequest> => {
-  const response = await http.put<ApiSupportRequest>(`/admin/support-requests/${id}/${action}`, payload);
+  const response = await apiClient.put<ApiSupportRequest>(`/admin/support-requests/${id}/${action}`, payload);
   return normalizeSupportRequest(response.data);
 };
 
@@ -270,7 +262,7 @@ export const approveSupportRequest = async (
   id: number,
   payload?: { admin_note?: string },
 ): Promise<StudentSupportRequest> => {
-  const response = await http.put<ApiSupportRequest>(`/admin/support-requests/${id}/approve`, payload ?? {});
+  const response = await apiClient.put<ApiSupportRequest>(`/admin/support-requests/${id}/approve`, payload ?? {});
   return normalizeSupportRequest(response.data);
 };
 
@@ -278,6 +270,6 @@ export const updateAdminSupportRequestStatus = async (
   id: number,
   payload: { status: Exclude<SupportRequestStatus, "approved">; admin_note?: string },
 ): Promise<StudentSupportRequest> => {
-  const response = await http.put<ApiSupportRequest>(`/admin/support-requests/${id}/status`, payload);
+  const response = await apiClient.put<ApiSupportRequest>(`/admin/support-requests/${id}/status`, payload);
   return normalizeSupportRequest(response.data);
 };

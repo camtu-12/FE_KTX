@@ -1,8 +1,11 @@
 import axios from "axios";
+import apiClient from "../lib/apiClient";
 
 const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
 const API_ROOT = API_BASE.endsWith("/api") ? API_BASE : `${API_BASE}/api`;
 
+// Public: dùng cho luồng tân sinh viên chưa có tài khoản (verify, tạo hồ sơ giữ chỗ,
+// khai báo/upload minh chứng ưu tiên) — không được migrate sang apiClient (không có token).
 export const API = axios.create({ baseURL: API_ROOT });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -235,24 +238,24 @@ export const getAdminDormReservations = async (params?: {
   registration_period_id?: number | "";
   page?: number;
 }): Promise<PaginatedResponse<DormReservation>> => {
-  const res = await API.get("/admin/dorm-reservations", { params });
+  const res = await apiClient.get("/admin/dorm-reservations", { params });
   const raw = res.data as PaginatedResponse<ApiReservation>;
   return { ...raw, data: raw.data.map(normalizeReservation) };
 };
 
 export const getAdminDormReservation = async (id: number): Promise<DormReservation> => {
-  const res = await API.get(`/admin/dorm-reservations/${id}`);
+  const res = await apiClient.get(`/admin/dorm-reservations/${id}`);
   return normalizeReservation(res.data as ApiReservation);
 };
 
 export const approveReservation = async (id: number, adminNote?: string): Promise<{ message: string; reservation: DormReservation }> => {
-  const res = await API.put(`/admin/dorm-reservations/${id}/approve`, { admin_note: adminNote });
+  const res = await apiClient.put(`/admin/dorm-reservations/${id}/approve`, { admin_note: adminNote });
   const d = res.data as { message: string; reservation: ApiReservation };
   return { message: d.message, reservation: normalizeReservation(d.reservation) };
 };
 
 export const rejectReservation = async (id: number, rejectionReason: string, adminNote?: string): Promise<{ message: string; reservation: DormReservation }> => {
-  const res = await API.put(`/admin/dorm-reservations/${id}/reject`, {
+  const res = await apiClient.put(`/admin/dorm-reservations/${id}/reject`, {
     rejection_reason: rejectionReason,
     admin_note: adminNote,
   });
@@ -261,19 +264,19 @@ export const rejectReservation = async (id: number, rejectionReason: string, adm
 };
 
 export const waitlistReservation = async (id: number, adminNote?: string): Promise<{ message: string; reservation: DormReservation }> => {
-  const res = await API.put(`/admin/dorm-reservations/${id}/waitlist`, { admin_note: adminNote });
+  const res = await apiClient.put(`/admin/dorm-reservations/${id}/waitlist`, { admin_note: adminNote });
   const d = res.data as { message: string; reservation: ApiReservation };
   return { message: d.message, reservation: normalizeReservation(d.reservation) };
 };
 
 export const cancelReservation = async (id: number, adminNote?: string): Promise<{ message: string; reservation: DormReservation }> => {
-  const res = await API.put(`/admin/dorm-reservations/${id}/cancel`, { admin_note: adminNote });
+  const res = await apiClient.put(`/admin/dorm-reservations/${id}/cancel`, { admin_note: adminNote });
   const d = res.data as { message: string; reservation: ApiReservation };
   return { message: d.message, reservation: normalizeReservation(d.reservation) };
 };
 
 export const updateReservationNote = async (id: number, adminNote: string): Promise<{ message: string; reservation: DormReservation }> => {
-  const res = await API.put(`/admin/dorm-reservations/${id}/note`, { admin_note: adminNote });
+  const res = await apiClient.put(`/admin/dorm-reservations/${id}/note`, { admin_note: adminNote });
   const d = res.data as { message: string; reservation: ApiReservation };
   return { message: d.message, reservation: normalizeReservation(d.reservation) };
 };
@@ -282,7 +285,7 @@ export const convertReservationToRegistration = async (
   id: number,
   registrationPeriodId?: number,
 ): Promise<{ message: string; registrationId: number; reservation: DormReservation }> => {
-  const res = await API.post(`/admin/dorm-reservations/${id}/convert-to-registration`, {
+  const res = await apiClient.post(`/admin/dorm-reservations/${id}/convert-to-registration`, {
     registration_period_id: registrationPeriodId ?? null,
   });
   const d = res.data as { message: string; registration_id: number; reservation: ApiReservation };
@@ -456,7 +459,7 @@ export const getAdminReservationPriorities = async (params?: {
   registration_period_id?: number | "";
   page?: number;
 }): Promise<PaginatedResponse<ReservationPriority>> => {
-  const res = await API.get("/admin/reservation-priorities", { params });
+  const res = await apiClient.get("/admin/reservation-priorities", { params });
   const raw = res.data as PaginatedResponse<ApiReservationPriority>;
   return { ...raw, data: raw.data.map(normalizePriority) };
 };
@@ -464,7 +467,7 @@ export const getAdminReservationPriorities = async (params?: {
 export const verifyReservationPriority = async (
   id: number,
 ): Promise<{ message: string; priority: ReservationPriority }> => {
-  const res = await API.patch(`/admin/reservation-priorities/${id}/verify`);
+  const res = await apiClient.patch(`/admin/reservation-priorities/${id}/verify`);
   const d = res.data as { message: string; priority: ApiReservationPriority };
   return { message: d.message, priority: normalizePriority(d.priority) };
 };
@@ -472,7 +475,7 @@ export const verifyReservationPriority = async (
 export const rejectReservationPriority = async (
   id: number,
 ): Promise<{ message: string; priority: ReservationPriority }> => {
-  const res = await API.patch(`/admin/reservation-priorities/${id}/reject`);
+  const res = await apiClient.patch(`/admin/reservation-priorities/${id}/reject`);
   const d = res.data as { message: string; priority: ApiReservationPriority };
   return { message: d.message, priority: normalizePriority(d.priority) };
 };
@@ -487,7 +490,7 @@ export const rankDormReservations = async (
   approved: number;
   waitlist: number;
 }> => {
-  const res = await API.post("/admin/dorm-reservations/rank", {
+  const res = await apiClient.post("/admin/dorm-reservations/rank", {
     registration_period_id: registrationPeriodId,
   });
   return res.data as {
@@ -506,7 +509,7 @@ export const batchConvertReservations = async (
   skipped: number;
   errors: Array<{ reservation_id: number; reservation_code: string; error: string }>;
 }> => {
-  const res = await API.post("/admin/dorm-reservations/batch-convert", {
+  const res = await apiClient.post("/admin/dorm-reservations/batch-convert", {
     registration_period_id: registrationPeriodId,
   });
   return res.data as {

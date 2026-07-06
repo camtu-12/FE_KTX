@@ -10,7 +10,8 @@ import type { RegistrationRequest } from "../data/registrationRequests";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import type { DormRoom } from "../../../types/dormRoom";
 
-type AssignmentFilter = "all" | "unassigned" | "assigned";
+type AssignmentFilter = "all" | "unassigned" | "proposed" | "assigned";
+type AssignmentStatus = Exclude<AssignmentFilter, "all">;
 type StudentSortOrder = "desc" | "asc";
 type GenderFilter = "all" | "male" | "female";
 type ToastState = { kind: "success" | "error"; message: string } | null;
@@ -18,8 +19,11 @@ type ToastState = { kind: "success" | "error"; message: string } | null;
 const assignmentFilterOptions: Array<{ value: AssignmentFilter; label: string }> = [
   { value: "all", label: "Tất cả" },
   { value: "unassigned", label: "Chưa phân phòng" },
+  { value: "proposed", label: "Đề xuất" },
   { value: "assigned", label: "Đã phân phòng" },
 ];
+
+const assignedOccupancyStatuses = new Set(["ROOM_CONFIRMED", "ACTIVE", "PENDING_PAYMENT"]);
 
 const studentSortOptions: Array<{ value: StudentSortOrder; label: string }> = [
   { value: "desc", label: "Mới nhất trước" },
@@ -85,6 +89,18 @@ const getGenderFilterValue = (gender?: string | null): GenderFilter => {
   return "all";
 };
 
+const getAssignmentStatus = (request: RegistrationRequest): AssignmentStatus => {
+  if (assignedOccupancyStatuses.has(request.occupancy_status ?? "")) {
+    return "assigned";
+  }
+
+  if (request.occupancy_status === "PROPOSED") {
+    return "proposed";
+  }
+
+  return "unassigned";
+};
+
 export default function AssignRoomPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -102,6 +118,7 @@ export default function AssignRoomPage() {
   const [draftSortOrder, setDraftSortOrder] = useState<StudentSortOrder>("desc");
   const [genderFilter, setGenderFilter] = useState<GenderFilter>("all");
   const [draftGenderFilter, setDraftGenderFilter] = useState<GenderFilter>("all");
+  const [roomFullRedirect, setRoomFullRedirect] = useState<{ genderLabel: string } | null>(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isGenderFilterOpen, setIsGenderFilterOpen] = useState(false);
   const [filterMenuPosition, setFilterMenuPosition] = useState<{ top: number; left: number } | null>(null);
@@ -185,6 +202,22 @@ export default function AssignRoomPage() {
     navigate(location.pathname, { replace: true, state: null });
 
     return () => window.clearTimeout(timeoutId);
+  }, [location.pathname, location.state, navigate]);
+
+  useEffect(() => {
+    const routeState = location.state as { presetGenderFilter?: GenderFilter } | null;
+    const presetGenderFilter = routeState?.presetGenderFilter;
+
+    if (!presetGenderFilter || presetGenderFilter === "all") {
+      return;
+    }
+
+    setGenderFilter(presetGenderFilter);
+    setDraftGenderFilter(presetGenderFilter);
+    setAssignmentFilter("unassigned");
+    setDraftAssignmentFilter("unassigned");
+    setRoomFullRedirect({ genderLabel: presetGenderFilter === "male" ? "Nam" : "Nữ" });
+    navigate(location.pathname, { replace: true, state: null });
   }, [location.pathname, location.state, navigate]);
 
   useEffect(() => {
@@ -311,14 +344,10 @@ export default function AssignRoomPage() {
 
     return approvedStudents
       .filter((student) => {
-        const isConfirmed = student.occupancy_status === "ROOM_CONFIRMED" || student.occupancy_status === "ACTIVE" || student.occupancy_status === "PENDING_PAYMENT";
+        const assignmentStatus = getAssignmentStatus(student);
 
-        if (assignmentFilter === "assigned") {
-          if (!isConfirmed) return false;
-        }
-
-        if (assignmentFilter === "unassigned") {
-          if (isConfirmed) return false;
+        if (assignmentFilter !== "all" && assignmentStatus !== assignmentFilter) {
+          return false;
         }
 
         if (genderFilter !== "all" && getGenderFilterValue(student.formData.gender) !== genderFilter) {
@@ -346,11 +375,9 @@ export default function AssignRoomPage() {
     return map;
   }, [rooms]);
 
-  const assignedCount = approvedStudents.filter(
-    (s) => s.occupancy_status === "ROOM_CONFIRMED" || s.occupancy_status === "ACTIVE" || s.occupancy_status === "PENDING_PAYMENT",
-  ).length;
-  const proposedCount = approvedStudents.filter((s) => s.occupancy_status === "PROPOSED").length;
-  const unassignedCount = approvedStudents.length - assignedCount - proposedCount;
+  const assignedCount = approvedStudents.filter((student) => getAssignmentStatus(student) === "assigned").length;
+  const proposedCount = approvedStudents.filter((student) => getAssignmentStatus(student) === "proposed").length;
+  const unassignedCount = approvedStudents.filter((student) => getAssignmentStatus(student) === "unassigned").length;
 
   const handleOpenFilter = () => {
     setDraftAssignmentFilter(assignmentFilter);
@@ -369,6 +396,7 @@ export default function AssignRoomPage() {
     setAssignmentFilter(draftAssignmentFilter);
     setSortOrder(draftSortOrder);
     setIsFilterOpen(false);
+    setRoomFullRedirect(null);
   };
 
   const handleResetFilter = () => {
@@ -377,17 +405,20 @@ export default function AssignRoomPage() {
     setAssignmentFilter("all");
     setSortOrder("desc");
     setIsFilterOpen(false);
+    setRoomFullRedirect(null);
   };
 
   const handleResetGenderFilter = () => {
     setDraftGenderFilter("all");
     setGenderFilter("all");
     setIsGenderFilterOpen(false);
+    setRoomFullRedirect(null);
   };
 
   const handleApplyGenderFilter = () => {
     setGenderFilter(draftGenderFilter);
     setIsGenderFilterOpen(false);
+    setRoomFullRedirect(null);
   };
 
   if (typeof requests === "undefined") {
@@ -561,15 +592,9 @@ export default function AssignRoomPage() {
                     </button>
                   </div>
                 </th>
-                <th className="whitespace-nowrap px-2 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
-                  Trạng thái
-                </th>
-                <th className="whitespace-nowrap px-2 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
-                  Phòng đề xuất
-                </th>
                 <th className="relative z-30 whitespace-nowrap px-2 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
                   <div className="inline-flex flex-nowrap items-center justify-center gap-2">
-                    <span>Hành động</span>
+                    <span>Trạng thái</span>
                     <button
                       ref={filterButtonRef}
                       type="button"
@@ -583,14 +608,33 @@ export default function AssignRoomPage() {
                     </button>
                   </div>
                 </th>
+                <th className="whitespace-nowrap px-2 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                  Phòng đề xuất
+                </th>
+                <th className="whitespace-nowrap px-2 py-2.5 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
+                  Hành động
+                </th>
               </tr>
             </thead>
             <tbody>
               {visibleStudents.map((student) => {
-                const isConfirmed = student.occupancy_status === "ROOM_CONFIRMED" || student.occupancy_status === "ACTIVE" || student.occupancy_status === "PENDING_PAYMENT";
-                const isProposed = student.occupancy_status === "PROPOSED";
+                const assignmentStatus = getAssignmentStatus(student);
+                const isConfirmed = assignmentStatus === "assigned";
+                const isProposed = assignmentStatus === "proposed";
                 const confirmedRoomName = isConfirmed && student.assigned_room_id ? roomNameById.get(student.assigned_room_id) : null;
                 const proposedRoomName = isProposed && student.assigned_room_id ? roomNameById.get(student.assigned_room_id) : null;
+                const statusBadgeClassName = isConfirmed
+                  ? "border-[#b9e6c7] bg-[#effcf3] text-[#16784b]"
+                  : isProposed
+                    ? "border-[#d4b0f0] bg-[#f6eeff] text-[#7c3fb0]"
+                    : "border-[#f3dd9c] bg-[#fff8df] text-[#9b6b00]";
+                const statusLabel = isConfirmed
+                  ? confirmedRoomName
+                    ? `Đã phân: ${confirmedRoomName}`
+                    : "Đã phân phòng"
+                  : isProposed
+                    ? "Đề xuất"
+                    : "Chưa phân phòng";
 
                 return (
                   <tr key={student.id} className="transition-colors hover:bg-[#f8fbff]">
@@ -605,17 +649,9 @@ export default function AssignRoomPage() {
                     </td>
                     <td className="overflow-hidden whitespace-nowrap border-t border-[#e7eef9] px-2 py-2.5 text-center text-[15px]">
                       <span
-                        className={`inline-flex max-w-full items-center whitespace-nowrap rounded-full border px-3 py-1 text-[13px] font-semibold ${
-                          isConfirmed
-                            ? "border-[#b9e6c7] bg-[#effcf3] text-[#16784b]"
-                            : "border-[#f3dd9c] bg-[#fff8df] text-[#9b6b00]"
-                        }`}
+                        className={`inline-flex max-w-full items-center whitespace-nowrap rounded-full border px-3 py-1 text-[13px] font-semibold ${statusBadgeClassName}`}
                       >
-                        {isConfirmed
-                          ? confirmedRoomName
-                            ? `Đã phân: ${confirmedRoomName}`
-                            : "Đã phân phòng"
-                          : "Chưa phân phòng"}
+                        {statusLabel}
                       </span>
                     </td>
                     <td className="overflow-hidden whitespace-nowrap border-t border-[#e7eef9] px-2 py-2.5 text-center text-[14px]">
@@ -651,7 +687,20 @@ export default function AssignRoomPage() {
 
         {visibleStudents.length === 0 ? (
             <div className="mt-3 rounded-xl border border-[#d8e3f2] bg-[#f8fbff] px-4 py-3 text-sm text-[#5a7197]">
-            Không có sinh viên phù hợp với bộ lọc.
+            {roomFullRedirect ? (
+              <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <span>{`Hiện không có sinh viên ${roomFullRedirect.genderLabel} nào chưa được phân phòng.`}</span>
+                <button
+                  type="button"
+                  onClick={() => navigate("/admin/rooms")}
+                  className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-[#c8d8ef] bg-white px-4 py-1.5 text-[13px] font-semibold text-[#244cb8] shadow-[0_6px_14px_rgba(36,76,184,0.08)] transition hover:-translate-y-0.5 hover:brightness-105"
+                >
+                  Quay lại
+                </button>
+              </div>
+            ) : (
+              "Không có sinh viên phù hợp với bộ lọc."
+            )}
           </div>
         ) : null}
       </div>

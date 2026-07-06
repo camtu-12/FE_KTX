@@ -5,6 +5,7 @@ import {
   CheckCheck,
   ChevronDown,
   Home,
+  IdCard,
   KeyRound,
   Loader2,
   LogOut,
@@ -38,6 +39,7 @@ import {
   type AdminNotificationItem,
   type NotificationItem,
 } from "../api/notificationApi";
+import { getMaintenanceRequestRoom } from "../api/maintenanceApi";
 
 export type HeaderRole = "admin" | "student";
 
@@ -139,7 +141,7 @@ export default function Header({
   const refreshUnreadCount = useCallback(async () => {
     try {
       if (isStudent) {
-        const count = await getUnreadCount(userEmail!);
+        const count = await getUnreadCount();
         setUnreadCount(count);
       } else if (isAdmin) {
         const count = await getAdminUnreadCount();
@@ -220,7 +222,7 @@ export default function Header({
       setNotifsLoading(true);
       try {
         if (isStudent) {
-          const items = await getMyNotifications(userEmail!, 20);
+          const items = await getMyNotifications(20);
           setNotifications(items);
           setUnreadCount(items.filter((n) => !n.is_read).length);
         } else {
@@ -249,7 +251,8 @@ export default function Header({
       item.type === "extension_approved" ||
       item.type === "extension_rejected" ||
       item.type === "extension_opened" ||
-      item.type === "extension_reminder"
+      item.type === "extension_reminder" ||
+      item.type === "occupancy_expired"
     ) {
       return "/student/extension";
     }
@@ -258,7 +261,11 @@ export default function Header({
       item.type === "bed_transferred_temporary" ||
       item.type === "bed_maintenance_return" ||
       item.type === "room_maintenance_start" ||
-      item.type === "room_maintenance_return"
+      item.type === "room_maintenance_return" ||
+      item.type === "occupancy_activated" ||
+      item.type === "checkout_completed" ||
+      item.type === "force_checkout" ||
+      item.type === "payment_success"
     ) {
       return "/student/room";
     }
@@ -268,6 +275,27 @@ export default function Header({
       item.type === "eviction"
     ) {
       return "/student/payment";
+    }
+    if (
+      item.type === "room_assigned" ||
+      item.type === "room_assignment_changed" ||
+      item.type === "bed_rejected" ||
+      item.type === "bed_selection_reminder"
+    ) {
+      return "/student/select-bed";
+    }
+    if (item.type === "registration_approved") {
+      return "/student/room-status";
+    }
+    if (
+      item.type === "registration_rejected" ||
+      item.type === "bed_selection_expired" ||
+      item.type === "initial_payment_expired"
+    ) {
+      return "/student/registration";
+    }
+    if (item.type === "reward_recorded" || item.type === "violation_recorded") {
+      return "/student/activities";
     }
     return null;
   };
@@ -279,7 +307,7 @@ export default function Header({
       );
       setUnreadCount((c) => Math.max(0, c - 1));
       try {
-        await markNotificationRead(item.recipient_id, userEmail!);
+        await markNotificationRead(item.recipient_id);
       } catch {
         // ignore
       }
@@ -306,13 +334,26 @@ export default function Header({
     if (item.type === "support_request_new" && item.related_id) {
       setIsNotifOpen(false);
       navigate(`/admin/support-requests?open=${item.related_id}`);
+      return;
+    }
+    if (
+      (item.type === "room_maintenance_start" || item.type === "room_maintenance_return") &&
+      item.related_id
+    ) {
+      setIsNotifOpen(false);
+      try {
+        const { room_code } = await getMaintenanceRequestRoom(item.related_id);
+        navigate("/admin/rooms", { state: { presetRoomCode: room_code } });
+      } catch {
+        navigate("/admin/rooms");
+      }
     }
   };
 
   const handleMarkAllRead = async () => {
     if (isStudent) {
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-      try { await markAllNotificationsRead(userEmail!); } catch { /* ignore */ }
+      try { await markAllNotificationsRead(); } catch { /* ignore */ }
     } else {
       setAdminNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
       try { await markAllAdminNotificationsRead(); } catch { /* ignore */ }
@@ -580,20 +621,39 @@ export default function Header({
                 className="absolute right-0 top-[calc(100%+0.75rem)] z-30 w-[280px] overflow-hidden rounded-3xl border border-[#d7e4f7] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] p-2 shadow-[0_26px_46px_rgba(17,40,97,0.16)]"
               >
                 <div className="space-y-1">
-                  <div className="flex items-start gap-3 rounded-2xl px-3 py-3 text-left text-sm text-[#2c467d]">
-                    <span className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-2xl bg-[#e9f0ff] text-[#2d58c4]">
-                      <Mail className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="mt-1 truncate font-semibold text-[#24407f]">
-                        {userEmail ?? "user@stu.edu.vn"}
-                      </p>
+                  {isStudent ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsUserMenuOpen(false);
+                        navigate("/student/profile");
+                      }}
+                      className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm font-semibold text-[#2c467d] transition hover:bg-[#eef4ff] hover:text-[#244cb8]"
+                    >
+                      <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-[#eef4ff] text-[#2d58c4]">
+                        <IdCard className="h-4 w-4" />
+                      </span>
+                      <span>Hồ sơ cá nhân</span>
+                    </button>
+                  ) : (
+                    <div className="flex items-start gap-3 rounded-2xl px-3 py-3 text-left text-sm text-[#2c467d]">
+                      <span className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-2xl bg-[#e9f0ff] text-[#2d58c4]">
+                        <Mail className="h-4 w-4" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="mt-1 truncate font-semibold text-[#24407f]">
+                          {userEmail ?? "user@stu.edu.vn"}
+                        </p>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <button
                     type="button"
-                    onClick={() => setIsUserMenuOpen(false)}
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      navigate(role === "admin" ? "/admin/change-password" : "/student/change-password");
+                    }}
                     className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm font-semibold text-[#2c467d] transition hover:bg-[#eef4ff] hover:text-[#244cb8]"
                   >
                     <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-[#eef4ff] text-[#2d58c4]">

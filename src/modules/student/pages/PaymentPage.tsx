@@ -110,7 +110,7 @@ export default function PaymentPage() {
       setLoadError("");
 
       try {
-        const data = await getStudentPayments(studentEmail);
+        const data = await getStudentPayments();
         if (isActive) {
           setPayments(data);
         }
@@ -233,7 +233,6 @@ export default function PaymentPage() {
       const data = await createVnpayPayment({
         source: item.source,
         bill_id: item.id,
-        email: studentEmail,
       });
 
       if (!data.paymentUrl) {
@@ -258,7 +257,7 @@ export default function PaymentPage() {
     setPaymentMessage("");
 
     try {
-      await confirmFreeRoomFeeBill(item.id, studentEmail);
+      await confirmFreeRoomFeeBill(item.id);
       setPaymentMessage("Thanh toán thành công!");
       window.dispatchEvent(new Event("ktx-payments-updated"));
     } catch {

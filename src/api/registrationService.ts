@@ -1,4 +1,5 @@
 import * as regApi from "./registrationApi";
+import apiClient from "../lib/apiClient";
 import {
   getDormBedPairsForRoomInstant,
   getDormBedsForRoomInstant,
@@ -658,13 +659,8 @@ export const verifyStudentPriority = async (
   status: "verified" | "rejected",
   note?: string,
 ): Promise<{ id: number; status: string; verified_at: string | null; top_priority_tier: number; total_priority_score: number }> => {
-  const res = await fetch(`${API_BASE}/api/admin/student-priority/${id}/verify`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status, note }),
-  });
-  if (!res.ok) throw new Error("verify failed");
-  return res.json();
+  const { data } = await apiClient.patch(`/admin/student-priority/${id}/verify`, { status, note });
+  return data;
 };
 
 export default {

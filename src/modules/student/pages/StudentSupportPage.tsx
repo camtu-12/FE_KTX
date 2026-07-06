@@ -115,7 +115,7 @@ export default function StudentSupportPage() {
     }
     setIsLoading(true);
     try {
-      setItems(await listMySupportRequests(email));
+      setItems(await listMySupportRequests());
     } catch {
       setItems([]);
     } finally {
@@ -206,7 +206,6 @@ export default function StudentSupportPage() {
     setIsSubmitting(true);
     try {
       await createSupportRequest({
-        email,
         request_type: "other",
         title: form.title.trim(),
         content: form.content.trim(),

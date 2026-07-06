@@ -1,4 +1,5 @@
 import axios from "axios";
+import apiClient from "../lib/apiClient";
 
 const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
 const API_ROOT = API_BASE.endsWith("/api") ? API_BASE : `${API_BASE}/api`;
@@ -42,7 +43,7 @@ export async function updateStaticPage(slug: string, payload: StaticPagePayload)
   if (payload.image) {
     form.append("image", payload.image);
   }
-  const { data } = await http.post<StaticPage>(`/admin/pages/${slug}`, form, {
+  const { data } = await apiClient.post<StaticPage>(`/admin/pages/${slug}`, form, {
     headers: { "Content-Type": "multipart/form-data" },
   });
   return data;

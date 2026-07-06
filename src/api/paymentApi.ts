@@ -1,15 +1,4 @@
-import axios from "axios";
-
-const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
-const API_ROOT = API_BASE.endsWith("/api") ? API_BASE : `${API_BASE}/api`;
-
-const http = axios.create({
-  baseURL: API_ROOT,
-  headers: {
-    "Cache-Control": "no-cache",
-    "Pragma": "no-cache",
-  },
-});
+import apiClient from "../lib/apiClient";
 
 export type PaymentStatus = "unpaid" | "paid" | "overdue" | "exempted";
 
@@ -120,7 +109,6 @@ export type StudentPayments = {
 export type VnpayPaymentPayload = {
   source: "room_fee" | "electricity";
   bill_id: number;
-  email: string;
 };
 
 export type VnpayPaymentLink = {
@@ -326,7 +314,7 @@ const normalizePaymentSettings = (item: ApiPaymentSettings): PaymentSettings => 
 });
 
 export const getPaymentSettings = async (): Promise<PaymentSettings> => {
-  const response = await http.get<ApiPaymentSettings>("/payment-settings");
+  const response = await apiClient.get<ApiPaymentSettings>("/payment-settings");
   return normalizePaymentSettings(response.data);
 };
 
@@ -334,12 +322,12 @@ export const updatePaymentSettings = async (payload: {
   room_fee_per_month?: number;
   electricity_unit_price?: number;
 }): Promise<PaymentSettings> => {
-  const response = await http.put<ApiPaymentSettings>("/payment-settings", payload);
+  const response = await apiClient.put<ApiPaymentSettings>("/payment-settings", payload);
   return normalizePaymentSettings(response.data);
 };
 
 export const listRoomFeeBills = async (): Promise<RoomFeeBill[]> => {
-  const response = await http.get<ApiRoomFeeBill[]>("/room-fee-bills");
+  const response = await apiClient.get<ApiRoomFeeBill[]>("/room-fee-bills");
   return Array.isArray(response.data) ? response.data.map(normalizeRoomFeeBill) : [];
 };
 
@@ -349,7 +337,7 @@ export const generateRoomFeeBills = async (payload: {
   amount: number;
   due_date: string;
 }): Promise<{ createdCount: number; skippedCount: number; items: RoomFeeBill[] }> => {
-  const response = await http.post<{ created_count?: number; skipped_count?: number; items?: ApiRoomFeeBill[] }>(
+  const response = await apiClient.post<{ created_count?: number; skipped_count?: number; items?: ApiRoomFeeBill[] }>(
     "/room-fee-bills/generate",
     payload,
   );
@@ -364,12 +352,12 @@ export const confirmRoomFeePayment = async (
   id: number,
   payload: { payment_method: string; transaction_code?: string; paid_at?: string },
 ): Promise<RoomFeeBill> => {
-  const response = await http.put<ApiRoomFeeBill>(`/room-fee-bills/${id}/confirm-payment`, payload);
+  const response = await apiClient.put<ApiRoomFeeBill>(`/room-fee-bills/${id}/confirm-payment`, payload);
   return normalizeRoomFeeBill(response.data);
 };
 
 export const exemptRoomFeeBill = async (id: number, payload: { admin_note?: string; exempted_by?: string }): Promise<RoomFeeBill> => {
-  const response = await http.put<ApiRoomFeeBill>(`/room-fee-bills/${id}/exempt`, payload);
+  const response = await apiClient.put<ApiRoomFeeBill>(`/room-fee-bills/${id}/exempt`, payload);
   return normalizeRoomFeeBill(response.data);
 };
 
@@ -377,7 +365,7 @@ export const applyOneTimeDiscount = async (
   id: number,
   payload: { discount_percent: number; reason?: string },
 ): Promise<RoomFeeBill> => {
-  const response = await http.put<ApiRoomFeeBill>(`/room-fee-bills/${id}/apply-discount`, payload);
+  const response = await apiClient.put<ApiRoomFeeBill>(`/room-fee-bills/${id}/apply-discount`, payload);
   return normalizeRoomFeeBill(response.data);
 };
 
@@ -417,7 +405,7 @@ const normalizePaymentPlan = (item: ApiStudentPaymentPlan): StudentPaymentPlan =
 });
 
 export const listStudentPaymentPlans = async (studentId: number): Promise<StudentPaymentPlan[]> => {
-  const response = await http.get<ApiStudentPaymentPlan[]>(`/admin/students/${studentId}/payment-plans`);
+  const response = await apiClient.get<ApiStudentPaymentPlan[]>(`/admin/students/${studentId}/payment-plans`);
   return Array.isArray(response.data) ? response.data.map(normalizePaymentPlan) : [];
 };
 
@@ -425,17 +413,17 @@ export const createStudentPaymentPlan = async (
   studentId: number,
   payload: { type: PaymentPlanType; discount_percent?: number; reason?: string },
 ): Promise<StudentPaymentPlan> => {
-  const response = await http.post<ApiStudentPaymentPlan>(`/admin/students/${studentId}/payment-plans`, payload);
+  const response = await apiClient.post<ApiStudentPaymentPlan>(`/admin/students/${studentId}/payment-plans`, payload);
   return normalizePaymentPlan(response.data);
 };
 
 export const deactivateStudentPaymentPlan = async (id: number): Promise<StudentPaymentPlan> => {
-  const response = await http.put<ApiStudentPaymentPlan>(`/admin/payment-plans/${id}/deactivate`, {});
+  const response = await apiClient.put<ApiStudentPaymentPlan>(`/admin/payment-plans/${id}/deactivate`, {});
   return normalizePaymentPlan(response.data);
 };
 
-export const confirmFreeRoomFeeBill = async (id: number, email: string): Promise<StudentPaymentItem> => {
-  const response = await http.post<ApiStudentPaymentItem>(`/student/payments/room-fee-bills/${id}/confirm-free`, { email });
+export const confirmFreeRoomFeeBill = async (id: number): Promise<StudentPaymentItem> => {
+  const response = await apiClient.post<ApiStudentPaymentItem>(`/student/payments/room-fee-bills/${id}/confirm-free`);
   const item = response.data;
   return {
     id: toNumber(item.id),
@@ -458,12 +446,12 @@ export const confirmFreeRoomFeeBill = async (id: number, email: string): Promise
 };
 
 export const listElectricityBills = async (): Promise<ElectricityBill[]> => {
-  const response = await http.get<ApiElectricityBill[]>("/electricity-bills");
+  const response = await apiClient.get<ApiElectricityBill[]>("/electricity-bills");
   return Array.isArray(response.data) ? response.data.map(normalizeElectricityBill) : [];
 };
 
 export const listElectricityRecords = async (): Promise<ElectricityRecord[]> => {
-  const response = await http.get<ApiElectricityRecord[]>("/electricity-records");
+  const response = await apiClient.get<ApiElectricityRecord[]>("/electricity-records");
   return Array.isArray(response.data) ? response.data.map(normalizeElectricityRecord) : [];
 };
 
@@ -475,7 +463,7 @@ export const generateElectricityBills = async (payload: {
   unit_price: number;
   due_date: string;
 }): Promise<{ createdCount: number; skippedCount: number; record: ElectricityRecord | null; items: ElectricityBill[] }> => {
-  const response = await http.post<{
+  const response = await apiClient.post<{
     created_count?: number;
     skipped_count?: number;
     record?: ApiElectricityRecord;
@@ -494,14 +482,12 @@ export const confirmElectricityPayment = async (
   id: number,
   payload: { payment_method: string; transaction_code?: string; paid_at?: string },
 ): Promise<ElectricityBill> => {
-  const response = await http.put<ApiElectricityBill>(`/electricity-bills/${id}/confirm-payment`, payload);
+  const response = await apiClient.put<ApiElectricityBill>(`/electricity-bills/${id}/confirm-payment`, payload);
   return normalizeElectricityBill(response.data);
 };
 
-export const getStudentPayments = async (email: string): Promise<StudentPayments> => {
-  const response = await http.get<ApiStudentPayments>("/student/payments", {
-    params: { email },
-  });
+export const getStudentPayments = async (): Promise<StudentPayments> => {
+  const response = await apiClient.get<ApiStudentPayments>("/student/payments");
 
   const items = Array.isArray(response.data.items)
     ? response.data.items.map((item): StudentPaymentItem => ({
@@ -544,7 +530,7 @@ export const getStudentPayments = async (email: string): Promise<StudentPayments
 };
 
 export const createVnpayPayment = async (payload: VnpayPaymentPayload): Promise<VnpayPaymentLink> => {
-  const response = await http.post<{ payment_url?: string; transaction_code?: string }>("/payments/vnpay/create", payload);
+  const response = await apiClient.post<{ payment_url?: string; transaction_code?: string }>("/payments/vnpay/create", payload);
 
   return {
     paymentUrl: response.data.payment_url ?? "",
@@ -553,7 +539,7 @@ export const createVnpayPayment = async (payload: VnpayPaymentPayload): Promise<
 };
 
 export const verifyVnpayPayment = async (payload: Record<string, string>): Promise<{ success: boolean; message: string }> => {
-  const response = await http.post<{ success?: boolean; message?: string }>("/payments/vnpay/verify", payload);
+  const response = await apiClient.post<{ success?: boolean; message?: string }>("/payments/vnpay/verify", payload);
 
   return {
     success: Boolean(response.data.success),

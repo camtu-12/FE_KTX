@@ -593,7 +593,7 @@ export default function StudentDashboardPage() {
 
     const load = async () => {
       try {
-        const result = await fetchStudentDashboard(email);
+        const result = await fetchStudentDashboard();
         if (mounted) setData(result);
       } catch {
         if (mounted) setError("Không thể tải dữ liệu. Vui lòng thử lại.");
@@ -612,7 +612,7 @@ export default function StudentDashboardPage() {
   const handleRetry = () => {
     setError("");
     setIsLoading(true);
-    fetchStudentDashboard(email)
+    fetchStudentDashboard()
       .then(setData)
       .catch(() => setError("Không thể tải dữ liệu."))
       .finally(() => setIsLoading(false));

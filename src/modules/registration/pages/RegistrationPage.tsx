@@ -29,6 +29,7 @@ import {
 } from "../../../api/registrationService";
 import { checkEligibility, getRegistrationPeriods, getPriorityCriteria, type EligibilityResult, type RegistrationPeriodData } from "../../../api/registrationApi";
 import { checkStudentCodeExists } from "../../auth/services/auth.api";
+import { fetchStudentProfile } from "../../../api/studentProfileApi";
 import { useAuthStore } from "../../auth/store";
 import type { RegistrationRequest } from "../../admin/data/registrationRequests";
 import { formatDate } from "../../../utils/dateFormat";
@@ -439,13 +440,14 @@ export default function RegistrationPage() {
 
     try {
       setIsCheckingMssv(true);
-      const res = await checkStudentCodeExists(trimmed);
-      const exists = res?.exists ?? false;
-      if (!exists) return;
-      const student = res.student;
+      // Dữ liệu cá nhân nhạy cảm (CCCD, SĐT, địa chỉ...) chỉ được lấy qua endpoint đã xác
+      // thực (/student/profile, tự suy ra danh tính từ token), không dùng check-student-code
+      // công khai — endpoint đó giờ chỉ trả về { exists } để tránh lộ PII cho người chưa đăng nhập.
+      const profile = await fetchStudentProfile();
+      const student = profile.student;
       if (!student) return;
 
-      const mapDate = (val?: string) => {
+      const mapDate = (val?: string | null) => {
         if (!val) return "";
         const parts = val.split("-");
         if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;

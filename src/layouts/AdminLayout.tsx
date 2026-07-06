@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import Header from "../components/Header";
@@ -27,6 +27,23 @@ export default function AdminLayout() {
   const [onOpenFaceSearch, setOnOpenFaceSearch] = useState<(() => void) | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    // Xóa ô tìm kiếm chung khi chuyển sang trang khác, tránh giá trị tìm kiếm cũ bị áp
+    // nhầm vào bộ lọc của trang mới. Bỏ qua khi điều hướng mang theo state điều hướng có
+    // chủ đích (vd bấm thông báo -> lọc sẵn theo phòng/giới tính) — trang đích tự đọc
+    // state đó và set lại headerSearchValue của chính nó.
+    const state = location.state as Record<string, unknown> | null;
+    const hasPresetState = Boolean(
+      state && ("presetRoomCode" in state || "presetGenderFilter" in state || "toast" in state),
+    );
+
+    if (!hasPresetState) {
+      setHeaderSearchValue("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
   const user = getStoredAuth()?.user ?? null;
   const userName = user?.fullName || user?.email || "Admin User";
   const userEmail = user?.email || "admin@stu.edu.vn";

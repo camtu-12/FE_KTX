@@ -1,12 +1,5 @@
-import axios from "axios";
+import apiClient from "../lib/apiClient";
 import type { ActivityCategory, ViolationLevel } from "./violationTypeApi";
-
-const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
-const API_ROOT = API_BASE.endsWith("/api") ? API_BASE : `${API_BASE}/api`;
-
-const http = axios.create({
-  baseURL: API_ROOT,
-});
 
 export type ViolationRecord = {
   id: number;
@@ -142,38 +135,38 @@ const normalizeViolation = (item: ApiViolation): ViolationRecord => ({
 });
 
 export const listViolations = async (): Promise<ViolationRecord[]> => {
-  const response = await http.get<ApiViolation[]>("/violations");
+  const response = await apiClient.get<ApiViolation[]>("/violations");
   return Array.isArray(response.data) ? response.data.map(normalizeViolation) : [];
 };
 
 export const listViolationsByStudentEmail = async (email: string): Promise<ViolationRecord[]> => {
-  const response = await http.get<ApiViolation[]>("/violations", {
+  const response = await apiClient.get<ApiViolation[]>("/violations", {
     params: { student_email: email },
   });
   return Array.isArray(response.data) ? response.data.map(normalizeViolation) : [];
 };
 
 export const listViolationsByStudentId = async (studentId: number): Promise<ViolationRecord[]> => {
-  const response = await http.get<ApiViolation[]>("/violations", {
+  const response = await apiClient.get<ApiViolation[]>("/violations", {
     params: { student_id: studentId },
   });
   return Array.isArray(response.data) ? response.data.map(normalizeViolation) : [];
 };
 
 export const listViolationsByOccupancy = async (occupancyId: number): Promise<ViolationRecord[]> => {
-  const response = await http.get<ApiViolation[]>("/violations", {
+  const response = await apiClient.get<ApiViolation[]>("/violations", {
     params: { occupancy_id: occupancyId },
   });
   return Array.isArray(response.data) ? response.data.map(normalizeViolation) : [];
 };
 
 export const createViolation = async (payload: ViolationPayload): Promise<ViolationRecord> => {
-  const response = await http.post<ApiViolation>("/violations", payload);
+  const response = await apiClient.post<ApiViolation>("/violations", payload);
   return normalizeViolation(response.data);
 };
 
 export const updateViolation = async (id: number, payload: ViolationPayload): Promise<ViolationRecord> => {
-  const response = await http.put<ApiViolation>(`/violations/${id}`, payload);
+  const response = await apiClient.put<ApiViolation>(`/violations/${id}`, payload);
   return normalizeViolation(response.data);
 };
 
@@ -181,10 +174,10 @@ export const processViolation = async (
   id: number,
   payload: { action_taken: "reminded" | "warned" | "force_evicted"; note: string },
 ): Promise<ViolationRecord> => {
-  const response = await http.put<ApiViolation>(`/violations/${id}/process`, payload);
+  const response = await apiClient.put<ApiViolation>(`/violations/${id}/process`, payload);
   return normalizeViolation(response.data);
 };
 
 export const deleteViolation = async (id: number): Promise<void> => {
-  await http.delete(`/violations/${id}`);
+  await apiClient.delete(`/violations/${id}`);
 };

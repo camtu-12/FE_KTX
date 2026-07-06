@@ -1,4 +1,4 @@
-import { API } from "./registrationApi";
+import apiClient from "../lib/apiClient";
 import type { OccupancyPeriod } from "./occupancyPeriodApi";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -79,8 +79,6 @@ export type ExtensionEligibility = {
 };
 
 export type StoreExtensionPayload = {
-  email?: string;
-  student_id?: number;
   reason: string;
 };
 
@@ -93,40 +91,38 @@ export type { OccupancyPeriod as ActiveExtensionPeriod };
 
 // ─── Student API ─────────────────────────────────────────────────────────────
 
-export const checkExtensionEligibility = (email: string): Promise<ExtensionEligibility> =>
-  API.get("/student/extensions/eligibility", { params: { email } }).then(
-    (res) => res.data as ExtensionEligibility,
-  );
+export const checkExtensionEligibility = (): Promise<ExtensionEligibility> =>
+  apiClient.get("/student/extensions/eligibility").then((res) => res.data as ExtensionEligibility);
 
 export const getActiveExtensionPeriod = (): Promise<OccupancyPeriod | null> =>
-  API.get("/occupancy-periods").then((res) => {
+  apiClient.get("/occupancy-periods").then((res) => {
     const list = res.data as OccupancyPeriod[];
     return list.find((p) => p.status === "open") ?? null;
   });
 
-export const getMyExtensions = (email: string): Promise<OccupancyExtension[]> =>
-  API.get("/student/extensions", { params: { email } }).then((res) => res.data as OccupancyExtension[]);
+export const getMyExtensions = (): Promise<OccupancyExtension[]> =>
+  apiClient.get("/student/extensions").then((res) => res.data as OccupancyExtension[]);
 
 export const submitExtension = (payload: StoreExtensionPayload): Promise<OccupancyExtension> =>
-  API.post("/student/extensions", payload).then((res) => res.data as OccupancyExtension);
+  apiClient.post("/student/extensions", payload).then((res) => res.data as OccupancyExtension);
 
 // ─── Admin API ────────────────────────────────────────────────────────────────
 
 export const getExtensionStats = (): Promise<ExtensionStats> =>
-  API.get("/admin/extensions/stats").then((res) => res.data as ExtensionStats);
+  apiClient.get("/admin/extensions/stats").then((res) => res.data as ExtensionStats);
 
 export const getAdminExtensions = (params?: {
   status?: ExtensionStatus;
   occupancy_period_id?: number;
   search?: string;
 }): Promise<OccupancyExtension[]> =>
-  API.get("/admin/extensions", { params }).then((res) => res.data as OccupancyExtension[]);
+  apiClient.get("/admin/extensions", { params }).then((res) => res.data as OccupancyExtension[]);
 
 export const getAdminExtension = (id: number): Promise<OccupancyExtension> =>
-  API.get(`/admin/extensions/${id}`).then((res) => res.data as OccupancyExtension);
+  apiClient.get(`/admin/extensions/${id}`).then((res) => res.data as OccupancyExtension);
 
 export const approveExtension = (id: number, payload?: ProcessExtensionPayload): Promise<OccupancyExtension> =>
-  API.put(`/admin/extensions/${id}/approve`, payload ?? {}).then((res) => res.data as OccupancyExtension);
+  apiClient.put(`/admin/extensions/${id}/approve`, payload ?? {}).then((res) => res.data as OccupancyExtension);
 
 export const rejectExtension = (id: number, payload?: ProcessExtensionPayload): Promise<OccupancyExtension> =>
-  API.put(`/admin/extensions/${id}/reject`, payload ?? {}).then((res) => res.data as OccupancyExtension);
+  apiClient.put(`/admin/extensions/${id}/reject`, payload ?? {}).then((res) => res.data as OccupancyExtension);

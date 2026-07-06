@@ -1,8 +1,4 @@
-import axios from "axios";
-
-const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
-const API_ROOT = API_BASE.endsWith("/api") ? API_BASE : `${API_BASE}/api`;
-const API = axios.create({ baseURL: API_ROOT });
+import apiClient from "../lib/apiClient";
 
 export type StudentInfo = {
   id: number;
@@ -101,7 +97,7 @@ export type StudentDashboardData = {
   active_registration_period: ActivePeriod | null;
 };
 
-export async function fetchStudentDashboard(email: string): Promise<StudentDashboardData> {
-  const { data } = await API.get<StudentDashboardData>("/student/dashboard", { params: { email } });
+export async function fetchStudentDashboard(): Promise<StudentDashboardData> {
+  const { data } = await apiClient.get<StudentDashboardData>("/student/dashboard");
   return data;
 }

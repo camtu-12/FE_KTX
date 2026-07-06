@@ -1,4 +1,4 @@
-import { API } from "./registrationApi";
+import apiClient from "../lib/apiClient";
 
 export type OccupancyHistoryItem = {
   id: number;
@@ -81,6 +81,6 @@ export type OccupancyDetail = {
 };
 
 export const fetchOccupancyDetail = async (occupancyId: number): Promise<OccupancyDetail> => {
-  const res = await API.get<OccupancyDetail>(`/admin/occupancies/${occupancyId}/detail`);
+  const res = await apiClient.get<OccupancyDetail>(`/admin/occupancies/${occupancyId}/detail`);
   return res.data;
 };
