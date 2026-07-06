@@ -177,18 +177,6 @@ function getBedStatusLabel(status?: BedStatus | BedDetail["status"] | BedDetail[
   return "Hoạt động";
 }
 
-function getHistoryReasonLabel(reason?: string | null) {
-  if (reason === "BED_MAINTENANCE") return "Bảo trì giường";
-  if (reason === "ROOM_MAINTENANCE") return "Bảo trì phòng";
-  if (reason === "BED_MAINTENANCE_RETURN") return "Quay lại sau bảo trì giường";
-  if (reason === "ROOM_MAINTENANCE_RETURN") return "Quay lại sau bảo trì phòng";
-  if (reason === "admin_transfer_bed") return "Chuyển giường";
-  if (reason === "student_room_change_request") return "Đổi phòng theo yêu cầu sinh viên";
-  if (reason === "student_bed_change_request") return "Đổi giường theo yêu cầu sinh viên";
-  if (reason === "student_roommate_request") return "Ở cùng bạn theo yêu cầu sinh viên";
-  return reason || "—";
-}
-
 function getHistoryStatusLabel(status?: string | null) {
   if (status === "ACTIVE") return "Đang hiệu lực";
   if (status === "RETURNED") return "Đã quay về";
@@ -1886,7 +1874,9 @@ export default function AdminRoomManagement() {
                     {bedDetailTab === "transfer" ? (
                       editingBedDetail?.transfer_history?.length ? (
                         <div className="space-y-3">
-                          {editingBedDetail.transfer_history.map((item) => (
+                          {editingBedDetail.transfer_history
+                            .filter((item) => !item.is_initial_assignment)
+                            .map((item) => (
                             <div key={item.id} className="rounded-2xl border border-[#d8e4f5] bg-white p-3 text-sm text-[#1a2d52] shadow-sm">
                               <div className="flex flex-wrap items-start justify-between gap-2">
                                 <div>
@@ -1901,16 +1891,16 @@ export default function AdminRoomManagement() {
                                 <p>
                                   <span className="font-semibold text-[#61779d]">Từ: </span>
                                   {item.old_room_code ? `Phòng ${item.old_room_code} · ` : ""}
-                                  Giường {item.old_bed_number ?? "—"}
+                                  Giường {item.old_bed_number ?? "Không rõ"}
                                 </p>
                                 <p>
                                   <span className="font-semibold text-[#61779d]">Đến: </span>
                                   {item.new_room_code ? `Phòng ${item.new_room_code} · ` : ""}
-                                  Giường {item.new_bed_number ?? "—"}
+                                  Giường {item.new_bed_number ?? "Không rõ"}
                                 </p>
                                 <p>
                                   <span className="font-semibold text-[#61779d]">Lý do: </span>
-                                  {getHistoryReasonLabel(item.reason)}
+                                  {item.reason ?? "Không rõ"}
                                 </p>
                                 <p>
                                   <span className="font-semibold text-[#61779d]">Ngày chuyển: </span>
@@ -1928,6 +1918,31 @@ export default function AdminRoomManagement() {
                                     {formatPreviewDate(item.completed_at)}
                                   </p>
                                 ) : null}
+                              </div>
+                            </div>
+                          ))}
+                          {editingBedDetail.transfer_history
+                            .filter((item) => item.is_initial_assignment)
+                            .map((item) => (
+                            <div key={item.id} className="rounded-2xl border border-dashed border-[#c7d6ee] bg-[#f3f7ff] p-3 text-sm text-[#1a2d52]">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="font-bold text-[#2563EB]">📍 Xếp chỗ ban đầu</p>
+                                {item.student_name ? (
+                                  <span className="rounded-full border border-[#c7d6ee] bg-white px-2.5 py-1 text-xs font-bold text-[#61779d]">
+                                    {item.student_name}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                <p>
+                                  <span className="font-semibold text-[#61779d]">Xếp vào: </span>
+                                  {item.new_room_code ? `Phòng ${item.new_room_code} · ` : ""}
+                                  Giường {item.new_bed_number ?? "Không rõ"}
+                                </p>
+                                <p>
+                                  <span className="font-semibold text-[#61779d]">Ngày: </span>
+                                  {formatPreviewDate(item.transferred_at)}
+                                </p>
                               </div>
                             </div>
                           ))}
@@ -1953,7 +1968,7 @@ export default function AdminRoomManagement() {
                               <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                                 <p>
                                   <span className="font-semibold text-[#61779d]">Lý do: </span>
-                                  {getHistoryReasonLabel(item.reason)}
+                                  {item.reason ?? "Không rõ"}
                                 </p>
                                 <p>
                                   <span className="font-semibold text-[#61779d]">Ngày chuyển: </span>

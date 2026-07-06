@@ -25,14 +25,21 @@ import {
 } from "lucide-react";
 import {
   getLatestRegistrationByEmail,
+  getMyRegistrationHistory,
   submitRegistration,
 } from "../../../api/registrationService";
 import { checkEligibility, getRegistrationPeriods, getPriorityCriteria, type EligibilityResult, type RegistrationPeriodData } from "../../../api/registrationApi";
 import { checkStudentCodeExists } from "../../auth/services/auth.api";
 import { fetchStudentProfile } from "../../../api/studentProfileApi";
 import { useAuthStore } from "../../auth/store";
-import type { RegistrationRequest } from "../../admin/data/registrationRequests";
+import { statusMap, type RegistrationRequest } from "../../admin/data/registrationRequests";
 import { formatDate } from "../../../utils/dateFormat";
+
+const registrationTypeLabel: Record<string, string> = {
+  new: "Đăng ký mới",
+  renewal: "Gia hạn",
+  emergency: "Khẩn cấp",
+};
 
 type RegistrationStatus = "unregistered" | "submitted" | "approved" | "rejected" | "completed";
 type DocumentField = "portraitPhoto" | "cccdFrontPhoto" | "cccdBackPhoto";
@@ -361,8 +368,10 @@ export default function RegistrationPage() {
     const user = state.user;
     return user ? user.student_code ?? user.studentCode ?? "" : "";
   });
-  const [, setRegistration] = useState<RegistrationRequest | null>(null);
+  const [registration, setRegistration] = useState<RegistrationRequest | null>(null);
   const [status, setStatus] = useState<RegistrationStatus>("unregistered");
+  const [registrationHistory, setRegistrationHistory] = useState<RegistrationRequest[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [documentFiles, setDocumentFiles] = useState<Record<DocumentField, File | null>>(initialDocumentFiles);
   const [draggingDocumentField, setDraggingDocumentField] = useState<DocumentField | null>(null);
@@ -525,6 +534,7 @@ export default function RegistrationPage() {
         if (ignore) return;
 
         setEligibility(eligRes);
+        setRegistration(data);
 
         if (eligRes.reason_code === 'no_open_channel') {
           getRegistrationPeriods()
@@ -532,30 +542,37 @@ export default function RegistrationPage() {
             .catch(() => setPeriodsForStatus([]));
         }
 
+        // Không đủ điều kiện đăng ký mới: ở lại trang này, hiển thị lý do + toàn bộ lịch sử
+        // đăng ký thay vì điều hướng đi nơi khác (trước đây redirect sang room-status/room
+        // mà không giải thích gì, gây khó hiểu cho sinh viên).
+        if (!eligRes.eligible) {
+          setIsLoadingHistory(true);
+          getMyRegistrationHistory(studentEmail)
+            .then((history) => { if (!ignore) setRegistrationHistory(history); })
+            .catch(() => { if (!ignore) setRegistrationHistory([]); })
+            .finally(() => { if (!ignore) setIsLoadingHistory(false); });
+        }
+
         if (!data) {
-          setRegistration(null);
           setStatus("unregistered");
           setReviewDocumentUrls(initialDocumentPreviewUrls);
           return;
         }
 
-        // Any existing registration: redirect to room-status
-        // Exception: ?resubmit=true from room-status "Gửi lại đơn" button
-        //   → only allowed for rejected registrations, show form prefilled
-        if (!isResubmit || data.status !== "rejected") {
-          navigate("/student/room-status", { replace: true, state: { registration: data, eligibility: eligRes } });
+        // Resubmit flow: rejected + ?resubmit=true → show form prefilled with old data
+        if (isResubmit && data.status === "rejected") {
+          setStatus("unregistered");
+          setFormData({ ...initialFormData, ...(data.formData ?? {}) });
+          setDocumentFiles({ ...initialDocumentFiles });
+          setReviewDocumentUrls({
+            portraitPhoto: buildImageUrl(data.avatarUrl || data.documents?.portraitPhoto),
+            cccdFrontPhoto: buildImageUrl(data.cccdFrontUrl || data.documents?.cccdFrontPhoto),
+            cccdBackPhoto: buildImageUrl(data.cccdBackUrl || data.documents?.cccdBackPhoto),
+          });
           return;
         }
 
-        // Resubmit flow: rejected + ?resubmit=true → show form prefilled with old data
         setStatus("unregistered");
-        setFormData({ ...initialFormData, ...(data.formData ?? {}) });
-        setDocumentFiles({ ...initialDocumentFiles });
-        setReviewDocumentUrls({
-          portraitPhoto: buildImageUrl(data.avatarUrl || data.documents?.portraitPhoto),
-          cccdFrontPhoto: buildImageUrl(data.cccdFrontUrl || data.documents?.cccdFrontPhoto),
-          cccdBackPhoto: buildImageUrl(data.cccdBackUrl || data.documents?.cccdBackPhoto),
-        });
       } catch (error) {
         console.error('[RegistrationPage] Error loading registration:', error);
         if (!ignore) setEligibility({ eligible: true });
@@ -1411,7 +1428,47 @@ export default function RegistrationPage() {
       </motion.div>
 
       {eligibility && !eligibility.eligible ? (
-        <div className="auth-reveal is-visible mx-auto w-full max-w-2xl">
+        <div className="auth-reveal is-visible mx-auto w-full max-w-2xl space-y-6">
+          {registration ? (
+            <div className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-lg font-bold text-[#1A2D52]">Trạng thái đơn gần nhất</h2>
+                <span
+                  className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold ${statusMap[registration.status].className}`}
+                >
+                  {statusMap[registration.status].label}
+                </span>
+              </div>
+              <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-[#6f84ad]">Loại đơn</dt>
+                  <dd className="mt-0.5 text-sm font-semibold text-[#1b3766]">
+                    {(registration.registration_type && registrationTypeLabel[registration.registration_type]) || "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-[#6f84ad]">Đợt đăng ký</dt>
+                  <dd className="mt-0.5 text-sm font-semibold text-[#1b3766]">{registration.period_name || "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-[#6f84ad]">Ngày nộp</dt>
+                  <dd className="mt-0.5 text-sm font-semibold text-[#1b3766]">{formatDate(registration.submittedAt)}</dd>
+                </div>
+                {registration.approved_at ? (
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-[#6f84ad]">Ngày duyệt</dt>
+                    <dd className="mt-0.5 text-sm font-semibold text-[#1b3766]">{formatDate(registration.approved_at)}</dd>
+                  </div>
+                ) : null}
+              </dl>
+              {registration.status === "rejected" && registration.rejectionReason ? (
+                <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  <span className="font-bold">Lý do từ chối:</span> {registration.rejectionReason}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           {(() => {
             const rc = eligibilityReasonCode;
 
@@ -1528,10 +1585,16 @@ export default function RegistrationPage() {
                   <div className="min-w-0 flex-1">
                     <h2 className="text-xl font-bold text-emerald-900">Bạn đang lưu trú tại KTX</h2>
                     <p className="mt-2 text-sm leading-6 text-emerald-800">{eligibility.reason_message} Nếu muốn ở tiếp, vui lòng dùng chức năng Gia hạn.</p>
-                    <button type="button" onClick={() => navigate("/student/room")}
-                      className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl bg-[linear-gradient(135deg,#059669_0%,#047857_100%)] px-5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(5,150,105,0.22)] transition hover:-translate-y-0.5 hover:brightness-110">
-                      <Home className="h-4 w-4" /> Xem phòng của tôi
-                    </button>
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <button type="button" onClick={() => navigate("/student/room")}
+                        className="inline-flex h-10 items-center gap-2 rounded-xl bg-[linear-gradient(135deg,#059669_0%,#047857_100%)] px-5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(5,150,105,0.22)] transition hover:-translate-y-0.5 hover:brightness-110">
+                        <Home className="h-4 w-4" /> Xem phòng của tôi
+                      </button>
+                      <button type="button" onClick={() => navigate(eligibility.redirect || "/student/extension")}
+                        className="inline-flex h-10 items-center gap-2 rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_100%)] px-5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(36,76,184,0.22)] transition hover:-translate-y-0.5 hover:brightness-110">
+                        <CalendarDays className="h-4 w-4" /> Gia hạn lưu trú
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1622,6 +1685,54 @@ export default function RegistrationPage() {
               </div>
             );
           })()}
+
+          <div className="rounded-[20px] border border-[#c1d6f4] bg-white px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
+            <h2 className="text-lg font-bold text-[#1A2D52]">Lịch sử đăng ký</h2>
+            {isLoadingHistory ? (
+              <p className="mt-4 text-sm text-[#5C7094]">Đang tải lịch sử đăng ký...</p>
+            ) : registrationHistory.length === 0 ? (
+              <p className="mt-4 text-sm text-[#5C7094]">Bạn chưa từng nộp đơn đăng ký nào.</p>
+            ) : (
+              <div className="relative mt-4 space-y-3 before:absolute before:left-4 before:top-2 before:h-[calc(100%-1rem)] before:w-px before:bg-[#d8e3f1]">
+                {registrationHistory.map((item) => (
+                  <article key={item.id} className="relative pl-11">
+                    <span className="absolute left-0 top-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#d8e3f1] bg-white text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.10)]">
+                      <FileCheck className="h-4 w-4" />
+                    </span>
+                    <div className="rounded-2xl border border-[#e2eaf6] bg-[#f8fbff] px-4 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="inline-flex items-center gap-2 text-sm font-semibold text-[#62789f]">
+                          <CalendarDays className="h-4 w-4" />
+                          {formatDate(item.submittedAt)}
+                        </p>
+                        <span
+                          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-bold ${statusMap[item.status].className}`}
+                        >
+                          {statusMap[item.status].label}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm text-[#1b3766]">
+                        <span className="font-bold">
+                          {(item.registration_type && registrationTypeLabel[item.registration_type]) || "Đăng ký"}
+                        </span>
+                        {item.period_name ? <> · {item.period_name}</> : null}
+                      </p>
+                      {item.status === "approved" && item.approved_at ? (
+                        <p className="mt-1 text-xs font-semibold text-emerald-700">
+                          Đã duyệt ngày {formatDate(item.approved_at)}
+                        </p>
+                      ) : null}
+                      {item.status === "rejected" && item.rejectionReason ? (
+                        <p className="mt-1 text-xs font-semibold text-rose-700">
+                          Lý do từ chối: {item.rejectionReason}
+                        </p>
+                      ) : null}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       ) : (
         <>

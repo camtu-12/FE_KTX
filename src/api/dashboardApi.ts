@@ -14,9 +14,15 @@ export type DashboardStats = {
   maintenance_beds: number;
 };
 
+export type PendingRegistrationsBreakdown = {
+  main: { pending: number; review: number };
+  rolling: { pending: number; review: number };
+};
+
 export type DashboardAlerts = {
   overdue_invoices: number;
   pending_registrations: number;
+  pending_registrations_breakdown: PendingRegistrationsBreakdown;
   expiring_occupancies_30d: number;
   pending_bed_selection: number;
   pending_room_changes: number;
@@ -49,9 +55,15 @@ export type DashboardPeriod = {
   };
 } | null;
 
+export type DashboardQueueStatus = {
+  pending_jobs: number;
+  failed_jobs: number;
+};
+
 export type DashboardData = {
   stats: DashboardStats;
   alerts: DashboardAlerts;
+  queue: DashboardQueueStatus;
   current_period: DashboardPeriod;
   charts: {
     by_faculty: Array<{ faculty: string; male: number; female: number; total: number }>;

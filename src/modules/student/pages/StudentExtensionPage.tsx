@@ -20,7 +20,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   checkExtensionEligibility,
   getActiveExtensionPeriod,
@@ -33,7 +33,8 @@ import {
 import type { MyRoom } from "../../../mocks/myRoom";
 import { formatDate } from "../../../utils/dateFormat";
 import { useAuthStore } from "../../auth/store";
-import { getMyOccupancyFromBackend } from "../services/occupancyService";
+import { useOccupancyStatus } from "../hooks/useOccupancyStatus";
+import OccupancyGuardCard from "../../../components/OccupancyGuardCard";
 
 type ToastState = { type: "success" | "error"; message: string };
 
@@ -59,11 +60,10 @@ const STATUS_COLORS: Record<OccupancyExtension["status"], string> = {
 
 export default function StudentExtensionPage() {
   const email = useAuthStore((state) => state.user?.email ?? "");
-
+  const navigate = useNavigate();
+  const occupancyStatus = useOccupancyStatus();
   const [activePeriod, setActivePeriod] = useState<ActiveExtensionPeriod | null>(null);
   const [loadingPeriod, setLoadingPeriod] = useState(true);
-  const [occupancy, setOccupancy] = useState<MyRoom | null>(null);
-  const [loadingOccupancy, setLoadingOccupancy] = useState(true);
   const [extensions, setExtensions] = useState<OccupancyExtension[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [eligibility, setEligibility] = useState<ExtensionEligibility | null>(null);
@@ -92,17 +92,6 @@ export default function StudentExtensionPage() {
     }
   }, []);
 
-  const loadOccupancy = useCallback(async () => {
-    if (!email) return;
-    setLoadingOccupancy(true);
-    try {
-      const data = await getMyOccupancyFromBackend(email);
-      setOccupancy(data);
-    } finally {
-      setLoadingOccupancy(false);
-    }
-  }, [email]);
-
   const loadHistory = useCallback(async () => {
     if (!email) return;
     setLoadingHistory(true);
@@ -129,10 +118,9 @@ export default function StudentExtensionPage() {
 
   useEffect(() => {
     loadActivePeriod();
-    loadOccupancy();
     loadHistory();
     loadEligibility();
-  }, [loadActivePeriod, loadOccupancy, loadHistory, loadEligibility]);
+  }, [loadActivePeriod, loadHistory, loadEligibility]);
 
   const hasPendingRequest = extensions.some((e) => e.status === "pending");
   const hasApprovedRequest = extensions.some((e) => e.status === "approved");
@@ -144,8 +132,7 @@ export default function StudentExtensionPage() {
   const canSubmit =
     !hasPendingRequest &&
     !hasApprovedRequest &&
-    !!occupancy &&
-    occupancy.status === "ACTIVE" &&
+    occupancyStatus.isCurrentlyActive &&
     !!activePeriod &&
     !!eligibility?.eligible;
 
@@ -155,10 +142,10 @@ export default function StudentExtensionPage() {
   const passedCount = conditionRows.filter((row) => row.passed).length;
 
   const disabledReason = (() => {
-    if (loadingOccupancy || loadingPeriod || loadingEligibility) return "Đang kiểm tra dữ liệu...";
+    if (occupancyStatus.isLoading || loadingPeriod || loadingEligibility) return "Đang kiểm tra dữ liệu...";
     if (hasPendingRequest) return "Bạn đã có yêu cầu đang chờ duyệt.";
     if (hasApprovedRequest) return "Yêu cầu gia hạn của bạn đã được duyệt.";
-    if (!occupancy || occupancy.status !== "ACTIVE") return "Bạn không có lưu trú đang hoạt động.";
+    if (!occupancyStatus.isCurrentlyActive) return "Bạn không có lưu trú đang hoạt động.";
     if (!activePeriod) return "Hiện không có đợt gia hạn đang mở.";
     if (!eligibility?.eligible) return "Bạn chưa đủ điều kiện gia hạn.";
     return "";
@@ -189,6 +176,16 @@ export default function StudentExtensionPage() {
     }
   };
 
+  if (occupancyStatus.isLoading || loadingPeriod || loadingHistory || loadingEligibility) {
+    return (
+      <div className="mx-auto w-full max-w-7xl space-y-4 p-3 sm:p-4">
+        <div className="rounded-[22px] border border-[#c1d6f4] bg-white/80 p-5 text-sm font-semibold text-[#5570a0] shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
+          Đang tải thông tin gia hạn lưu trú...
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto w-full max-w-7xl space-y-4 p-3 sm:p-4">
       {toast &&
@@ -209,29 +206,47 @@ export default function StudentExtensionPage() {
         transition={{ duration: 0.35, ease: "easeOut" }}
         className="space-y-4"
       >
-        <ExtensionPeriodBanner loading={loadingPeriod} period={activePeriod} />
+        <div className="rounded-[22px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_100%)] px-6 py-5 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
+          <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">Gia hạn lưu trú</h1>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-[#62789f]">
+            Gửi yêu cầu gia hạn thời gian lưu trú khi đợt gia hạn đang mở và bạn đủ điều kiện.
+          </p>
+        </div>
 
-        <QuickActionGrid
-          hasOpenPeriod={!!activePeriod}
-          loadingEligibility={loadingEligibility}
-          passedCount={passedCount}
-          totalCount={conditionRows.length}
-          historyCount={extensions.length}
-          failedCount={failedCount}
-          warnCount={warnCount}
-          onOpenEligibility={() => setIsEligibilityModalOpen(true)}
-          onOpenHistory={() => setIsHistoryModalOpen(true)}
-        />
-
-        {(!!activePeriod || !!submittedExtension) && (
-          <ExtensionSubmitCard
-            canSubmit={canSubmit}
-            disabledReason={disabledReason}
-            submittedExtension={submittedExtension}
-            onOpenRequest={() => setIsRequestModalOpen(true)}
+        {!occupancyStatus.isLoading && !occupancyStatus.isCurrentlyActive ? (
+          <OccupancyGuardCard
+            icon={CalendarRange}
+            title="Chưa thể gia hạn lưu trú"
+            description="Chức năng gia hạn chỉ áp dụng khi bạn đang chính thức lưu trú."
+            actionLabel="Xem phòng của tôi"
+            onAction={() => navigate("/student/room")}
           />
-        )}
+        ) : (
+          <>
+            <ExtensionPeriodBanner loading={loadingPeriod} period={activePeriod} />
 
+            <QuickActionGrid
+              hasOpenPeriod={!!activePeriod}
+              loadingEligibility={loadingEligibility}
+              passedCount={passedCount}
+              totalCount={conditionRows.length}
+              historyCount={extensions.length}
+              failedCount={failedCount}
+              warnCount={warnCount}
+              onOpenEligibility={() => setIsEligibilityModalOpen(true)}
+              onOpenHistory={() => setIsHistoryModalOpen(true)}
+            />
+
+            {(!!activePeriod || !!submittedExtension) && (
+              <ExtensionSubmitCard
+                canSubmit={canSubmit}
+                disabledReason={disabledReason}
+                submittedExtension={submittedExtension}
+                onOpenRequest={() => setIsRequestModalOpen(true)}
+              />
+            )}
+          </>
+        )}
       </motion.section>
 
       {createPortal(

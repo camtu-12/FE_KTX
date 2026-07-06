@@ -23,6 +23,7 @@ import {
 } from "../../../api/studentSupportApi";
 import { formatDate } from "../../../utils/dateFormat";
 import { useAuthStore } from "../../auth/store";
+import { useOccupancyStatus } from "../hooks/useOccupancyStatus";
 
 type StatusFilter = "all" | SupportRequestStatus;
 
@@ -97,6 +98,8 @@ function StudentSupportTableCell({ children }: { children: React.ReactNode }) {
 
 export default function StudentSupportPage() {
   const email = useAuthStore((state) => state.user?.email ?? "");
+  const occupancy = useOccupancyStatus();
+  const canCreateRequest = occupancy.isCurrentlyActive;
   const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState<StudentSupportRequest[]>([]);
   const [selected, setSelected] = useState<StudentSupportRequest | null>(null);
@@ -173,6 +176,7 @@ export default function StudentSupportPage() {
   );
 
   const openCreateModal = () => {
+    if (!canCreateRequest) return;
     setIsCreateOpen(true);
     setForm(initialForm);
     setFormError("");
@@ -225,6 +229,16 @@ export default function StudentSupportPage() {
     }
   };
 
+  if (occupancy.isLoading || isLoading) {
+    return (
+      <section className="rounded-[24px] bg-[#eef3f8] p-4 sm:p-5">
+        <div className="rounded-[22px] border border-[#c1d6f4] bg-white/80 p-5 text-sm font-semibold text-[#5570a0] shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
+          Đang tải thông tin yêu cầu hỗ trợ...
+        </div>
+      </section>
+    );
+  }
+
   return (
     <motion.section
       initial={{ opacity: 0, y: 18 }}
@@ -241,14 +255,23 @@ export default function StudentSupportPage() {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={openCreateModal}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-[#244cb8] px-5 text-sm font-bold text-white shadow-[0_12px_24px_rgba(36,76,184,0.22)] transition hover:bg-[#1d3f9c]"
-          >
-            <Plus className="h-4 w-4" />
-            Tạo yêu cầu mới
-          </button>
+          <div className="flex flex-col items-end gap-1.5">
+            <button
+              type="button"
+              onClick={openCreateModal}
+              disabled={!occupancy.isLoading && !canCreateRequest}
+              title={!occupancy.isLoading && !canCreateRequest ? "Bạn cần đang chính thức lưu trú mới có thể gửi yêu cầu đổi phòng/giường." : undefined}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-[#244cb8] px-5 text-sm font-bold text-white shadow-[0_12px_24px_rgba(36,76,184,0.22)] transition hover:bg-[#1d3f9c] disabled:cursor-not-allowed disabled:bg-[#a9b8d6] disabled:shadow-none disabled:hover:bg-[#a9b8d6]"
+            >
+              <Plus className="h-4 w-4" />
+              Tạo yêu cầu mới
+            </button>
+            {!occupancy.isLoading && !canCreateRequest ? (
+              <p className="max-w-xs text-right text-xs font-semibold leading-5 text-[#8794ab]">
+                Bạn cần đang chính thức lưu trú mới có thể gửi yêu cầu đổi phòng/giường.
+              </p>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -302,16 +325,20 @@ export default function StudentSupportPage() {
             </div>
             <h3 className="mt-3 text-base font-extrabold text-[#1a2d52]">Bạn chưa gửi yêu cầu nào</h3>
             <p className="mx-auto mt-1 max-w-xl text-sm font-semibold leading-6 text-[#62789f]">
-              Khi cần hỗ trợ, hãy tạo yêu cầu mới và ban quản lý sẽ phản hồi sớm nhất có thể.
+              {!occupancy.isLoading && !canCreateRequest
+                ? "Bạn cần đang chính thức lưu trú mới có thể gửi yêu cầu đổi phòng/giường."
+                : "Khi cần hỗ trợ, hãy tạo yêu cầu mới và ban quản lý sẽ phản hồi sớm nhất có thể."}
             </p>
-            <button
-              type="button"
-              onClick={openCreateModal}
-              className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-2xl bg-[#244cb8] px-5 text-sm font-bold text-white shadow-[0_12px_24px_rgba(36,76,184,0.20)]"
-            >
-              <Plus className="h-4 w-4" />
-              Tạo yêu cầu đầu tiên
-            </button>
+            {occupancy.isLoading || canCreateRequest ? (
+              <button
+                type="button"
+                onClick={openCreateModal}
+                className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-2xl bg-[#244cb8] px-5 text-sm font-bold text-white shadow-[0_12px_24px_rgba(36,76,184,0.20)]"
+              >
+                <Plus className="h-4 w-4" />
+                Tạo yêu cầu đầu tiên
+              </button>
+            ) : null}
           </div>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-[#d6e2f1]">

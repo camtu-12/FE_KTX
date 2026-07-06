@@ -439,7 +439,7 @@ export const getLatestRegistrationByEmail = async (email: string): Promise<Regis
 
 export const getRegistrationHistoryByEmailSemester = async (
   email: string,
-  semester: string
+  semester?: string
 ): Promise<RegistrationRequest[]> => {
   if (!email.trim()) {
     return [];
@@ -447,6 +447,11 @@ export const getRegistrationHistoryByEmailSemester = async (
 
   const res = await regApi.getRegistrationHistory(email, semester);
   return normalizeRegistrationResponseArray(res);
+};
+
+// Toàn bộ lịch sử đăng ký (mọi kỳ) của sinh viên đang đăng nhập, mới nhất trước.
+export const getMyRegistrationHistory = async (email: string): Promise<RegistrationRequest[]> => {
+  return getRegistrationHistoryByEmailSemester(email);
 };
 
 export const updateRegistrationStatus = async ({
@@ -682,6 +687,7 @@ export default {
   getRegistrationById,
   getLatestRegistrationByEmail,
   getRegistrationHistoryByEmailSemester,
+  getMyRegistrationHistory,
   updateRegistrationStatus,
   submitRegistration,
   getMyRegistration,

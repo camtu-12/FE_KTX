@@ -236,6 +236,7 @@ export type BedChangeHistory = {
   change_type: string | null;
   status: string | null;
   is_temporary: boolean;
+  is_initial_assignment: boolean;
   transferred_at: string | null;
   completed_at: string | null;
   expected_return_date: string | null;

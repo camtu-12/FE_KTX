@@ -5,6 +5,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { confirmFreeRoomFeeBill, createVnpayPayment, getStudentPayments, verifyVnpayPayment, type PaymentStatus, type StudentPaymentItem, type StudentPayments } from "../../../api/paymentApi";
 import { useAuthStore } from "../../auth/store";
 import { formatDate } from "../../../utils/dateFormat";
+import { useOccupancyStatus } from "../hooks/useOccupancyStatus";
+import OccupancyGuardCard from "../../../components/OccupancyGuardCard";
 
 const moneyFormatter = new Intl.NumberFormat("vi-VN", {
   style: "currency",
@@ -90,6 +92,7 @@ function BillIcon({ source }: { source: StudentPaymentItem["source"] }) {
 export default function PaymentPage() {
   const navigate = useNavigate();
   const studentEmail = useAuthStore((state) => state.user?.email ?? "");
+  const occupancyStatus = useOccupancyStatus();
   const [searchParams, setSearchParams] = useSearchParams();
   const vnpayStatus = searchParams.get("vnpay");
   const vnpayTxnRef = searchParams.get("vnp_TxnRef");
@@ -106,6 +109,15 @@ export default function PaymentPage() {
     let isActive = true;
 
     const loadPayments = async () => {
+      // Chưa từng có occupancy đạt PENDING_PAYMENT trở lên thì chắc chắn chưa có hóa đơn nào
+      // được tạo — không gọi API thanh toán cho trường hợp này.
+      if (occupancyStatus.isLoading) return;
+      if (!occupancyStatus.hasEverHadBillableOccupancy) {
+        setPayments(null);
+        setIsLoading(false);
+        return;
+      }
+
       setIsLoading(true);
       setLoadError("");
 
@@ -140,7 +152,7 @@ export default function PaymentPage() {
         window.removeEventListener("focus", loadPayments);
       }
     };
-  }, [studentEmail]);
+  }, [studentEmail, occupancyStatus.isLoading, occupancyStatus.hasEverHadBillableOccupancy]);
 
   useEffect(() => {
     const messageTimers: number[] = [];
@@ -273,6 +285,21 @@ export default function PaymentPage() {
         <div className="rounded-[26px] border border-[#c4d7f3] bg-white/80 p-5 text-sm font-semibold text-[#5570a0] shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
           Đang tải thông tin thanh toán...
         </div>
+      </section>
+    );
+  }
+
+  if (!occupancyStatus.hasEverHadBillableOccupancy) {
+    const hasPendingRegistration = occupancyStatus.latestRegistration?.status === "submitted";
+    return (
+      <section className="rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6">
+        <OccupancyGuardCard
+          icon={Receipt}
+          title="Chưa phát sinh hóa đơn"
+          description="Hóa đơn tiền phòng chỉ được tạo sau khi bạn được xếp phòng và chọn giường. Bạn chưa hoàn tất bước này nên hiện chưa có khoản nào cần thanh toán."
+          actionLabel={hasPendingRegistration ? "Xem trạng thái đăng ký" : undefined}
+          onAction={hasPendingRegistration ? () => navigate("/student/registration") : undefined}
+        />
       </section>
     );
   }

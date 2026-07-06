@@ -45,8 +45,11 @@ export const getMyRegistration = (email: string) => {
   return apiClient.get(`/registration/me`).then((res) => res.data);
 };
 
-export const getRegistrationHistory = (email: string, semester: string) => {
-  return apiClient.get(`/registration/history/${email}/${semester}`).then((res) => res.data);
+export const getRegistrationHistory = (email: string, semester?: string) => {
+  const path = semester
+    ? `/registration/history/${email}/${semester}`
+    : `/registration/history/${email}`;
+  return apiClient.get(path).then((res) => res.data);
 };
 
 // ================== GỬI ==================

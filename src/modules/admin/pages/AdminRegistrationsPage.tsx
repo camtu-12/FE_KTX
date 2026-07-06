@@ -44,8 +44,12 @@ export default function AdminRegistrationsPage() {
     const ch = searchParams.get("channel");
     return ch === "rolling" ? "rolling" : "main";
   });
-  const [mainSubFilter, setMainSubFilter] = useState<SubFilter>("pending");
-  const [rollingSubFilter, setRollingSubFilter] = useState<SubFilter>("pending");
+  const initialSubFilter = (): SubFilter => {
+    const f = searchParams.get("filter");
+    return f === "review" || f === "done" ? f : "pending";
+  };
+  const [mainSubFilter, setMainSubFilter] = useState<SubFilter>(initialSubFilter);
+  const [rollingSubFilter, setRollingSubFilter] = useState<SubFilter>(initialSubFilter);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isScrollToTopVisible, setIsScrollToTopVisible] = useState(false);
 
@@ -91,7 +95,7 @@ export default function AdminRegistrationsPage() {
 
   // Clear URL params after reading them into state
   useEffect(() => {
-    if (searchParams.get("period") || searchParams.get("channel")) {
+    if (searchParams.get("period") || searchParams.get("channel") || searchParams.get("filter")) {
       setSearchParams({}, { replace: true });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

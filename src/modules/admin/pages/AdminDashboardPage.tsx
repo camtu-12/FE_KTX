@@ -8,6 +8,7 @@ import {
   CreditCard,
   FileText,
   LogOut,
+  Mail,
   RefreshCw,
   TrendingUp,
   Users,
@@ -431,13 +432,30 @@ export default function AdminDashboardPage() {
     );
   }
 
-  const { stats, alerts, charts, finance } = data;
+  const { stats, alerts, queue, charts, finance } = data;
 
   type AlertEntry = { count: number; label: string; to: string; icon: React.ElementType };
 
+  // Đơn "chờ duyệt tay" có thể nằm ở đợt chính (main) hoặc quanh năm (rolling), và ở tab
+  // "pending" hay "review" trong tab đó — ưu tiên trỏ tới bucket nào thật sự đang có đơn
+  // (review trước vì cấp bách hơn), thay vì luôn cứng sang main/pending như trước.
+  const pendingRegistrationsTarget = (() => {
+    const b = alerts.pending_registrations_breakdown;
+    const order: Array<[("main" | "rolling"), ("review" | "pending")]> = [
+      ["main", "review"],
+      ["rolling", "review"],
+      ["main", "pending"],
+      ["rolling", "pending"],
+    ];
+    const hit = order.find(([channel, filter]) => b?.[channel]?.[filter] > 0);
+    if (!hit) return "/admin/registrations";
+    const [channel, filter] = hit;
+    return `/admin/registrations?channel=${channel}&filter=${filter}`;
+  })();
+
   const group1: AlertEntry[] = [
     { count: alerts.overdue_invoices,      label: "Hóa đơn quá hạn chưa thanh toán", to: "/admin/payments/room-fees?status=overdue", icon: CreditCard },
-    { count: alerts.pending_registrations, label: "Đơn chờ duyệt tay",               to: "/admin/registrations",                    icon: FileText },
+    { count: alerts.pending_registrations, label: "Đơn chờ duyệt tay",               to: pendingRegistrationsTarget,                icon: FileText },
   ].filter((i) => i.count > 0);
 
   const group2: AlertEntry[] = [
@@ -449,7 +467,7 @@ export default function AdminDashboardPage() {
     { count: alerts.pending_room_changes,     label: "Yêu cầu đổi phòng chờ xử lý",   to: "/admin/room-changes",    icon: ArrowLeftRight },
     { count: alerts.pending_bed_changes,      label: "Yêu cầu đổi giường chờ xử lý",  to: "/admin/bed-changes",     icon: Bed },
     { count: alerts.pending_checkouts,        label: "Yêu cầu thôi ở chờ xử lý",      to: "/admin/leave-requests",  icon: LogOut },
-    { count: alerts.pending_support_requests, label: "Yêu cầu hỗ trợ chờ xử lý",      to: "/admin/support-requests", icon: AlertTriangle },
+    { count: alerts.pending_support_requests, label: "Yêu cầu hỗ trợ chờ xử lý",      to: "/admin/support-requests?status=pending", icon: AlertTriangle },
   ].filter((i) => i.count > 0);
 
   const hasAlerts = group1.length > 0 || group2.length > 0 || group3.length > 0;
@@ -553,6 +571,18 @@ export default function AdminDashboardPage() {
           secondary="giường đang bảo trì"
         />
       </div>
+
+      {/* Cảnh báo hàng đợi email (queue worker) — chỉ hiện khi có tồn đọng, để phát hiện sớm
+          nếu Windows Service (queue:work) bị dừng mà không ai để ý. */}
+      {queue.failed_jobs > 0 || queue.pending_jobs > 20 ? (
+        <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-800">
+          <Mail size={14} className="shrink-0" />
+          <span>
+            Hàng đợi email: {queue.pending_jobs} đang chờ
+            {queue.failed_jobs > 0 ? `, ${queue.failed_jobs} lỗi` : ""} — kiểm tra queue worker (Windows Service) có đang chạy không.
+          </span>
+        </div>
+      ) : null}
 
       {/* ── 2. Alerts ──────────────────────────────────────────────────────── */}
       {hasAlerts ? (

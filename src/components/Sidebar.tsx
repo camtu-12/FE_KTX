@@ -18,11 +18,8 @@ import {
   ShieldAlert,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { checkEligibility } from "../api/registrationApi";
-import { getMyRegistration } from "../api/registrationService";
-import { getStoredAuth } from "../modules/auth/utils/authStorage";
+import { useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 
 export type SidebarRole = "admin" | "student";
 
@@ -178,12 +175,6 @@ const studentMenu: MenuItem[] = [
 export default function Sidebar({ role }: SidebarProps) {
   const items = role === "admin" ? adminMenu : studentMenu;
   const location = useLocation();
-  const navigate = useNavigate();
-  const [registrationAccess, setRegistrationAccess] = useState<"checking" | "allowed" | "blocked">(() => {
-    if (role !== "student") return "allowed";
-    const email = getStoredAuth()?.user?.email ?? "";
-    return email ? "checking" : "allowed";
-  });
   const isRegistrationGroupActive =
     location.pathname === "/admin/registrations" || location.pathname === "/admin/registration-periods";
   const isViolationGroupActive =
@@ -198,52 +189,6 @@ export default function Sidebar({ role }: SidebarProps) {
   const [isPaymentGroupOpen, setIsPaymentGroupOpen] = useState(isPaymentGroupActive);
   const [isExtensionGroupOpen, setIsExtensionGroupOpen] = useState(isExtensionGroupActive);
   const [isFreshmanGroupOpen, setIsFreshmanGroupOpen] = useState(isFreshmanGroupActive);
-
-  useEffect(() => {
-    if (role !== "student") {
-      return;
-    }
-
-    const email = getStoredAuth()?.user?.email ?? "";
-    if (!email) return;
-
-    let mounted = true;
-
-    Promise.allSettled([
-      getMyRegistration(email),
-      checkEligibility(email),
-    ])
-      .then(([registrationResult, eligibilityResult]) => {
-        if (!mounted) {
-          return;
-        }
-
-        const registration = registrationResult.status === "fulfilled" ? registrationResult.value : null;
-        const eligibility = eligibilityResult.status === "fulfilled" ? eligibilityResult.value : null;
-        const isBlocked =
-          Boolean(registration?.blacklist) ||
-          registration?.occupancy_status === "forced_checkout" ||
-          eligibility?.reason_code === "blacklisted";
-
-        setRegistrationAccess(isBlocked ? "blocked" : "allowed");
-
-        if (
-          isBlocked &&
-          (location.pathname === "/student/room-status" || location.pathname === "/student/registration")
-        ) {
-          navigate("/student/room", { replace: true });
-        }
-      })
-      .catch(() => {
-        if (mounted) {
-          setRegistrationAccess("allowed");
-        }
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [location.pathname, navigate, role]);
 
   return (
     <aside className="relative flex w-[260px] flex-col overflow-hidden border-r border-[#173a82] bg-[linear-gradient(160deg,#173979_0%,#2450b0_46%,#12316f_100%)] p-4 text-white shadow-[16px_0_34px_rgba(17,40,97,0.32)]">
@@ -356,31 +301,6 @@ export default function Sidebar({ role }: SidebarProps) {
                     </div>
                   ) : null}
                 </div>
-              );
-            }
-
-            const isDisabledRegistration =
-              role === "student" &&
-              item.to === "/student/room-status" &&
-              registrationAccess !== "allowed";
-
-            if (isDisabledRegistration) {
-              return (
-                <button
-                  key={item.to}
-                  type="button"
-                  disabled
-                  title={
-                    registrationAccess === "checking"
-                      ? "Đang kiểm tra điều kiện đăng ký nội trú."
-                      : "Không khả dụng do bạn thuộc danh sách không được đăng ký nội trú."
-                  }
-                  className="group relative flex w-full cursor-not-allowed items-center gap-3 rounded-[22px] px-4 py-3 text-left text-sm font-semibold text-[#b7c7dc] opacity-65"
-                >
-                  <span className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded bg-transparent"></span>
-                  <Icon className="h-5 w-5 flex-shrink-0 text-[#9eb5d8]" />
-                  <span>{item.label}</span>
-                </button>
               );
             }
 

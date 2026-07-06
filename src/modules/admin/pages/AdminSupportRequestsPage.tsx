@@ -116,8 +116,12 @@ export default function AdminSupportRequestsPage() {
   const [detailItem, setDetailItem] = useState<StudentSupportRequest | null>(null);
   const [processItem, setProcessItem] = useState<StudentSupportRequest | null>(null);
   const [adminNote, setAdminNote] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
-  const [draftStatusFilter, setDraftStatusFilter] = useState<StatusFilter>("ALL");
+  const initialStatusFilter = (): StatusFilter => {
+    const s = searchParams.get("status");
+    return statusOptions.some((o) => o.value === s) ? (s as StatusFilter) : "ALL";
+  };
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(initialStatusFilter);
+  const [draftStatusFilter, setDraftStatusFilter] = useState<StatusFilter>(initialStatusFilter);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("ALL");
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
   const [statusFilterMenuPosition, setStatusFilterMenuPosition] = useState<{ top: number; left: number } | null>(null);
@@ -140,6 +144,13 @@ export default function AdminSupportRequestsPage() {
   useEffect(() => {
     void loadItems();
   }, [loadItems]);
+
+  useEffect(() => {
+    if (searchParams.get("status")) {
+      setSearchParams((prev) => { prev.delete("status"); return prev; }, { replace: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const openId = searchParams.get("open");

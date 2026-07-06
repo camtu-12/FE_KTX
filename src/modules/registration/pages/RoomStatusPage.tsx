@@ -319,17 +319,17 @@ export default function RoomStatusPage() {
           return;
         }
 
+        // Các trường hợp không được xem trạng thái đơn tại đây (blacklist/buộc thôi ở/đã ở
+        // chính thức): điều hướng sang trang "Đăng ký nội trú" — trang đó tự kiểm tra lại
+        // eligibility và hiển thị đúng lý do + nút điều hướng phù hợp, thay vì im lặng đưa
+        // thẳng sang "Phòng của tôi" như trước (gây khó hiểu, không giải thích gì).
         if (
           data.blacklist ||
           data.occupancy_status === "forced_checkout" ||
-          eligRes.reason_code === "blacklisted"
+          eligRes.reason_code === "blacklisted" ||
+          (data.status === "approved" && data.occupancy_status === "ACTIVE")
         ) {
-          navigate("/student/room", { replace: true });
-          return;
-        }
-
-        if (data.status === "approved" && data.occupancy_status === "ACTIVE") {
-          navigate("/student/room", { replace: true });
+          navigate("/student/registration", { replace: true });
           return;
         }
 

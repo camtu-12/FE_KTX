@@ -1,10 +1,12 @@
 import { motion } from "framer-motion";
-import { CalendarDays, ClipboardCheck, NotebookText } from "lucide-react";
+import { CalendarDays, ClipboardCheck, NotebookText, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { listViolationsByStudentEmail, type ViolationRecord } from "../../../api/violationApi";
 import type { ActivityCategory, ViolationLevel } from "../../../api/violationTypeApi";
 import { formatDate } from "../../../utils/dateFormat";
 import { useAuthStore } from "../../auth/store";
+import { useOccupancyStatus } from "../hooks/useOccupancyStatus";
+import OccupancyGuardCard from "../../../components/OccupancyGuardCard";
 
 type ActivityFilter = ActivityCategory | "all";
 
@@ -63,6 +65,7 @@ function FeedBadge({ children, className }: { children: string; className: strin
 
 export default function MyActivitiesPage() {
   const studentEmail = useAuthStore((state) => state.user?.email ?? "");
+  const occupancy = useOccupancyStatus();
   const [items, setItems] = useState<ViolationRecord[]>([]);
   const [filter, setFilter] = useState<ActivityFilter>("all");
   const [isLoading, setIsLoading] = useState(true);
@@ -71,7 +74,10 @@ export default function MyActivitiesPage() {
     let mounted = true;
 
     const loadActivities = async () => {
-      if (!studentEmail) {
+      // Chưa từng lưu trú chính thức (ACTIVE) thì chắc chắn không có hoạt động nào được ghi
+      // nhận — không gọi API activities cho trường hợp này.
+      if (occupancy.isLoading) return;
+      if (!studentEmail || !occupancy.hasEverBeenActive) {
         setItems([]);
         setIsLoading(false);
         return;
@@ -99,7 +105,7 @@ export default function MyActivitiesPage() {
     return () => {
       mounted = false;
     };
-  }, [studentEmail]);
+  }, [studentEmail, occupancy.isLoading, occupancy.hasEverBeenActive]);
 
   const visibleItems = useMemo(
     () => items.filter((item) => filter === "all" || item.type?.category === filter),
@@ -119,20 +125,33 @@ export default function MyActivitiesPage() {
             <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">Hoạt động của tôi</h1>
             <p className="mt-1 text-sm text-[#62789f]">Theo dõi lịch sử hoạt động tích cực và vi phạm trong thời gian lưu trú.</p>
           </div>
-          <label className="relative block w-full md:w-[260px]">
-            <select
-              value={filter}
-              onChange={(event) => setFilter(event.target.value as ActivityFilter)}
-              className="h-11 w-full rounded-2xl border border-[#d6e2f1] bg-white px-4 text-sm font-semibold text-[#1f3152] outline-none transition focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/12"
-            >
-              <option value="all">Tất cả</option>
-              <option value="positive">Hoạt động tích cực</option>
-              <option value="negative">Vi phạm</option>
-            </select>
-          </label>
+          {!occupancy.isLoading && occupancy.hasEverBeenActive ? (
+            <label className="relative block w-full md:w-[260px]">
+              <select
+                value={filter}
+                onChange={(event) => setFilter(event.target.value as ActivityFilter)}
+                className="h-11 w-full rounded-2xl border border-[#d6e2f1] bg-white px-4 text-sm font-semibold text-[#1f3152] outline-none transition focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/12"
+              >
+                <option value="all">Tất cả</option>
+                <option value="positive">Hoạt động tích cực</option>
+                <option value="negative">Vi phạm</option>
+              </select>
+            </label>
+          ) : null}
         </div>
       </div>
 
+      {occupancy.isLoading ? (
+        <div className="rounded-[24px] border border-[#d8e3f1] bg-white p-5 shadow-[0_14px_30px_rgba(15,23,42,0.07)]">
+          <p className="text-sm font-semibold text-[#62789f]">Đang tải...</p>
+        </div>
+      ) : !occupancy.hasEverBeenActive ? (
+        <OccupancyGuardCard
+          icon={Sparkles}
+          title="Chưa có hoạt động nào được ghi nhận"
+          description="Bạn chưa chính thức lưu trú nên chưa có hoạt động nào được ghi nhận."
+        />
+      ) : (
       <div className="rounded-[24px] border border-[#d8e3f1] bg-white p-5 shadow-[0_14px_30px_rgba(15,23,42,0.07)]">
         {isLoading ? (
           <p className="text-sm font-semibold text-[#62789f]">Đang tải lịch sử hoạt động...</p>
@@ -186,6 +205,7 @@ export default function MyActivitiesPage() {
           </div>
         )}
       </div>
+      )}
     </motion.section>
   );
 }

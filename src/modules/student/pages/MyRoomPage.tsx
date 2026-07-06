@@ -20,10 +20,35 @@ import type { RegistrationRequest } from "../../admin/data/registrationRequests"
 import type { DormRoom } from "../../../types/dormRoom";
 import { getMyOccupancyFromBackend } from "../services/occupancyService";
 import ProgressStep from "../../registration/components/ProgressStep";
+import {
+  fetchMyRoomChangeHistory,
+  type OccupancyRoomChangeHistory,
+} from "../../../api/roomChangeHistoryApi";
 
-import { formatDate } from "../../../utils/dateFormat";
+import { formatDate, formatDateTime } from "../../../utils/dateFormat";
 
 const getBedLevelLong = (bedNumber: number) => (bedNumber % 2 === 1 ? "Tầng trên" : "Tầng dưới");
+
+const registrationChannelLabel: Record<"main" | "rolling", string> = {
+  main: "Đợt chính",
+  rolling: "Quanh năm",
+};
+
+function formatRegistrationPeriodLabel(period: {
+  name: string;
+  school_year: string | null;
+  semester: number | string | null;
+  channel: "main" | "rolling" | null;
+}): string {
+  const parts: string[] = [];
+  if (period.channel && registrationChannelLabel[period.channel]) {
+    parts.push(registrationChannelLabel[period.channel]);
+  }
+  parts.push(period.name);
+  if (period.semester) parts.push(`Học kỳ ${period.semester}`);
+  if (period.school_year) parts.push(`năm học ${period.school_year}`);
+  return parts.join(" - ");
+}
 
 const statusMeta: Record<
   MyRoomStatus,
@@ -384,6 +409,44 @@ export default function MyRoomPage() {
   const [leaveReason, setLeaveReason] = useState("");
   const [expectedLeaveDate, setExpectedLeaveDate] = useState("");
   const [leaveErrors, setLeaveErrors] = useState<{ reason?: string; expectedLeaveDate?: string }>({});
+  const [roomChangeHistory, setRoomChangeHistory] = useState<OccupancyRoomChangeHistory[]>([]);
+  const [isLoadingRoomChangeHistory, setIsLoadingRoomChangeHistory] = useState(true);
+  const [roomChangeHistoryError, setRoomChangeHistoryError] = useState("");
+  const [expandedOccupancyIds, setExpandedOccupancyIds] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadRoomChangeHistory = async () => {
+      setIsLoadingRoomChangeHistory(true);
+      setRoomChangeHistoryError("");
+
+      try {
+        const history = await fetchMyRoomChangeHistory();
+        if (isActive) {
+          setRoomChangeHistory(history);
+          setExpandedOccupancyIds(new Set(history.length > 0 ? [history[0].group_id] : []));
+        }
+      } catch (error) {
+        if (isActive) {
+          setRoomChangeHistory([]);
+          setRoomChangeHistoryError(
+            error instanceof Error ? error.message : "Không thể tải lịch sử chuyển phòng/giường."
+          );
+        }
+      } finally {
+        if (isActive) {
+          setIsLoadingRoomChangeHistory(false);
+        }
+      }
+    };
+
+    void loadRoomChangeHistory();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   useEffect(() => {
     let isActive = true;
@@ -825,6 +888,110 @@ export default function MyRoomPage() {
           </div>
         </motion.div>
       ) : null}
+
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.42, delay: 0.14, ease: "easeOut" }}
+        className="rounded-[26px] border border-[#c4d7f3] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] p-5 shadow-[0_18px_44px_rgba(15,23,42,0.10)]"
+      >
+        <h2 className="text-2xl font-bold text-[#1a2d52]">Lịch sử chuyển phòng/giường</h2>
+
+        {isLoadingRoomChangeHistory ? (
+          <p className="mt-4 text-sm text-[#5570a0]">Đang tải lịch sử chuyển phòng/giường...</p>
+        ) : roomChangeHistoryError ? (
+          <p className="mt-4 text-sm font-semibold text-rose-600">{roomChangeHistoryError}</p>
+        ) : roomChangeHistory.length === 0 ? (
+          <p className="mt-4 text-sm text-[#5570a0]">Chưa có dữ liệu lịch sử.</p>
+        ) : (
+          <div className="mt-5 space-y-4">
+            {roomChangeHistory.map((entry) => {
+              const isExpanded = expandedOccupancyIds.has(entry.group_id);
+              const checkOutLabel = entry.is_current
+                ? `${formatDate(entry.check_out_date)} (dự kiến)`
+                : formatDate(entry.check_out_date);
+
+              return (
+                <div
+                  key={entry.group_id}
+                  className="rounded-[20px] border border-[#d7e4f7] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-4"
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExpandedOccupancyIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(entry.group_id)) {
+                          next.delete(entry.group_id);
+                        } else {
+                          next.add(entry.group_id);
+                        }
+                        return next;
+                      })
+                    }
+                    className="flex w-full items-start justify-between gap-3 text-left"
+                  >
+                    <span className="flex flex-col gap-1">
+                      <span className="flex flex-wrap items-center gap-2 text-sm font-bold text-[#1a2d52]">
+                        Phòng {entry.room_code ?? "-"} · {formatDate(entry.check_in_date)} - {checkOutLabel}
+                        {entry.extension_count > 0 ? (
+                          <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
+                            Đã gia hạn {entry.extension_count} lần
+                          </span>
+                        ) : null}
+                      </span>
+                      {entry.registration_period ? (
+                        <span className="text-xs font-semibold text-[#5570a0]">
+                          Đợt đăng ký: {formatRegistrationPeriodLabel(entry.registration_period)}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="shrink-0 text-xs font-semibold text-[#5570a0]">
+                      {isExpanded ? "Thu gọn" : "Xem chi tiết"}
+                    </span>
+                  </button>
+
+                  {isExpanded ? (
+                    <div className="mt-4 space-y-3 border-l-2 border-[#c4d7f3] pl-4">
+                      {entry.changes.map((change) => (
+                        <div key={change.id} className="relative pb-1">
+                          <span className="absolute -left-[21px] top-1 h-3 w-3 rounded-full border-2 border-white bg-[#244cb8] shadow" />
+                          <p className="text-xs font-semibold text-[#5570a0]">
+                            {formatDateTime(change.transferred_at)}
+                          </p>
+                          <p className="mt-0.5 text-sm font-bold text-[#1a2d52]">{change.label}</p>
+                          <p className="mt-0.5 text-sm text-[#5570a0]">
+                            Phòng {change.old_room_code ?? "-"}
+                            {change.old_bed_number ? ` (Giường ${change.old_bed_number})` : ""} → Phòng{" "}
+                            {change.new_room_code ?? "-"}
+                            {change.new_bed_number ? ` (Giường ${change.new_bed_number})` : ""}
+                          </p>
+                          {change.pending_return ? (
+                            <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-700">
+                              Đang tạm thời, chờ trả về
+                            </span>
+                          ) : null}
+                        </div>
+                      ))}
+
+                      <div className="relative pb-1">
+                        <span className="absolute -left-[21px] top-1 h-3 w-3 rounded-full border-2 border-white bg-emerald-500 shadow" />
+                        <p className="text-xs font-semibold text-[#5570a0]">
+                          {formatDateTime(entry.start.transferred_at)}
+                        </p>
+                        <p className="mt-0.5 text-sm font-bold text-[#1a2d52]">
+                          Bắt đầu ở - Phòng {entry.start.room_code ?? "-"}
+                          {entry.start.bed_number ? ` - Giường ${entry.start.bed_number}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </motion.div>
 
       {isLiving ? (
         <motion.div
