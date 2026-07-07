@@ -15,7 +15,13 @@ import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { type MyRoom, type MyRoomBed, type MyRoomStatus } from "../../../mocks/myRoom";
 import { useAuthStore } from "../../auth/store";
-import { getMyRegistration, getRooms, requestCheckoutForRegistration } from "../../../api/registrationService";
+import {
+  cancelCheckoutForRegistration,
+  getMyRegistration,
+  getRooms,
+  requestCheckoutForRegistration,
+} from "../../../api/registrationService";
+import { getStudentPayments } from "../../../api/paymentApi";
 import type { RegistrationRequest } from "../../admin/data/registrationRequests";
 import type { DormRoom } from "../../../types/dormRoom";
 import { getMyOccupancyFromBackend } from "../services/occupancyService";
@@ -28,6 +34,8 @@ import {
 import { formatDate, formatDateTime } from "../../../utils/dateFormat";
 
 const getBedLevelLong = (bedNumber: number) => (bedNumber % 2 === 1 ? "Tầng trên" : "Tầng dưới");
+
+const getTodayValue = () => new Date().toISOString().slice(0, 10);
 
 const registrationChannelLabel: Record<"main" | "rolling", string> = {
   main: "Đợt chính",
@@ -409,6 +417,9 @@ export default function MyRoomPage() {
   const [leaveReason, setLeaveReason] = useState("");
   const [expectedLeaveDate, setExpectedLeaveDate] = useState("");
   const [leaveErrors, setLeaveErrors] = useState<{ reason?: string; expectedLeaveDate?: string }>({});
+  const [pendingDebtAmount, setPendingDebtAmount] = useState<number | null>(null);
+  const [isCancellingLeaveRequest, setIsCancellingLeaveRequest] = useState(false);
+  const [cancelLeaveError, setCancelLeaveError] = useState("");
   const [roomChangeHistory, setRoomChangeHistory] = useState<OccupancyRoomChangeHistory[]>([]);
   const [isLoadingRoomChangeHistory, setIsLoadingRoomChangeHistory] = useState(true);
   const [roomChangeHistoryError, setRoomChangeHistoryError] = useState("");
@@ -507,7 +518,10 @@ export default function MyRoomPage() {
 
   const roomAisles = useMemo(() => createRoomAisles(occupancy?.beds ?? []), [occupancy?.beds]);
 
-  if (isLoadingOccupancy) {
+  // Chỉ che toàn trang bằng màn hình loading ở lần tải đầu tiên (chưa có dữ liệu cũ).
+  // Các lần refetch ngầm sau đó (do event ktx-registrations-updated/ktx-rooms-updated,
+  // hoặc focus lại tab) giữ nguyên giao diện cũ, tránh chớp toàn trang.
+  if (isLoadingOccupancy && !occupancy) {
     return <AccessNotice message="Đang tải thông tin phòng..." />;
   }
 
@@ -683,6 +697,32 @@ export default function MyRoomPage() {
     setLeaveErrors({});
   };
 
+  const openLeaveModal = () => {
+    setIsLeaveModalOpen(true);
+    setPendingDebtAmount(null);
+    getStudentPayments()
+      .then((data) => {
+        const total = data.summary.unpaidAmount + data.summary.overdueAmount;
+        setPendingDebtAmount(total);
+      })
+      .catch(() => setPendingDebtAmount(null));
+  };
+
+  const handleCancelLeaveRequest = async () => {
+    setIsCancellingLeaveRequest(true);
+    setCancelLeaveError("");
+    try {
+      await cancelCheckoutForRegistration();
+      // Không tự fetch lại occupancy ở đây — cancelCheckoutForRegistration() đã bắn
+      // event "ktx-registrations-updated", useEffect loadOccupancy sẽ tự cập nhật ở nền
+      // (tránh 2 lần loadOccupancy chạy đua nhau gây chớp toàn trang do gate isLoadingOccupancy).
+    } catch (error) {
+      setCancelLeaveError(error instanceof Error ? error.message : "Không thể hủy yêu cầu thôi ở.");
+    } finally {
+      setIsCancellingLeaveRequest(false);
+    }
+  };
+
   const handleSubmitLeaveRequest = async () => {
     const errors: { reason?: string; expectedLeaveDate?: string } = {};
     const trimmedReason = leaveReason.trim();
@@ -693,6 +733,10 @@ export default function MyRoomPage() {
 
     if (!expectedLeaveDate) {
       errors.expectedLeaveDate = "Vui lòng chọn ngày dự kiến rời KTX.";
+    } else if (expectedLeaveDate < getTodayValue()) {
+      errors.expectedLeaveDate = "Ngày dự kiến rời không được ở quá khứ.";
+    } else if (registration.check_out_date && expectedLeaveDate >= registration.check_out_date) {
+      errors.expectedLeaveDate = `Ngày rời phải trước ngày kết thúc lưu trú dự kiến (${formatDate(registration.check_out_date)}).`;
     }
 
     if (errors.reason || errors.expectedLeaveDate) {
@@ -706,8 +750,11 @@ export default function MyRoomPage() {
         reason: trimmedReason,
         expectedLeaveDate,
       });
-      const nextOccupancy = await getMyOccupancyFromBackend(studentEmail);
-      setOccupancy(nextOccupancy);
+      // Đóng modal ngay — không tự fetch lại occupancy ở đây nữa vì
+      // requestCheckoutForRegistration() đã bắn event "ktx-registrations-updated",
+      // useEffect lắng nghe event đó (loadOccupancy) sẽ tự cập nhật occupancy ở nền.
+      // Gọi fetch lần 2 ở đây từng gây tình trạng modal chớp/hiện lại do 2 lần
+      // loadOccupancy chạy đua nhau cùng lúc.
       closeLeaveModal();
     } catch (error) {
       setLeaveErrors({
@@ -1005,7 +1052,7 @@ export default function MyRoomPage() {
           {occupancy.status === "ACTIVE" ? (
             <button
               type="button"
-              onClick={() => setIsLeaveModalOpen(true)}
+              onClick={openLeaveModal}
               className="auth-btn-gloss mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-3 text-sm font-bold text-rose-700 shadow-[0_12px_24px_rgba(190,52,85,0.12)] transition duration-200 hover:-translate-y-0.5 hover:bg-rose-100"
             >
               <LogOut className="h-4 w-4" />
@@ -1014,14 +1061,37 @@ export default function MyRoomPage() {
           ) : null}
 
           {occupancy.status === "LEAVE_REQUESTED" ? (
-            <button
-              type="button"
-              disabled
-              className="mt-4 inline-flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-bold text-amber-700 opacity-80"
-            >
-              <Clock3 className="h-4 w-4" />
-              Đã gửi yêu cầu
-            </button>
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+              <div className="flex items-center gap-2 text-sm font-bold text-amber-700">
+                <Clock3 className="h-4 w-4" />
+                Đã gửi yêu cầu thôi ở — đang chờ duyệt
+              </div>
+              <div className="mt-3 space-y-1.5 text-sm text-amber-800">
+                <p>
+                  Ngày dự kiến rời:{" "}
+                  <span className="font-semibold">
+                    {occupancy.leaveRequest?.expectedLeaveDate ? formatDate(occupancy.leaveRequest.expectedLeaveDate) : "-"}
+                  </span>
+                </p>
+                <p>
+                  Lý do: <span className="font-semibold">{occupancy.leaveRequest?.reason || "-"}</span>
+                </p>
+                {occupancy.leaveRequest?.requestedAt ? (
+                  <p>
+                    Ngày gửi: <span className="font-semibold">{formatDateTime(occupancy.leaveRequest.requestedAt)}</span>
+                  </p>
+                ) : null}
+              </div>
+              {cancelLeaveError ? <p className="mt-2 text-sm font-semibold text-rose-600">{cancelLeaveError}</p> : null}
+              <button
+                type="button"
+                onClick={handleCancelLeaveRequest}
+                disabled={isCancellingLeaveRequest}
+                className="mt-3 inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-bold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isCancellingLeaveRequest ? "Đang hủy..." : "Hủy yêu cầu"}
+              </button>
+            </div>
           ) : null}
         </motion.div>
       ) : null}
@@ -1074,6 +1144,8 @@ export default function MyRoomPage() {
                     <input
                       type="date"
                       value={expectedLeaveDate}
+                      min={getTodayValue()}
+                      max={registration.check_out_date || undefined}
                       onChange={(event) => {
                         setExpectedLeaveDate(event.target.value);
                         setLeaveErrors((current) => ({ ...current, expectedLeaveDate: undefined }));
@@ -1083,6 +1155,18 @@ export default function MyRoomPage() {
                     {leaveErrors.expectedLeaveDate ? <p className="mt-1 text-sm font-semibold text-rose-600">{leaveErrors.expectedLeaveDate}</p> : null}
                   </label>
 
+                  {pendingDebtAmount !== null && pendingDebtAmount > 0 ? (
+                    <div className="rounded-2xl border border-orange-200 bg-orange-50/70 p-4 text-sm text-orange-800">
+                      <p>
+                        Bạn hiện còn{" "}
+                        <span className="font-semibold">{pendingDebtAmount.toLocaleString("vi-VN")}đ</span>{" "}
+                        chưa thanh toán. Khoản nợ này KHÔNG được xóa khi thôi ở — bạn vẫn cần thanh toán sau khi rời KTX.
+                      </p>
+                      <Link to="/student/payment" className="mt-1.5 inline-block text-sm font-semibold text-[#244cb8] underline">
+                        Xem chi tiết hóa đơn
+                      </Link>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="mt-6 flex flex-wrap justify-end gap-3">

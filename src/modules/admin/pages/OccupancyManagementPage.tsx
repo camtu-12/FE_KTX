@@ -1,8 +1,8 @@
 import { motion } from "framer-motion";
-import { CheckCircle2, CircleAlert, Clock3, Funnel, ShieldAlert, X } from "lucide-react";
+import { Ban, CheckCircle2, CircleAlert, Clock3, Funnel, ShieldAlert, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useSearchParams } from "react-router-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import { type Occupancy, type OccupancyStatus } from "../../../mocks/occupancies";
 import type { Student, StudentGender } from "../../../mocks/students";
@@ -16,7 +16,7 @@ import type { RegistrationRequest } from "../data/registrationRequests";
 import type { DormRoom } from "../../../types/dormRoom";
 import { listViolationTypes, type ActivityCategory, type ViolationType } from "../../../api/violationTypeApi";
 import { createViolation } from "../../../api/violationApi";
-import { formatDate } from "../../../utils/dateFormat";
+import { formatDate, formatDateTime } from "../../../utils/dateFormat";
 import { fetchOccupancyDetail, type OccupancyDetail } from "../../../api/occupancyDetailApi";
 import { searchStudentsForOccupancy } from "../../../api/studentSearchApi";
 import FaceSearchModal from "../components/FaceSearchModal";
@@ -224,9 +224,9 @@ const createOccupancyRowsFromApi = (
         status: occupancyStatus,
         leaveRequest: occupancyStatus === "CHECKOUT_REQUESTED"
           ? {
-              requestedAt: "",
-              expectedLeaveDate: registration.check_out_date || "",
-              reason: registration.occupancy_reason || "",
+              requestedAt: registration.checkout_request?.created_at || "",
+              expectedLeaveDate: registration.checkout_request?.expected_leave_date || "",
+              reason: registration.checkout_request?.reason || "",
             }
           : undefined,
         forcedCheckoutReason: occupancyStatus === "FORCED_CHECKOUT"
@@ -242,6 +242,7 @@ const createOccupancyRowsFromApi = (
 
 export default function OccupancyManagementPage() {
   const { headerSearchValue, setNavAutocomplete, setOnOpenFaceSearch } = useOutletContext<AdminLayoutOutletContext>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [isFaceSearchModalOpen, setIsFaceSearchModalOpen] = useState(false);
   const [occupancyRows, setOccupancyRows] = useState<Occupancy[]>([]);
   const [studentRows, setStudentRows] = useState<Student[]>([]);
@@ -320,32 +321,46 @@ export default function OccupancyManagementPage() {
     return ["warned", "force_evicted"];
   }, [selectedViolationType]);
 
-  const summaryCards = [
+  const summaryCards: Array<{
+    label: string;
+    value: number;
+    valueClassName: string;
+    delay: number;
+    filterValue: OccupancyStatusFilter;
+  }> = [
     {
       label: "Đang lưu trú",
       value: activeCount,
       valueClassName: "text-[#16784b]",
       delay: 0.12,
+      filterValue: "ACTIVE",
     },
     {
       label: "Yêu cầu thôi ở",
       value: checkoutRequestedCount,
       valueClassName: "text-[#9b6b00]",
       delay: 0.18,
+      filterValue: "CHECKOUT_REQUESTED",
     },
     {
       label: "Đã thôi ở",
       value: checkedOutCount,
       valueClassName: "text-[#667085]",
       delay: 0.24,
+      filterValue: "CHECKED_OUT",
     },
     {
       label: "Tổng lưu trú",
       value: occupancyRows.length,
       valueClassName: "text-[#244cb8]",
       delay: 0.3,
+      filterValue: "ALL",
     },
   ];
+
+  const handleSummaryCardClick = (filterValue: OccupancyStatusFilter) => {
+    setStatusFilter((current) => (current === filterValue ? "ALL" : filterValue));
+  };
 
   useEffect(() => {
     let isActive = true;
@@ -592,6 +607,17 @@ export default function OccupancyManagementPage() {
     }
   };
 
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (!openId || occupancyRows.length === 0) return;
+    const target = occupancyRows.find((it) => String(it.occupancyId) === openId) ?? null;
+    if (target) {
+      handleOpenDetail(target);
+      setSearchParams((prev) => { prev.delete("open"); return prev; }, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [occupancyRows, searchParams]);
+
   const resetViolationForm = () => {
     setViolationTypeId("");
     setViolationDate(getTodayValue());
@@ -758,22 +784,40 @@ export default function OccupancyManagementPage() {
         </motion.div>
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {summaryCards.map((card) => (
-            <motion.article
-              key={card.label}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.36, delay: card.delay, ease: "easeOut" }}
-              className="flex flex-col items-center rounded-[24px] border border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.08)]"
-            >
-              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#7c8fb5]">
-                {card.label}
-              </p>
-              <p className={`mt-3 text-[2rem] font-extrabold leading-none ${card.valueClassName}`}>
-                {card.value}
-              </p>
-            </motion.article>
-          ))}
+          {summaryCards.map((card) => {
+            const isActive = statusFilter === card.filterValue;
+
+            return (
+              <motion.article
+                key={card.label}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.36, delay: card.delay, ease: "easeOut" }}
+                role="button"
+                tabIndex={0}
+                aria-pressed={isActive}
+                onClick={() => handleSummaryCardClick(card.filterValue)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    handleSummaryCardClick(card.filterValue);
+                  }
+                }}
+                className={`flex cursor-pointer flex-col items-center rounded-[24px] border px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.08)] outline-none transition focus-visible:ring-4 focus-visible:ring-[#244cb8]/25 ${
+                  isActive
+                    ? "border-[#244cb8] bg-[#244cb8]/5"
+                    : "border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)]"
+                }`}
+              >
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#7c8fb5]">
+                  {card.label}
+                </p>
+                <p className={`mt-3 text-[2rem] font-extrabold leading-none ${card.valueClassName}`}>
+                  {card.value}
+                </p>
+              </motion.article>
+            );
+          })}
         </div>
 
         <motion.div
@@ -1143,6 +1187,37 @@ export default function OccupancyManagementPage() {
                             <span className="font-semibold">{selectedOccupancy.leaveRequest?.reason?.trim() || emptyValue}</span>
                           </p>
                         </div>
+                      </div>
+                    ) : selectedOccupancy.status !== "CHECKOUT_REQUESTED" && occupancyDetail?.cancelled_checkout_request ? (
+                      <div className="flex items-start gap-3 rounded-2xl border-2 border-slate-300 bg-slate-100 p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
+                        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200">
+                          <Ban className="h-4 w-4 text-slate-600" />
+                        </span>
+                        <div>
+                          <p className="text-sm font-bold text-slate-700">Yêu cầu thôi ở đã bị hủy</p>
+                          <p className="mt-1 text-sm text-slate-600">
+                            Sinh viên đã hủy yêu cầu thôi ở này.
+                            {occupancyDetail.cancelled_checkout_request.cancelled_at
+                              ? ` (lúc ${formatDateTime(occupancyDetail.cancelled_checkout_request.cancelled_at)})`
+                              : ""}
+                          </p>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {selectedOccupancy.status === "CHECKOUT_REQUESTED" && occupancyDetail && occupancyDetail.unpaid_debt > 0 ? (
+                      <div className="rounded-2xl border border-orange-200 bg-orange-50/70 p-4">
+                        <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-orange-700">
+                          THÔNG TIN CÔNG NỢ
+                        </h4>
+                        <p className="mt-3 text-sm text-orange-800">
+                          Sinh viên hiện còn nợ{" "}
+                          <span className="font-semibold">{occupancyDetail.unpaid_debt.toLocaleString("vi-VN")}₫</span>{" "}
+                          (tiền phòng + tiền điện chưa thanh toán/quá hạn).
+                        </p>
+                        <p className="mt-1 text-xs text-orange-700">
+                          Khoản nợ này không được xóa khi thôi ở — sinh viên vẫn có nghĩa vụ thanh toán sau khi rời KTX.
+                        </p>
                       </div>
                     ) : null}
 

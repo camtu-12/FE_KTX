@@ -60,6 +60,12 @@ export type RegistrationRequest = {
   occupancy_reason?: string | null;
   check_in_date?: string | null;
   check_out_date?: string | null;
+  checkout_request?: {
+    id: number;
+    reason: string;
+    expected_leave_date: string;
+    created_at: string;
+  } | null;
   student?: {
     account?: {
       student_code?: string;

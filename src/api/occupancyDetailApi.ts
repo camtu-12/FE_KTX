@@ -76,6 +76,11 @@ export type OccupancyDetail = {
   recent_violations: RecentViolation[];
   current_invoice: CurrentInvoice | null;
   total_debt: number;
+  unpaid_debt: number;
+  cancelled_checkout_request: {
+    id: number;
+    cancelled_at: string | null;
+  } | null;
   support_requests: SupportRequest[];
   room_change_history: RoomChangeHistoryItem[];
 };

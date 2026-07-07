@@ -107,6 +107,10 @@ export const requestCheckout = (email: string, reason: string, expectedLeaveDate
   }).then((res) => res.data);
 };
 
+export const cancelCheckout = () => {
+  return apiClient.put("/registration/cancel-checkout").then((res) => res.data);
+};
+
 export const confirmCheckout = (id: number) => {
   return apiClient.put(`/registration/${id}/confirm-checkout`).then((res) => res.data);
 };

@@ -33,7 +33,10 @@ export default function StudentMiniInfo({ student, size = "md" }: StudentMiniInf
   const isPendingPayment = occupancyStatus === "PENDING_PAYMENT";
   const isActive = occupancyStatus === "ACTIVE";
   const modalCheckInDate = currentOccupancy?.check_in_date ?? null;
-  const modalCheckOutDate = currentOccupancy?.check_out_date ?? null;
+  // Nếu đang có yêu cầu thôi ở chờ duyệt, ưu tiên hiện ngày SV đề nghị thay vì
+  // hạn hợp đồng gốc (check_out_date không còn bị ghi đè khi mới gửi yêu cầu).
+  const pendingCheckoutRequest = currentOccupancy?.checkout_request ?? null;
+  const modalCheckOutDate = pendingCheckoutRequest?.expected_leave_date ?? currentOccupancy?.check_out_date ?? null;
   const residencyBadge = isPendingPayment
     ? {
         label: "● Chờ thanh toán",
@@ -94,7 +97,7 @@ export default function StudentMiniInfo({ student, size = "md" }: StudentMiniInf
         {size !== "lg" ? (
           <p className={`flex items-center gap-1.5 leading-relaxed text-[#7c8fb5] ${metaClass}`}>
             <CalendarDays className={`${metaIconClass} shrink-0 text-[#9bb0d4]`} />
-            {isPendingPayment ? "Ngày dự kiến rời:" : "Ngày rời đi:"} {student.check_out_date ? formatDate(student.check_out_date) : isActive ? "Đang ở" : "--"}
+            {isPendingPayment ? "Ngày dự kiến rời:" : "Ngày rời đi:"} {modalCheckOutDate ? formatDate(modalCheckOutDate) : isActive ? "Đang ở" : "--"}
           </p>
         ) : null}
         {size === "lg" ? (

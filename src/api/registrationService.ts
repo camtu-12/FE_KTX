@@ -320,6 +320,16 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
     occupancy_reason: firstDefinedString(registration.occupancy_reason) || null,
     check_in_date: firstDefinedString(registration.check_in_date) || null,
     check_out_date: firstDefinedString(registration.check_out_date) || null,
+    checkout_request: (() => {
+      const cr = readRecord(registration.checkout_request);
+      if (!cr) return null;
+      return {
+        id: toNumberOrNull(cr.id) ?? 0,
+        reason: firstDefinedString(cr.reason) || "",
+        expected_leave_date: firstDefinedString(cr.expected_leave_date) || "",
+        created_at: firstDefinedString(cr.created_at) || "",
+      };
+    })(),
     priority_criteria: Array.isArray(registration.priority_criteria)
       ? (registration.priority_criteria as RegistrationRequest["priority_criteria"])
       : [],
@@ -603,6 +613,13 @@ export const requestCheckoutForRegistration = async ({
   expectedLeaveDate?: string;
 }): Promise<RegistrationRequest | null> => {
   const updated = normalizeRegistrationResponse(await regApi.requestCheckout(email, reason, expectedLeaveDate));
+  dispatchRegistrationRequestsUpdated();
+  dispatchRoomsUpdated();
+  return updated;
+};
+
+export const cancelCheckoutForRegistration = async (): Promise<RegistrationRequest | null> => {
+  const updated = normalizeRegistrationResponse(await regApi.cancelCheckout());
   dispatchRegistrationRequestsUpdated();
   dispatchRoomsUpdated();
   return updated;

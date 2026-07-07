@@ -184,6 +184,10 @@ export type BedStudent = {
     check_in_date: string | null;
     check_out_date: string | null;
     status: string | null;
+    checkout_request?: {
+      expected_leave_date: string | null;
+      reason: string | null;
+    } | null;
   } | null;
   temporary_assignment?: {
     is_temporary: boolean;

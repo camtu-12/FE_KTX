@@ -176,9 +176,9 @@ export async function getMyOccupancyFromBackend(email: string): Promise<MyRoom |
     leftDate: myRegistration.check_out_date || undefined,
     leaveRequest: myRegistration.occupancy_status === "checkout_requested"
       ? {
-          requestedAt: "",
-          expectedLeaveDate: myRegistration.check_out_date || "",
-          reason: myRegistration.occupancy_reason || "",
+          requestedAt: myRegistration.checkout_request?.created_at || "",
+          expectedLeaveDate: myRegistration.checkout_request?.expected_leave_date || "",
+          reason: myRegistration.checkout_request?.reason || "",
         }
       : undefined,
     forcedLeave: myRegistration.occupancy_status === "forced_checkout"

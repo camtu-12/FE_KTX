@@ -336,6 +336,11 @@ export default function Header({
       navigate(`/admin/support-requests?open=${item.related_id}`);
       return;
     }
+    if (item.type === "checkout_requested" && item.related_id) {
+      setIsNotifOpen(false);
+      navigate(`/admin/occupancies?open=${item.related_id}`);
+      return;
+    }
     if (
       (item.type === "room_maintenance_start" || item.type === "room_maintenance_return") &&
       item.related_id
