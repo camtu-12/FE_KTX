@@ -35,7 +35,6 @@ export type CurrentInvoice = {
 
 export type SupportRequest = {
   id: number;
-  request_type: string;
   title: string | null;
   status: string;
   created_at: string | null;

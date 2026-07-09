@@ -134,7 +134,7 @@ export default function AdminOccupancyPeriodsPage() {
 
   const openCreate = () => {
     setEditingId(null);
-    setForm(emptyForm);
+    setForm({ ...emptyForm, extension_until_date: suggestion?.extension_until_date ?? "" });
     setFormErrors({});
     setApiError(null);
     setShowForm(true);
@@ -276,6 +276,7 @@ export default function AdminOccupancyPeriodsPage() {
       ) : (
         <input
           type={type}
+          lang={type === "date" ? "vi" : undefined}
           value={form[key]}
           onChange={(e) => {
             setForm((prev) => ({ ...prev, [key]: e.target.value }));

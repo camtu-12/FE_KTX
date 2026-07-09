@@ -8,14 +8,12 @@ import {
   listAdminSupportRequests,
   processSupportRequest,
   type SupportRequestStatus,
-  type SupportRequestType,
   type StudentSupportRequest,
 } from "../../../api/studentSupportApi";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import { formatDate } from "../../../utils/dateFormat";
 
 type StatusFilter = SupportRequestStatus | "ALL";
-type TypeFilter = SupportRequestType | "ALL";
 
 type ToastState = {
   type: "success" | "error";
@@ -27,17 +25,6 @@ type ParsedContent = {
   proposal: Array<{ label: string; value: string }>;
   body: string[];
 };
-
-const typeOptions: Array<{ value: TypeFilter; label: string }> = [
-  { value: "ALL", label: "Tất cả loại" },
-  { value: "room_change", label: "Đổi phòng" },
-  { value: "bed_change", label: "Đổi giường" },
-  { value: "roommate_request", label: "Yêu cầu bạn cùng phòng" },
-  { value: "complaint", label: "Khiếu nại" },
-  { value: "suggestion", label: "Góp ý" },
-  { value: "maintenance_report", label: "Báo cáo sửa chữa" },
-  { value: "other", label: "Khác" },
-];
 
 const statusOptions: Array<{ value: StatusFilter; label: string }> = [
   { value: "ALL", label: "Tất cả trạng thái" },
@@ -62,8 +49,6 @@ const currentStayLabels = new Set([
   "Ngày kết thúc hiện tại",
   "Trạng thái lưu trú",
 ]);
-
-const getTypeLabel = (value: SupportRequestType) => typeOptions.find((item) => item.value === value)?.label ?? "Khác";
 
 const parseSupportContent = (content: string): ParsedContent => {
   const parsed: ParsedContent = { currentStay: [], proposal: [], body: [] };
@@ -90,14 +75,6 @@ const parseSupportContent = (content: string): ParsedContent => {
   return parsed;
 };
 
-const isAutoTransferType = (type: SupportRequestType) => type === "room_change" || type === "bed_change" || type === "roommate_request";
-
-const getAutoTransferLabel = (type: SupportRequestType) => {
-  if (type === "room_change") return "Yêu cầu đổi phòng";
-  if (type === "roommate_request") return "Yêu cầu bạn cùng phòng";
-  return "Yêu cầu đổi giường";
-};
-
 function Badge({ status }: { status: SupportRequestStatus }) {
   const meta = statusMeta[status];
   const Icon = meta.Icon;
@@ -122,7 +99,6 @@ export default function AdminSupportRequestsPage() {
   };
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(initialStatusFilter);
   const [draftStatusFilter, setDraftStatusFilter] = useState<StatusFilter>(initialStatusFilter);
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>("ALL");
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
   const [statusFilterMenuPosition, setStatusFilterMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const statusFilterButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -195,16 +171,15 @@ export default function AdminSupportRequestsPage() {
     const search = headerSearchValue.trim().toLowerCase();
     return items.filter((item) => {
       const matchesStatus = statusFilter === "ALL" || item.status === statusFilter;
-      const matchesType = typeFilter === "ALL" || item.requestType === typeFilter;
       const matchesSearch =
         !search ||
         [item.student?.studentCode, item.student?.fullName, item.student?.email, item.title, item.content]
           .join(" ")
           .toLowerCase()
           .includes(search);
-      return matchesStatus && matchesType && matchesSearch;
+      return matchesStatus && matchesSearch;
     });
-  }, [headerSearchValue, items, statusFilter, typeFilter]);
+  }, [headerSearchValue, items, statusFilter]);
 
   const openProcessModal = (item: StudentSupportRequest) => {
     setProcessItem(item);
@@ -238,7 +213,6 @@ export default function AdminSupportRequestsPage() {
   const resetFilters = () => {
     setStatusFilter("ALL");
     setDraftStatusFilter("ALL");
-    setTypeFilter("ALL");
   };
 
   const handleOpenStatusFilter = () => {
@@ -272,16 +246,6 @@ export default function AdminSupportRequestsPage() {
           </div>
 
           <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
-              className="h-9 w-[190px] rounded-xl border border-[#d6e2f1] bg-white px-3 text-xs font-semibold text-[#1f3152] outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/12"
-            >
-              {typeOptions.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-
             <button
               type="button"
               onClick={resetFilters}
@@ -303,9 +267,8 @@ export default function AdminSupportRequestsPage() {
             <thead>
               <tr className="bg-[linear-gradient(180deg,#f7faff_0%,#eef4ff_100%)]">
                 <TableHead className="w-[14%]">MSSV</TableHead>
-                <TableHead className="w-[18%]">Họ tên</TableHead>
-                <TableHead className="w-[22%]">Loại yêu cầu</TableHead>
-                <TableHead className="w-[16%]">Ngày gửi</TableHead>
+                <TableHead className="w-[24%]">Họ tên</TableHead>
+                <TableHead className="w-[20%]">Ngày gửi</TableHead>
                 <TableHead className="w-[14%]">
                   <span className="inline-flex items-center justify-center gap-2">
                     <span>Trạng thái</span>
@@ -334,9 +297,6 @@ export default function AdminSupportRequestsPage() {
                   </TableCell>
                   <TableCell>
                     <span className="block max-w-full truncate text-sm font-semibold text-[#1f3152]">{item.student?.fullName || "-"}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="mx-auto line-clamp-2 max-w-[220px] text-sm font-semibold leading-5 text-[#1f3152]">{getTypeLabel(item.requestType)}</span>
                   </TableCell>
                   <TableCell>
                     <span className="text-sm font-semibold text-[#1f3152]">{formatDate(item.createdAt)}</span>
@@ -449,30 +409,6 @@ export default function AdminSupportRequestsPage() {
                 </div>
 
                 <div className="space-y-4 px-5 py-5">
-                  {/* Transfer target info for room/bed change requests */}
-                  {isAutoTransferType(processItem.requestType) && (
-                    <div className={`rounded-2xl border p-4 ${processItem.targetBedId ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
-                      <p className={`mb-2 text-sm font-bold ${processItem.targetBedId ? "text-emerald-700" : "text-amber-700"}`}>
-                        {getAutoTransferLabel(processItem.requestType)}
-                        {processItem.targetBedId ? " — có đích cụ thể" : " — chưa có đích"}
-                      </p>
-                      {processItem.targetRoom && (
-                        <p className="text-sm font-semibold text-emerald-800">
-                          Phòng đích: <span className="font-bold">{processItem.targetRoom.buildingCode}{processItem.targetRoom.roomNumber}</span>
-                        </p>
-                      )}
-                      {processItem.targetBed ? (
-                        <p className="text-sm font-semibold text-emerald-800">
-                          Giường đích: <span className="font-bold">Giường {processItem.targetBed.bedNumber}</span>
-                        </p>
-                      ) : (
-                        <p className="text-sm font-semibold text-amber-700">
-                          Sinh viên chưa chọn giường đích — cần xử lý thủ công.
-                        </p>
-                      )}
-                    </div>
-                  )}
-
                   <label className="block">
                     <span className="text-sm font-bold text-[#526a96]">Ghi chú xử lý</span>
                     <textarea
@@ -557,7 +493,7 @@ function DetailModal({ item, onClose }: { item: StudentSupportRequest; onClose: 
         <div className="flex items-start justify-between gap-4 border-b border-[#e3ebf7] px-6 py-5">
           <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Chi tiết yêu cầu</p>
-            <h2 className="mt-2 text-xl font-extrabold uppercase text-[#1a2d52]">{item.title || getTypeLabel(item.requestType)}</h2>
+            <h2 className="mt-2 text-xl font-extrabold uppercase text-[#1a2d52]">{item.title || "Yêu cầu hỗ trợ"}</h2>
           </div>
           <CloseButton onClick={onClose} />
         </div>
@@ -572,7 +508,6 @@ function DetailModal({ item, onClose }: { item: StudentSupportRequest; onClose: 
             </InfoSection>
 
             <InfoSection title="Thông tin yêu cầu" icon={<ClipboardList className="h-5 w-5 text-[#244cb8]" />}>
-              <InfoRow label="Loại yêu cầu" value={getTypeLabel(item.requestType)} />
               <InfoRow label="Ngày gửi" value={formatDate(item.createdAt)} />
               <div className="grid gap-1 sm:grid-cols-[150px_1fr]">
                 <span className="text-sm font-normal text-[#5570a0]">Trạng thái</span>

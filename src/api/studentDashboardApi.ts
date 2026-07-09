@@ -55,7 +55,6 @@ export type DashboardNotification = {
 export type PendingRequest = {
   id: number;
   title: string;
-  request_type: string;
   status: "pending" | "processing";
   created_at: string;
 };

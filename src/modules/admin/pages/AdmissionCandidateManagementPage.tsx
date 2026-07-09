@@ -315,7 +315,7 @@ export default function AdmissionCandidateManagementPage() {
 
         {/* Filters */}
         <div className="mt-4 flex flex-wrap gap-2">
-          {(["", "admitted", "enrolled", "cancelled"] as const).map((s) => (
+          {(["", "admitted", "enrolled"] as const).map((s) => (
             <button
               key={s}
               type="button"

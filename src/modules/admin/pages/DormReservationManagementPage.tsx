@@ -385,7 +385,7 @@ export default function DormReservationManagementPage() {
 
         {/* Filters */}
         <div className="mt-4 flex flex-wrap gap-2">
-          {(["", "submitted", "approved", "waitlisted", "rejected", "converted", "cancelled"] as const).map((s) => (
+          {(["", "submitted", "approved", "waitlisted", "rejected"] as const).map((s) => (
             <button key={s} type="button" onClick={() => setStatusFilter(s)}
               className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${statusFilter === s ? "border-[#244cb8] bg-[#244cb8] text-white" : "border-[#cfdcf0] bg-white text-[#62789f] hover:border-[#244cb8]"}`}>
               {s === "" ? "Tất cả" : STATUS_LABELS[s]}

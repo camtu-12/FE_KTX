@@ -18,7 +18,6 @@ import {
   createSupportRequest,
   listMySupportRequests,
   type SupportRequestStatus,
-  type SupportRequestType,
   type StudentSupportRequest,
 } from "../../../api/studentSupportApi";
 import { formatDate } from "../../../utils/dateFormat";
@@ -35,16 +34,6 @@ type FormState = {
 type ToastState = {
   type: "success" | "error";
   message: string;
-};
-
-const requestTypeLabels: Partial<Record<SupportRequestType, string>> = {
-  room_change: "Đổi phòng",
-  bed_change: "Đổi giường",
-  roommate_request: "Bạn cùng phòng",
-  complaint: "Khiếu nại",
-  suggestion: "Góp ý",
-  maintenance_report: "Báo cáo sửa chữa",
-  other: "Hỗ trợ khác",
 };
 
 const initialForm: FormState = {
@@ -65,17 +54,6 @@ const statusFilterValues: StatusFilter[] = ["all", "pending", "processing", "app
 function normalizeStatusFilter(value: string | null): StatusFilter {
   return statusFilterValues.includes(value as StatusFilter) ? (value as StatusFilter) : "all";
 }
-
-const inferTypeLabel = (item: StudentSupportRequest) => {
-  if (item.requestType in requestTypeLabels) {
-    return requestTypeLabels[item.requestType] ?? "Hỗ trợ khác";
-  }
-  const title = item.title.toLowerCase();
-  if (title.includes("đổi phòng")) return "Đổi phòng";
-  if (title.includes("đổi giường")) return "Đổi giường";
-  if (title.includes("gia hạn")) return "Gia hạn lưu trú";
-  return "Hỗ trợ khác";
-};
 
 function StatusBadge({ status }: { status: SupportRequestStatus }) {
   const meta = statusMeta[status];
@@ -210,7 +188,6 @@ export default function StudentSupportPage() {
     setIsSubmitting(true);
     try {
       await createSupportRequest({
-        request_type: "other",
         title: form.title.trim(),
         content: form.content.trim(),
       });
@@ -361,7 +338,7 @@ export default function StudentSupportPage() {
                 ) : filteredItems.map((item) => (
                     <tr key={item.id} className="transition hover:bg-[#f8fbff]">
                       <StudentSupportTableCell>
-                        <span className="mx-auto line-clamp-2 max-w-[220px] text-sm font-bold leading-5 text-[#1f3152]">{item.title || inferTypeLabel(item)}</span>
+                        <span className="mx-auto line-clamp-2 max-w-[220px] text-sm font-bold leading-5 text-[#1f3152]">{item.title || "Yêu cầu hỗ trợ"}</span>
                       </StudentSupportTableCell>
                       <StudentSupportTableCell>
                         <span className="text-sm font-bold text-[#62789f]">{formatDate(item.createdAt)}</span>
@@ -515,9 +492,6 @@ function parseContent(content: string): { fields: ParsedField[]; body: string[] 
 }
 
 function StudentRequestDetailModal({ item, onClose }: { item: StudentSupportRequest; onClose: () => void }) {
-  const targetRoomLabel = item.targetRoom ? `${item.targetRoom.buildingCode}${item.targetRoom.roomNumber}` : "";
-  const targetBedLabel = item.targetBed ? `Giường ${item.targetBed.bedNumber}` : "";
-
   const { fields, body } = useMemo(() => parseContent(item.content), [item.content]);
   const contentFields = useMemo(() => {
     const fieldMap = new Map(fields.map((f) => [f.label, f.value]));
@@ -538,7 +512,7 @@ function StudentRequestDetailModal({ item, onClose }: { item: StudentSupportRequ
         <div className="flex items-start justify-between gap-4 border-b border-[#e3ebf7] px-5 py-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#6f84ad]">Chi tiết yêu cầu</p>
-            <h2 className="mt-1 text-xl font-extrabold text-[#1a2d52]">{item.title || inferTypeLabel(item)}</h2>
+            <h2 className="mt-1 text-xl font-extrabold text-[#1a2d52]">{item.title || "Yêu cầu hỗ trợ"}</h2>
           </div>
           <button
             type="button"
@@ -552,7 +526,6 @@ function StudentRequestDetailModal({ item, onClose }: { item: StudentSupportRequ
 
         <div className="space-y-4 overflow-y-auto px-5 py-5">
           <section className="grid gap-3 rounded-2xl border border-[#d8e3f1] bg-[#f8fbff] p-4 sm:grid-cols-2">
-            <DetailInfoRow label="Loại yêu cầu" value={inferTypeLabel(item)} />
             <DetailInfoRow label="Ngày gửi" value={formatDate(item.createdAt)} />
             <div className="sm:col-span-2">
               <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#6f84ad]">Trạng thái</p>
@@ -561,14 +534,6 @@ function StudentRequestDetailModal({ item, onClose }: { item: StudentSupportRequ
               </div>
             </div>
           </section>
-
-          {targetRoomLabel || targetBedLabel || item.targetStudent ? (
-            <section className="grid gap-3 rounded-2xl border border-[#d8e3f1] bg-white p-4 sm:grid-cols-2">
-              {item.targetStudent ? <DetailInfoRow label="Sinh viên muốn ở cùng" value={`${item.targetStudent.fullName} (${item.targetStudent.studentCode})`} /> : null}
-              {targetRoomLabel ? <DetailInfoRow label="Phòng đích" value={targetRoomLabel} /> : null}
-              {targetBedLabel ? <DetailInfoRow label="Giường đích" value={targetBedLabel} /> : null}
-            </section>
-          ) : null}
 
           {item.adminNote ? (
             <section className="rounded-2xl border border-sky-200 bg-sky-50 p-4">

@@ -22,6 +22,7 @@ export type OccupancyPeriodSuggestion = {
   target_check_out_date: string | null;
   suggested_open_date: string | null;
   students_count: number;
+  extension_until_date: string | null;
 };
 
 export type OccupancyPeriodPayload = {

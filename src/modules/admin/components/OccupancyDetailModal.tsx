@@ -583,7 +583,6 @@ export default function OccupancyDetailModal({
                   <table className="w-full text-left text-sm">
                     <thead>
                       <tr className="border-b border-[#dce9f5] text-xs font-semibold uppercase tracking-wide text-[#8aa4cc]">
-                        <th className="pb-2 pr-4">Loại yêu cầu</th>
                         <th className="pb-2 pr-4">Tiêu đề</th>
                         <th className="pb-2 pr-4">Ngày gửi</th>
                         <th className="pb-2">Trạng thái</th>
@@ -591,15 +590,6 @@ export default function OccupancyDetailModal({
                     </thead>
                     <tbody className="divide-y divide-[#edf3fb]">
                       {occupancyDetail.support_requests.map((req) => {
-                        const typeLabel: Record<string, string> = {
-                          room_change: "Chuyển phòng",
-                          bed_change: "Chuyển giường",
-                          roommate_request: "Yêu cầu ở cùng",
-                          complaint: "Khiếu nại",
-                          suggestion: "Góp ý",
-                          maintenance_report: "Báo hỏng",
-                          other: "Khác",
-                        };
                         const reqStatusMeta: Record<string, { label: string; cls: string }> = {
                           pending:    { label: "Chờ xử lý",   cls: "border-amber-200 bg-amber-50 text-amber-700" },
                           processing: { label: "Đang xử lý",  cls: "border-blue-200 bg-blue-50 text-blue-700" },
@@ -610,9 +600,6 @@ export default function OccupancyDetailModal({
                         const sm = reqStatusMeta[req.status] ?? { label: req.status, cls: "border-gray-200 bg-gray-50 text-gray-600" };
                         return (
                           <tr key={req.id} className="text-[#2d4a7a]">
-                            <td className="py-2 pr-4 font-medium">
-                              {typeLabel[req.request_type] ?? req.request_type}
-                            </td>
                             <td className="py-2 pr-4 text-[#5570a0]">{req.title ?? "—"}</td>
                             <td className="py-2 pr-4 text-[#5570a0]">
                               {req.created_at ? new Date(req.created_at).toLocaleDateString("vi-VN") : "—"}
