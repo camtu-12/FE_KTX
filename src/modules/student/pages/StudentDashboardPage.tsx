@@ -20,12 +20,15 @@ import { Link } from "react-router-dom";
 import {
   type CurrentInvoice,
   type CurrentOccupancy,
+  type DashboardNotification,
   type LatestRegistration,
   type PendingRequest,
   type RecentActivity,
   type StudentDashboardData,
   fetchStudentDashboard,
 } from "../../../api/studentDashboardApi";
+import { isSystemAnnouncementNotification, markNotificationRead } from "../../../api/notificationApi";
+import SystemAnnouncementDetailModal from "../components/SystemAnnouncementDetailModal";
 import { getStoredAuth } from "../../auth/utils/authStorage";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -168,6 +171,51 @@ function MiniKpiCard({
 }
 
 // ─── CASE 1: Not residing ─────────────────────────────────────────────────────
+
+function isImportantNotification(notification: DashboardNotification): boolean {
+  return (
+    notification.type === "urgent" ||
+    notification.type === "warning" ||
+    notification.type === "eviction" ||
+    notification.type === "force_checkout" ||
+    notification.type === "violation_recorded" ||
+    notification.type === "payment_reminder"
+  );
+}
+
+function ImportantNotificationBanner({
+  notification,
+  onAcknowledge,
+}: {
+  notification: DashboardNotification;
+  onAcknowledge: (notification: DashboardNotification) => void;
+}) {
+  const isSystemAnnouncement = isSystemAnnouncementNotification(notification);
+
+  return (
+    <div className="rounded-[22px] border border-amber-200 bg-[linear-gradient(180deg,#fff8e6_0%,#fff1cc_100%)] px-5 py-4 shadow-[0_12px_28px_rgba(180,83,9,0.12)]">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+            <AlertTriangle className="h-5 w-5" />
+          </span>
+          <div>
+            <p className="text-sm font-extrabold text-amber-800">Thông báo quan trọng</p>
+            <h2 className="mt-1 text-base font-extrabold text-[#1a2d52]">{notification.title}</h2>
+            <p className="mt-1 line-clamp-2 text-sm leading-6 text-[#6f5b2e]">{notification.content}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => onAcknowledge(notification)}
+          className="inline-flex shrink-0 items-center justify-center rounded-2xl bg-amber-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-amber-700"
+        >
+          {isSystemAnnouncement ? "Xem chi tiết" : "Đã hiểu"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function getRegistrationHeroState(registration: LatestRegistration | null) {
   if (!registration) {
@@ -585,6 +633,7 @@ export default function StudentDashboardPage() {
   const [data, setData] = useState<StudentDashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(!!email);
   const [error, setError] = useState("");
+  const [systemAnnouncementId, setSystemAnnouncementId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!email) return;
@@ -608,6 +657,7 @@ export default function StudentDashboardPage() {
 
   const isResiding = data?.current_occupancy?.status === "ACTIVE";
   const firstName = data?.student.full_name.split(" ").pop() ?? "";
+  const importantNotification = data?.notifications.find((notification) => !notification.is_read && isImportantNotification(notification)) ?? null;
 
   const handleRetry = () => {
     setError("");
@@ -616,6 +666,22 @@ export default function StudentDashboardPage() {
       .then(setData)
       .catch(() => setError("Không thể tải dữ liệu."))
       .finally(() => setIsLoading(false));
+  };
+
+  const handleAcknowledgeNotification = (notification: DashboardNotification) => {
+    setData((current) => current
+      ? {
+          ...current,
+          notifications: current.notifications.map((item) =>
+            item.recipient_id === notification.recipient_id ? { ...item, is_read: true } : item,
+          ),
+        }
+      : current);
+    window.dispatchEvent(new Event("student-notifications-updated"));
+    markNotificationRead(notification.recipient_id).catch(() => undefined);
+    if (isSystemAnnouncementNotification(notification) && notification.related_id) {
+      setSystemAnnouncementId(notification.related_id);
+    }
   };
 
   return (
@@ -670,10 +736,20 @@ export default function StudentDashboardPage() {
                 </h1>
               </div>
             )}
+            {importantNotification && (
+              <ImportantNotificationBanner
+                notification={importantNotification}
+                onAcknowledge={handleAcknowledgeNotification}
+              />
+            )}
             {isResiding ? <ResidingView data={data} /> : <NotResidingView data={data} />}
           </motion.div>
         ) : null}
       </AnimatePresence>
+      <SystemAnnouncementDetailModal
+        announcementId={systemAnnouncementId}
+        onClose={() => setSystemAnnouncementId(null)}
+      />
     </section>
   );
 }

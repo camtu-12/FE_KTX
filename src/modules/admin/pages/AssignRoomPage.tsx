@@ -539,22 +539,40 @@ export default function AssignRoomPage() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <article className="flex flex-col items-center rounded-[24px] border border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#7c8fb5]">Đã duyệt</p>
-          <p className="mt-3 text-[2rem] font-extrabold leading-none text-[#16784b]">{approvedStudents.length}</p>
-        </article>
-        <article className="flex flex-col items-center rounded-[24px] border border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#7c8fb5]">Chưa phân phòng</p>
-          <p className="mt-3 text-[2rem] font-extrabold leading-none text-[#9b6b00]">{unassignedCount}</p>
-        </article>
-        <article className="flex flex-col items-center rounded-[24px] border border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#7c8fb5]">Đề xuất</p>
-          <p className="mt-3 text-[2rem] font-extrabold leading-none text-[#7c3fb0]">{proposedCount}</p>
-        </article>
-        <article className="flex flex-col items-center rounded-[24px] border border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#7c8fb5]">Đã phân phòng</p>
-          <p className="mt-3 text-[2rem] font-extrabold leading-none text-[#244cb8]">{assignedCount}</p>
-        </article>
+        {(
+          [
+            { label: "Đã duyệt", value: approvedStudents.length, valueClassName: "text-[#16784b]", filterValue: "all" as AssignmentFilter },
+            { label: "Chưa phân phòng", value: unassignedCount, valueClassName: "text-[#9b6b00]", filterValue: "unassigned" as AssignmentFilter },
+            { label: "Đề xuất", value: proposedCount, valueClassName: "text-[#7c3fb0]", filterValue: "proposed" as AssignmentFilter },
+            { label: "Đã phân phòng", value: assignedCount, valueClassName: "text-[#244cb8]", filterValue: "assigned" as AssignmentFilter },
+          ]
+        ).map((card) => {
+          const isActive = assignmentFilter === card.filterValue;
+
+          return (
+            <article
+              key={card.label}
+              role="button"
+              tabIndex={0}
+              aria-pressed={isActive}
+              onClick={() => setAssignmentFilter((current) => (current === card.filterValue ? "all" : card.filterValue))}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setAssignmentFilter((current) => (current === card.filterValue ? "all" : card.filterValue));
+                }
+              }}
+              className={`flex cursor-pointer flex-col items-center rounded-[24px] border px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.08)] outline-none transition focus-visible:ring-4 focus-visible:ring-[#244cb8]/25 ${
+                isActive
+                  ? "border-[#244cb8] bg-[#244cb8]/5"
+                  : "border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)]"
+              }`}
+            >
+              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#7c8fb5]">{card.label}</p>
+              <p className={`mt-3 text-[2rem] font-extrabold leading-none ${card.valueClassName}`}>{card.value}</p>
+            </article>
+          );
+        })}
       </div>
 
       <div className="flex flex-col space-y-3 sm:space-y-4">

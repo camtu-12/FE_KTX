@@ -36,10 +36,12 @@ import {
   markAllAdminNotificationsRead,
   markAllNotificationsRead,
   markNotificationRead,
+  isSystemAnnouncementNotification,
   type AdminNotificationItem,
   type NotificationItem,
 } from "../api/notificationApi";
 import { getMaintenanceRequestRoom } from "../api/maintenanceApi";
+import SystemAnnouncementDetailModal from "../modules/student/components/SystemAnnouncementDetailModal";
 
 export type HeaderRole = "admin" | "student";
 
@@ -100,6 +102,14 @@ function NotifIcon({ type }: { type: string }) {
   return <Bell className="h-4 w-4 text-[var(--color-primary)]" />;
 }
 
+function notificationTypeLabel(type: string): string {
+  if (type === "urgent" || type === "eviction" || type === "force_checkout") return "Khẩn cấp";
+  if (type === "warning" || type === "violation_recorded" || type === "payment_reminder") return "Cảnh cáo";
+  if (type === "reminder" || type === "extension_reminder" || type === "bed_selection_reminder") return "Nhắc nhở";
+  if (type === "policy") return "Nội quy";
+  return "Thông báo";
+}
+
 export default function Header({
   role,
   userName,
@@ -123,6 +133,7 @@ export default function Header({
   const [adminNotifications, setAdminNotifications] = useState<AdminNotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifsLoading, setNotifsLoading] = useState(false);
+  const [systemAnnouncementId, setSystemAnnouncementId] = useState<number | null>(null);
 
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const notifRef = useRef<HTMLDivElement | null>(null);
@@ -158,6 +169,15 @@ export default function Header({
     const id = setInterval(refreshUnreadCount, 60_000);
     return () => clearInterval(id);
   }, [isStudent, isAdmin, refreshUnreadCount]);
+
+  useEffect(() => {
+    if (!isStudent) return;
+    const handleRefresh = () => {
+      void refreshUnreadCount();
+    };
+    window.addEventListener("student-notifications-updated", handleRefresh);
+    return () => window.removeEventListener("student-notifications-updated", handleRefresh);
+  }, [isStudent, refreshUnreadCount]);
 
   // Click outside for user menu
   useEffect(() => {
@@ -222,7 +242,7 @@ export default function Header({
       setNotifsLoading(true);
       try {
         if (isStudent) {
-          const items = await getMyNotifications(20);
+          const items = await getMyNotifications(5);
           setNotifications(items);
           setUnreadCount(items.filter((n) => !n.is_read).length);
         } else {
@@ -311,6 +331,11 @@ export default function Header({
       } catch {
         // ignore
       }
+    }
+    if (isSystemAnnouncementNotification(item) && item.related_id) {
+      setIsNotifOpen(false);
+      setSystemAnnouncementId(item.related_id);
+      return;
     }
     const target = getStudentNotifTarget(item);
     if (target) {
@@ -532,11 +557,12 @@ export default function Header({
                                 </span>
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-start justify-between gap-2">
-                                    <p className={`text-[0.8rem] leading-snug ${unread ? "font-semibold text-[#24407f]" : "font-medium text-[#3b5199]"}`}>
-                                      {item.title}
-                                    </p>
-                                    {unread && <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-[#ff5a6b]" />}
-                                  </div>
+                                  <p className={`text-[0.8rem] leading-snug ${unread ? "font-semibold text-[#24407f]" : "font-medium text-[#3b5199]"}`}>
+                                    {item.title}
+                                  </p>
+                                  {unread && <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-[#ff5a6b]" />}
+                                </div>
+                                  <p className="mt-0.5 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-[#8aa4cc]">{notificationTypeLabel(item.type)}</p>
                                   <p className="mt-0.5 line-clamp-2 text-[0.75rem] leading-snug text-[#6b7fa8]">{item.content}</p>
                                   <p className="mt-1 text-[0.7rem] text-[#94a6c4]">{relativeTime(item.created_at)}</p>
                                 </div>
@@ -580,6 +606,20 @@ export default function Header({
                       </ul>
                     )}
                   </div>
+                  {isStudent && (
+                    <div className="border-t border-[#eef3fb] p-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsNotifOpen(false);
+                          navigate("/student/notifications");
+                        }}
+                        className="w-full rounded-2xl bg-[#eef5ff] px-4 py-2 text-sm font-semibold text-[#244cb8] transition hover:bg-[#dceaff]"
+                      >
+                        Xem tất cả
+                      </button>
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -640,18 +680,7 @@ export default function Header({
                       </span>
                       <span>Hồ sơ cá nhân</span>
                     </button>
-                  ) : (
-                    <div className="flex items-start gap-3 rounded-2xl px-3 py-3 text-left text-sm text-[#2c467d]">
-                      <span className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-2xl bg-[#e9f0ff] text-[#2d58c4]">
-                        <Mail className="h-4 w-4" />
-                      </span>
-                      <div className="min-w-0">
-                        <p className="mt-1 truncate font-semibold text-[#24407f]">
-                          {userEmail ?? "user@stu.edu.vn"}
-                        </p>
-                      </div>
-                    </div>
-                  )}
+                  ) : null}
 
                   <button
                     type="button"
@@ -683,6 +712,10 @@ export default function Header({
           </AnimatePresence>
         </div>
       </div>
+      <SystemAnnouncementDetailModal
+        announcementId={systemAnnouncementId}
+        onClose={() => setSystemAnnouncementId(null)}
+      />
     </motion.header>
   );
 }

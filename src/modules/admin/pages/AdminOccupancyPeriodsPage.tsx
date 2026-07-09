@@ -19,10 +19,12 @@ import {
   createOccupancyPeriod,
   deleteOccupancyPeriod,
   getOccupancyPeriods,
+  getOccupancyPeriodSuggestion,
   openOccupancyPeriod,
   updateOccupancyPeriod,
   type OccupancyPeriod,
   type OccupancyPeriodPayload,
+  type OccupancyPeriodSuggestion,
 } from "../../../api/occupancyPeriodApi";
 import { formatDate } from "../../../utils/dateFormat";
 
@@ -77,6 +79,14 @@ function validateForm(form: FormState): FormError {
   return errors;
 }
 
+// Lệch bao nhiêu ngày so với gợi ý thì cảnh báo trước khi cho mở đợt (không chặn cứng).
+const OPEN_DATE_WARNING_THRESHOLD_DAYS = 10;
+
+function daysBetween(a: string, b: string): number {
+  const msPerDay = 24 * 60 * 60 * 1000;
+  return Math.round((new Date(b).getTime() - new Date(a).getTime()) / msPerDay);
+}
+
 export default function AdminOccupancyPeriodsPage() {
   const [periods, setPeriods] = useState<OccupancyPeriod[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,6 +98,8 @@ export default function AdminOccupancyPeriodsPage() {
   const [apiError, setApiError] = useState<string | null>(null);
   const [actionId, setActionId] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [suggestion, setSuggestion] = useState<OccupancyPeriodSuggestion | null>(null);
+  const [openWarning, setOpenWarning] = useState<{ period: OccupancyPeriod; diffDays: number } | null>(null);
 
   const hasActiveOrDraft = periods.some((p) => p.status === "open" || p.status === "draft");
   const blockCreateReason = hasActiveOrDraft
@@ -106,7 +118,19 @@ export default function AdminOccupancyPeriodsPage() {
     }
   };
 
-  useEffect(() => { void load(); }, []);
+  const loadSuggestion = async () => {
+    try {
+      const data = await getOccupancyPeriodSuggestion();
+      setSuggestion(data);
+    } catch {
+      setSuggestion(null);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+    void loadSuggestion();
+  }, []);
 
   const openCreate = () => {
     setEditingId(null);
@@ -114,6 +138,7 @@ export default function AdminOccupancyPeriodsPage() {
     setFormErrors({});
     setApiError(null);
     setShowForm(true);
+    void loadSuggestion();
   };
 
   const openEdit = (period: OccupancyPeriod) => {
@@ -175,7 +200,20 @@ export default function AdminOccupancyPeriodsPage() {
     }
   };
 
+  const requestOpen = (period: OccupancyPeriod) => {
+    if (period.suggested_open_date) {
+      const today = new Date().toISOString().slice(0, 10);
+      const diffDays = daysBetween(period.suggested_open_date, today);
+      if (Math.abs(diffDays) > OPEN_DATE_WARNING_THRESHOLD_DAYS) {
+        setOpenWarning({ period, diffDays });
+        return;
+      }
+    }
+    void handleOpen(period.id);
+  };
+
   const handleOpen = async (id: number) => {
+    setOpenWarning(null);
     setActionId(id);
     setApiError(null);
     try {
@@ -345,6 +383,17 @@ export default function AdminOccupancyPeriodsPage() {
                 </InfoTile>
               </div>
 
+              {period.status === "draft" && period.suggested_open_date && (
+                <div className="mt-3 flex items-start gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3.5 py-2.5 text-sm text-sky-800">
+                  <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-sky-500" />
+                  <span>
+                    Gợi ý: nên mở đợt này từ <strong>{formatDate(period.suggested_open_date)}</strong> (đầu tháng
+                    cuối cùng trước khi kỳ lưu trú kết thúc {formatDate(period.end_date)}). Đây chỉ là gợi ý, bạn
+                    vẫn có thể mở đợt vào ngày khác.
+                  </span>
+                </div>
+              )}
+
               {period.status === "draft" && !period.extension_until_date && (
                 <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-800">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
@@ -375,7 +424,7 @@ export default function AdminOccupancyPeriodsPage() {
                     type="button"
                     disabled={actionId === period.id || !period.extension_until_date}
                     title={!period.extension_until_date ? 'Cần điền "Gia hạn lưu trú đến" trước khi mở đợt' : undefined}
-                    onClick={() => void handleOpen(period.id)}
+                    onClick={() => requestOpen(period)}
                     className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(16,185,129,0.20)] transition hover:-translate-y-0.5 hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {actionId === period.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <LockOpen className="h-4 w-4" />}
@@ -458,6 +507,17 @@ export default function AdminOccupancyPeriodsPage() {
                     </div>
                   )}
                   <div className="space-y-3">
+                    {editingId === null && suggestion?.suggested_open_date && (
+                      <div className="flex items-start gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3.5 py-2.5 text-sm text-sky-800">
+                        <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-sky-500" />
+                        <span>
+                          Gợi ý: nên bắt đầu nhận đơn từ <strong>{formatDate(suggestion.suggested_open_date)}</strong> —
+                          đầu tháng cuối cùng trước khi {suggestion.students_count} sinh viên hết hạn lưu trú đúng{" "}
+                          <strong>{formatDate(suggestion.target_check_out_date)}</strong>. Chỉ là gợi ý, bạn vẫn có
+                          thể chọn ngày khác.
+                        </span>
+                      </div>
+                    )}
                     {field("name", "Tên đợt gia hạn")}
                     <div className="grid grid-cols-2 gap-3">
                       {field("start_date", "Ngày bắt đầu nhận đơn", "date")}
@@ -533,6 +593,58 @@ export default function AdminOccupancyPeriodsPage() {
                 >
                   {actionId === confirmDelete && <Loader2 className="h-4 w-4 animate-spin" />}
                   Xóa
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {openWarning && (
+          <motion.div
+            key="open-warning-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+            onClick={() => setOpenWarning(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 16 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              className="w-full max-w-md rounded-[24px] border border-amber-200 bg-white p-6 shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+                <div>
+                  <h2 className="text-[18px] font-bold text-[#1a2d52]">Mốc mở đợt lệch nhiều so với gợi ý</h2>
+                  <p className="mt-2 text-sm text-[#5d7299]">
+                    Gợi ý nên mở đợt này từ{" "}
+                    <strong>{formatDate(openWarning.period.suggested_open_date)}</strong> nhưng hôm nay{" "}
+                    {openWarning.diffDays > 0 ? "đã trễ hơn" : "còn sớm hơn"}{" "}
+                    <strong>{Math.abs(openWarning.diffDays)} ngày</strong> so với mốc đó. Bạn vẫn có thể tiếp tục mở
+                    đợt nếu chắc chắn.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOpenWarning(null)}
+                  className="rounded-xl border border-[#d6e2f1] bg-white px-4 py-2 text-sm font-semibold text-[#5d7299] transition hover:bg-[#f5f9ff]"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  disabled={actionId === openWarning.period.id}
+                  onClick={() => void handleOpen(openWarning.period.id)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(16,185,129,0.22)] transition hover:bg-emerald-600 disabled:opacity-50"
+                >
+                  {actionId === openWarning.period.id && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Vẫn mở đợt
                 </button>
               </div>
             </motion.div>

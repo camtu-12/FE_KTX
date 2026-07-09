@@ -372,18 +372,24 @@ export default function BedManagementPage() {
   const selectedCount = roomAssignedRequests.filter((request) => Boolean(request.bedId)).length;
   const notSelectedCount = roomAssignedRequests.filter((request) => !request.bedId).length;
 
-  const summaryCards = [
+  const summaryCards: Array<{ label: string; value: number; valueClassName: string; filterValue: BedSelectionFilter }> = [
     {
       label: "Đã chọn",
       value: selectedCount,
       valueClassName: "text-[#16784b]",
+      filterValue: "selected",
     },
     {
       label: "Chưa chọn",
       value: notSelectedCount,
       valueClassName: "text-[#9b6b00]",
+      filterValue: "not_selected",
     },
   ];
+
+  const handleSummaryCardClick = (filterValue: BedSelectionFilter) => {
+    setSelectionFilter((current) => (current === filterValue ? "all" : filterValue));
+  };
 
   if (isInitialLoading) {
     return (
@@ -422,22 +428,40 @@ export default function BedManagementPage() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        {summaryCards.map((card) => (
-          <motion.article
-            key={card.label}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.36, ease: "easeOut" }}
-            className="flex flex-col items-center rounded-[24px] border border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)] px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.08)]"
-          >
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#7c8fb5]">
-              {card.label}
-            </p>
-            <p className={`mt-3 text-[2rem] font-extrabold leading-none ${card.valueClassName}`}>
-              {card.value}
-            </p>
-          </motion.article>
-        ))}
+        {summaryCards.map((card) => {
+          const isActive = selectionFilter === card.filterValue;
+
+          return (
+            <motion.article
+              key={card.label}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.36, ease: "easeOut" }}
+              role="button"
+              tabIndex={0}
+              aria-pressed={isActive}
+              onClick={() => handleSummaryCardClick(card.filterValue)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  handleSummaryCardClick(card.filterValue);
+                }
+              }}
+              className={`flex cursor-pointer flex-col items-center rounded-[24px] border px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.08)] outline-none transition focus-visible:ring-4 focus-visible:ring-[#244cb8]/25 ${
+                isActive
+                  ? "border-[#244cb8] bg-[#244cb8]/5"
+                  : "border-[#d8e4f5] bg-[linear-gradient(180deg,#ffffff_0%,#f7faff_100%)]"
+              }`}
+            >
+              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#7c8fb5]">
+                {card.label}
+              </p>
+              <p className={`mt-3 text-[2rem] font-extrabold leading-none ${card.valueClassName}`}>
+                {card.value}
+              </p>
+            </motion.article>
+          );
+        })}
       </div>
 
       <div className="relative mt-1 min-h-[360px] flex-1 overflow-x-auto rounded-[14px] border border-[#d6e2f1] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.10)]">

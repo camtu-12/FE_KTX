@@ -29,6 +29,7 @@ import {
 import type { Building } from "../../../types/building";
 import BunkBedCard, { type BunkBedGroup } from "../components/BunkBedCard";
 import BedStudentDetailModal from "../components/BedStudentDetailModal";
+import OccupancyDetailModal, { type OccupancyDetailModalStatus } from "../components/OccupancyDetailModal";
 import MaintenanceWizardModal, { type MaintenanceWizardState } from "../components/MaintenanceWizardModal";
 import { formatDate as formatPreviewDate } from "../../../utils/dateFormat";
 
@@ -274,6 +275,20 @@ function SelectField(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   );
 }
 
+/**
+ * occupancy.status trả thô từ backend luôn là 'ACTIVE' cho sinh viên đang ở thật —
+ * 'CHECKOUT_REQUESTED' chỉ suy ra được qua checkout_request đang pending, không nằm
+ * trực tiếp trong cột status. Quy đổi tương ứng để khớp OccupancyDetailModalStatus.
+ */
+function resolveOccupancyDetailStatus(occupancy: BedStudent["occupancy"]): OccupancyDetailModalStatus {
+  if (!occupancy) return "ACTIVE";
+  if (occupancy.checkout_request) return "CHECKOUT_REQUESTED";
+  const raw = String(occupancy.status ?? "").toUpperCase();
+  if (raw === "COMPLETED" || raw === "CHECKED_OUT") return "CHECKED_OUT";
+  if (raw === "TERMINATED" || raw === "FORCED_CHECKOUT") return "FORCED_CHECKOUT";
+  return "ACTIVE";
+}
+
 export default function AdminRoomManagement() {
   const { headerSearchValue, setHeaderSearchValue } = useOutletContext<AdminLayoutOutletContext>();
   const navigate = useNavigate();
@@ -395,6 +410,7 @@ export default function AdminRoomManagement() {
   const [isBedDetailsLoading, setIsBedDetailsLoading] = useState(false);
   const [bedDetailsError, setBedDetailsError] = useState("");
   const [detailStudent, setDetailStudent] = useState<{ student: BedStudent; bedNumber: string } | null>(null);
+  const [viewingOccupancyId, setViewingOccupancyId] = useState<number | null>(null);
   const bunkBedGroups = useMemo(() => createBunkBedGroups(bedDetails), [bedDetails]);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [confirmMessage, setConfirmMessage] = useState("");
@@ -1635,6 +1651,41 @@ export default function AdminRoomManagement() {
           bedNumber={detailStudent.bedNumber}
           roomCode={getRoomCode(selectedRoom)}
           onClose={() => setDetailStudent(null)}
+          onViewFullOccupancyDetail={
+            detailStudent.student.occupancy?.id
+              ? () => setViewingOccupancyId(detailStudent.student.occupancy!.id)
+              : undefined
+          }
+        />
+      ) : null}
+
+      {viewingOccupancyId && detailStudent && selectedRoom ? (
+        <OccupancyDetailModal
+          occupancyId={viewingOccupancyId}
+          onClose={() => setViewingOccupancyId(null)}
+          student={{
+            studentCode: detailStudent.student.student_code,
+            fullName: detailStudent.student.full_name,
+            className: detailStudent.student.class_name,
+            faculty: detailStudent.student.faculty,
+            email: detailStudent.student.email,
+            gender: detailStudent.student.gender,
+            dateOfBirth: detailStudent.student.date_of_birth,
+            phone: detailStudent.student.phone,
+          }}
+          occupancy={{
+            roomCode: getRoomCode(selectedRoom),
+            bedNumber: detailStudent.bedNumber,
+            checkInDate: detailStudent.student.occupancy?.check_in_date,
+            checkOutDate: detailStudent.student.occupancy?.check_out_date,
+            status: resolveOccupancyDetailStatus(detailStudent.student.occupancy),
+            leaveRequest: detailStudent.student.occupancy?.checkout_request
+              ? {
+                  expectedLeaveDate: detailStudent.student.occupancy.checkout_request.expected_leave_date,
+                  reason: detailStudent.student.occupancy.checkout_request.reason,
+                }
+              : null,
+          }}
         />
       ) : null}
 

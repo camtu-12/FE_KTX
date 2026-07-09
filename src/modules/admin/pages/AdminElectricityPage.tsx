@@ -27,7 +27,18 @@ type SummaryCard = {
   value: ReactNode;
   valueClassName: string;
   valueSizeClassName?: string;
+  filterValue?: BillStatusFilter;
 };
+
+type BillStatusFilter = PaymentStatus | "all";
+
+const billStatusOptions: Array<{ value: BillStatusFilter; label: string }> = [
+  { value: "all", label: "Tất cả" },
+  { value: "unpaid", label: "Chưa thanh toán" },
+  { value: "paid", label: "Đã thanh toán" },
+  { value: "overdue", label: "Quá hạn" },
+  { value: "exempted", label: "Đã miễn" },
+];
 
 type ElectricityForm = {
   room: string;
@@ -224,6 +235,11 @@ export default function AdminElectricityPage() {
   const [isYearFilterOpen, setIsYearFilterOpen] = useState(false);
   const [yearFilterMenuPosition, setYearFilterMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const yearFilterButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [billStatusFilter, setBillStatusFilter] = useState<BillStatusFilter>("all");
+  const [draftBillStatusFilter, setDraftBillStatusFilter] = useState<BillStatusFilter>("all");
+  const [isBillStatusFilterOpen, setIsBillStatusFilterOpen] = useState(false);
+  const [billStatusFilterMenuPosition, setBillStatusFilterMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const billStatusFilterButtonRef = useRef<HTMLButtonElement | null>(null);
   const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
   const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
   const [selectedBill, setSelectedBill] = useState<ElectricityBill | null>(null);
@@ -319,7 +335,9 @@ export default function AdminElectricityPage() {
     [monthFilter, records, selectedMonthNumber, selectedYearNumber, yearFilter],
   );
 
-  const visibleBills = useMemo(() => {
+  // Base list áp mọi filter TRỪ billStatusFilter — dùng để tính số đếm cho 4 thẻ thống kê,
+  // để các thẻ không active vẫn hiện đúng số thật khi 1 thẻ khác đang lọc (không bị sập về 0).
+  const billsBeforeStatusFilter = useMemo(() => {
     const normalizedHeaderSearch = headerSearchValue.trim().toLowerCase();
 
     return bills.filter((bill) => {
@@ -332,6 +350,11 @@ export default function AdminElectricityPage() {
       return matchesHeaderSearch && matchesMonth && matchesYear;
     });
   }, [bills, headerSearchValue, monthFilter, selectedMonthNumber, selectedYearNumber, yearFilter]);
+
+  const visibleBills = useMemo(
+    () => billsBeforeStatusFilter.filter((bill) => billStatusFilter === "all" || bill.status === billStatusFilter),
+    [billsBeforeStatusFilter, billStatusFilter],
+  );
 
   const recordSummaryCards = useMemo<SummaryCard[]>(() => {
     const roomStudentCountMap = visibleRecords.reduce<Map<string, number>>((roomMap, record) => {
@@ -352,12 +375,27 @@ export default function AdminElectricityPage() {
 
   const billSummaryCards = useMemo<SummaryCard[]>(
     () => [
-      { label: "Tổng hóa đơn", value: visibleBills.length, valueClassName: "text-[#244cb8]" },
-      { label: "Chưa thanh toán", value: visibleBills.filter((bill) => bill.status === "unpaid").length, valueClassName: "text-[#9b6b00]" },
-      { label: "Đã thanh toán", value: visibleBills.filter((bill) => bill.status === "paid").length, valueClassName: "text-[#16784b]" },
-      { label: "Quá hạn", value: visibleBills.filter((bill) => bill.status === "overdue").length, valueClassName: "text-[#c4364f]" },
+      { label: "Tổng hóa đơn", value: billsBeforeStatusFilter.length, valueClassName: "text-[#244cb8]", filterValue: "all" },
+      {
+        label: "Chưa thanh toán",
+        value: billsBeforeStatusFilter.filter((bill) => bill.status === "unpaid").length,
+        valueClassName: "text-[#9b6b00]",
+        filterValue: "unpaid",
+      },
+      {
+        label: "Đã thanh toán",
+        value: billsBeforeStatusFilter.filter((bill) => bill.status === "paid").length,
+        valueClassName: "text-[#16784b]",
+        filterValue: "paid",
+      },
+      {
+        label: "Quá hạn",
+        value: billsBeforeStatusFilter.filter((bill) => bill.status === "overdue").length,
+        valueClassName: "text-[#c4364f]",
+        filterValue: "overdue",
+      },
     ],
-    [visibleBills],
+    [billsBeforeStatusFilter],
   );
 
   const summaryCards = activeTab === "records" ? recordSummaryCards : billSummaryCards;
@@ -579,6 +617,56 @@ export default function AdminElectricityPage() {
     setIsYearFilterOpen(false);
   };
 
+  useEffect(() => {
+    if (!isBillStatusFilterOpen) {
+      return;
+    }
+
+    const updateMenuPosition = () => {
+      const buttonRect = billStatusFilterButtonRef.current?.getBoundingClientRect();
+
+      if (!buttonRect) {
+        return;
+      }
+
+      setBillStatusFilterMenuPosition({
+        top: buttonRect.bottom + 10,
+        left: buttonRect.left + buttonRect.width / 2,
+      });
+    };
+
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [isBillStatusFilterOpen]);
+
+  const openBillStatusFilter = () => {
+    setDraftBillStatusFilter(billStatusFilter);
+    setIsMonthFilterOpen(false);
+    setIsYearFilterOpen(false);
+    setIsBillStatusFilterOpen(true);
+  };
+
+  const resetBillStatusFilter = () => {
+    setDraftBillStatusFilter("all");
+    setBillStatusFilter("all");
+    setIsBillStatusFilterOpen(false);
+  };
+
+  const applyBillStatusFilter = () => {
+    setBillStatusFilter(draftBillStatusFilter);
+    setIsBillStatusFilterOpen(false);
+  };
+
+  const handleBillSummaryCardClick = (filterValue: BillStatusFilter) => {
+    setBillStatusFilter((current) => (current === filterValue ? "all" : filterValue));
+  };
+
   const handleFilterOverlayWheel = (event: WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
     const scrollContainer = document.querySelector<HTMLElement>(".auth-scrollbar");
@@ -617,6 +705,22 @@ export default function AdminElectricityPage() {
         className={`flex items-center justify-center transition ${yearFilter !== "all" ? "text-[#244cb8]" : "text-[#6f84ad] hover:text-[#244cb8]"}`}
         aria-label="Bật lọc năm"
         title="Bật lọc năm"
+      >
+        <Funnel className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+
+  const statusHeader = (
+    <div className="inline-flex items-center justify-center gap-2">
+      <span>Trạng thái</span>
+      <button
+        ref={billStatusFilterButtonRef}
+        type="button"
+        onClick={isBillStatusFilterOpen ? () => setIsBillStatusFilterOpen(false) : openBillStatusFilter}
+        className={`flex items-center justify-center transition ${billStatusFilter !== "all" ? "text-[#244cb8]" : "text-[#6f84ad] hover:text-[#244cb8]"}`}
+        aria-label="Bật lọc trạng thái"
+        title="Bật lọc trạng thái"
       >
         <Funnel className="h-3.5 w-3.5" />
       </button>
@@ -668,19 +772,40 @@ export default function AdminElectricityPage() {
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {summaryCards.map((card, index) => (
-            <motion.article
-              key={card.label}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              whileHover={{ y: -4, scale: 1.02 }}
-              transition={{ duration: 0.32, delay: 0.08 + index * 0.04, ease: "easeOut" }}
-              className="relative overflow-hidden rounded-[26px] border border-[#d8e4f5] bg-white px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.09)] transition-shadow duration-300 hover:shadow-[0_22px_44px_rgba(36,76,184,0.16)]"
-            >
-              <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7c8fb5]">{card.label}</p>
-              <p className={`mt-3 ${card.valueSizeClassName ?? "text-[2rem]"} font-extrabold leading-none ${card.valueClassName}`}>{card.value}</p>
-            </motion.article>
-          ))}
+          {summaryCards.map((card, index) => {
+            const isClickable = card.filterValue !== undefined;
+            const isActive = isClickable && billStatusFilter === card.filterValue;
+
+            return (
+              <motion.article
+                key={card.label}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                whileHover={{ y: -4, scale: 1.02 }}
+                transition={{ duration: 0.32, delay: 0.08 + index * 0.04, ease: "easeOut" }}
+                role={isClickable ? "button" : undefined}
+                tabIndex={isClickable ? 0 : undefined}
+                aria-pressed={isClickable ? isActive : undefined}
+                onClick={isClickable ? () => handleBillSummaryCardClick(card.filterValue as BillStatusFilter) : undefined}
+                onKeyDown={
+                  isClickable
+                    ? (event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          handleBillSummaryCardClick(card.filterValue as BillStatusFilter);
+                        }
+                      }
+                    : undefined
+                }
+                className={`relative overflow-hidden rounded-[26px] border px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.09)] outline-none transition-shadow duration-300 hover:shadow-[0_22px_44px_rgba(36,76,184,0.16)] ${
+                  isClickable ? "cursor-pointer focus-visible:ring-4 focus-visible:ring-[#244cb8]/25" : ""
+                } ${isActive ? "border-[#244cb8] bg-[#244cb8]/5" : "border-[#d8e4f5] bg-white"}`}
+              >
+                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7c8fb5]">{card.label}</p>
+                <p className={`mt-3 ${card.valueSizeClassName ?? "text-[2rem]"} font-extrabold leading-none ${card.valueClassName}`}>{card.value}</p>
+              </motion.article>
+            );
+          })}
         </div>
 
         <div className="flex flex-wrap gap-3">
@@ -729,7 +854,7 @@ export default function AdminElectricityPage() {
         ) : (
           <PaymentTable
             headings={["MSSV", "Họ tên", "Phòng", "Tháng", "Năm", "Tiền điện", "Hạn thanh toán", "Trạng thái", "Hành động"]}
-            headerContentByIndex={{ 3: monthHeader, 4: yearHeader }}
+            headerContentByIndex={{ 3: monthHeader, 4: yearHeader, 7: statusHeader }}
             columnWidths={billTableColumnWidths}
             emptyMessage="Không có hóa đơn điện phù hợp với bộ lọc."
             rows={visibleBills.map((bill) => ({
@@ -865,6 +990,64 @@ export default function AdminElectricityPage() {
                   <button
                     type="button"
                     onClick={applyYearFilter}
+                    className="rounded-xl bg-[#0c4f97] px-3 py-1.5 text-[10px] font-semibold tracking-normal text-white shadow-[0_8px_16px_rgba(12,79,151,0.22)] transition hover:brightness-110"
+                  >
+                    OK
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {isBillStatusFilterOpen && billStatusFilterMenuPosition
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[68]"
+              onClick={() => setIsBillStatusFilterOpen(false)}
+              onWheel={handleFilterOverlayWheel}
+            >
+              <div
+                className="absolute w-[210px] -translate-x-1/2 overflow-hidden rounded-[22px] border border-[#d7e2f2] bg-white text-left shadow-[0_18px_38px_rgba(15,23,42,0.18)]"
+                style={{ top: billStatusFilterMenuPosition.top, left: billStatusFilterMenuPosition.left }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="space-y-0.5 p-2.5">
+                  {billStatusOptions.map((option) => {
+                    const isSelected = draftBillStatusFilter === option.value;
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setDraftBillStatusFilter(option.value)}
+                        className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-[10px] font-medium tracking-normal text-[#1f4a8d] transition hover:bg-[#f5f9ff]"
+                      >
+                        <span
+                          className={`flex h-4 w-4 items-center justify-center rounded-full border ${
+                            isSelected ? "border-[#244cb8] bg-[#244cb8]/10" : "border-[#cfd9e8] bg-white"
+                          }`}
+                        >
+                          <span className={`h-2 w-2 rounded-full ${isSelected ? "bg-[#244cb8]" : "bg-transparent"}`} />
+                        </span>
+                        <span>{option.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center justify-between border-t border-[#dbe5f3] px-2.5 py-2">
+                  <button
+                    type="button"
+                    onClick={resetBillStatusFilter}
+                    className="text-[10px] font-medium tracking-normal text-[#b2b8c3] transition hover:text-[#7c8799]"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyBillStatusFilter}
                     className="rounded-xl bg-[#0c4f97] px-3 py-1.5 text-[10px] font-semibold tracking-normal text-white shadow-[0_8px_16px_rgba(12,79,151,0.22)] transition hover:brightness-110"
                   >
                     OK

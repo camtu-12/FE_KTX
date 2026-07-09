@@ -32,6 +32,7 @@ import LoginPage from "../modules/auth/pages/LoginPage";
 import RegisterPage from "../modules/auth/pages/RegisterPage";
 import AboutPage from "../modules/public/pages/AboutPage";
 import AdminContentAboutPage from "../modules/admin/pages/AdminContentAboutPage";
+import AdminSystemAnnouncementsPage from "../modules/admin/pages/AdminSystemAnnouncementsPage";
 import AdmissionCandidateManagementPage from "../modules/admin/pages/AdmissionCandidateManagementPage";
 import DormReservationManagementPage from "../modules/admin/pages/DormReservationManagementPage";
 import FreshmanReservationPage from "../modules/public/pages/FreshmanReservationPage";
@@ -51,6 +52,7 @@ import PaymentPage from "../modules/student/pages/PaymentPage";
 import MyActivitiesPage from "../modules/student/pages/MyActivitiesPage";
 import StudentSupportPage from "../modules/student/pages/StudentSupportPage";
 import StudentExtensionPage from "../modules/student/pages/StudentExtensionPage";
+import StudentNotificationsPage from "../modules/student/pages/StudentNotificationsPage";
 import ProtectedRoute from "./ProtectedRoute";
 import ForgotPassword from "../modules/auth/pages/ForgotPassword";
 import ChangePasswordPage from "../modules/auth/pages/ChangePasswordPage";
@@ -102,6 +104,10 @@ export default function AppRoutes() {
           <Route path="buildings" element={<AdminBuildingManagement />} />
           <Route path="buildings/:buildingCode" element={<AdminBuildingDetailPage />} />
           <Route path="content/about" element={<AdminContentAboutPage />} />
+          <Route path="content/announcements" element={<AdminSystemAnnouncementsPage />} />
+          <Route path="content/announcements/create" element={<AdminSystemAnnouncementsPage />} />
+          <Route path="content/announcements/:id" element={<AdminSystemAnnouncementsPage />} />
+          <Route path="content/announcements/:id/edit" element={<AdminSystemAnnouncementsPage />} />
           <Route path="admission-candidates" element={<AdmissionCandidateManagementPage />} />
           <Route path="dorm-reservations" element={<DormReservationManagementPage />} />
           <Route path="change-password" element={<ChangePasswordPage />} />
@@ -124,6 +130,7 @@ export default function AppRoutes() {
           <Route path="activities" element={<MyActivitiesPage />} />
           <Route path="support" element={<StudentSupportPage />} />
           <Route path="extension" element={<StudentExtensionPage />} />
+          <Route path="notifications" element={<StudentNotificationsPage />} />
           <Route path="select-bed" element={<SelectBedPage />} />
           <Route path="bed-selection" element={<BedSelectionPage />} />
           <Route path="change-password" element={<ChangePasswordPage />} />

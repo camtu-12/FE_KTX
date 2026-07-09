@@ -44,6 +44,7 @@ type SummaryCard = {
   label: string;
   value: number;
   valueClassName: string;
+  filter?: { axis: "category"; value: ActivityCategory } | { axis: "action"; value: ViolationAction };
 };
 
 const emptyValue = "-";
@@ -238,18 +239,38 @@ export default function ViolationManagementPage() {
       label: "Hoạt động tích cực",
       value: positiveCount,
       valueClassName: "text-[#16784b]",
+      filter: { axis: "category", value: "positive" },
     },
     {
       label: "Vi phạm",
       value: negativeCount,
       valueClassName: "text-[#c4364f]",
+      filter: { axis: "category", value: "negative" },
     },
     {
       label: "Buộc thôi ở",
       value: forcedCheckoutCount,
       valueClassName: "text-[#c4364f]",
+      filter: { axis: "action", value: "force_evicted" },
     },
   ];
+
+  const handleSummaryCardClick = (card: SummaryCard) => {
+    if (!card.filter) return;
+
+    if (card.filter.axis === "category") {
+      const value = card.filter.value;
+      setCategoryFilter((current) => (current === value ? "ALL" : value));
+    } else {
+      const value = card.filter.value;
+      setActionFilter((current) => (current === value ? "ALL" : value));
+    }
+  };
+
+  const isSummaryCardActive = (card: SummaryCard) => {
+    if (!card.filter) return false;
+    return card.filter.axis === "category" ? categoryFilter === card.filter.value : actionFilter === card.filter.value;
+  };
 
   const resetFilters = () => {
     setCategoryFilter("ALL");
@@ -328,14 +349,29 @@ export default function ViolationManagementPage() {
         </motion.div>
 
         <div className="grid gap-3 sm:grid-cols-3">
-          {summaryCards.map((card, index) => (
+          {summaryCards.map((card, index) => {
+            const isActive = isSummaryCardActive(card);
+
+            return (
               <motion.article
                 key={card.label}
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 whileHover={{ y: -4, scale: 1.02 }}
                 transition={{ duration: 0.32, delay: 0.08 + index * 0.04, ease: "easeOut" }}
-                className="relative overflow-hidden rounded-[26px] border border-[#d8e4f5] bg-white px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.09)] transition-shadow duration-300 hover:shadow-[0_22px_44px_rgba(36,76,184,0.16)]"
+                role="button"
+                tabIndex={0}
+                aria-pressed={isActive}
+                onClick={() => handleSummaryCardClick(card)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    handleSummaryCardClick(card);
+                  }
+                }}
+                className={`relative cursor-pointer overflow-hidden rounded-[26px] border px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.09)] outline-none transition-shadow duration-300 hover:shadow-[0_22px_44px_rgba(36,76,184,0.16)] focus-visible:ring-4 focus-visible:ring-[#244cb8]/25 ${
+                  isActive ? "border-[#244cb8] bg-[#244cb8]/5" : "border-[#d8e4f5] bg-white"
+                }`}
               >
                 <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7c8fb5]">
                   {card.label}
@@ -344,7 +380,8 @@ export default function ViolationManagementPage() {
                   {card.value}
                 </p>
               </motion.article>
-          ))}
+            );
+          })}
         </div>
 
         <motion.div

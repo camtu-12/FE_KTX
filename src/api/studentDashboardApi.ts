@@ -44,7 +44,10 @@ export type DashboardNotification = {
   recipient_id: number;
   id: number;
   title: string;
+  content: string;
   type: string;
+  related_id: number | null;
+  target_type: string | null;
   created_at: string;
   is_read: boolean;
 };

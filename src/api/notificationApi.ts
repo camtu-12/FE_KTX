@@ -7,9 +7,23 @@ export type NotificationItem = {
   content: string;
   type: string;
   related_id: number | null;
+  target_type: string | null;
   created_at: string;
   is_read: boolean | number;
   read_at: string | null;
+};
+
+export type StudentSystemAnnouncementDetail = {
+  id: number;
+  title: string;
+  content: string;
+  type: string;
+  priority: string | null;
+  sent_at: string | null;
+  scheduled_at: string | null;
+  created_at: string | null;
+  attachment_path: string | null;
+  attachment_url: string | null;
 };
 
 export type AdminNotificationItem = {
@@ -40,6 +54,15 @@ export const markNotificationRead = (recipientId: number): Promise<void> =>
 
 export const markAllNotificationsRead = (): Promise<void> =>
   apiClient.put("/student/notifications/read-all").then(() => {});
+
+export const getStudentSystemAnnouncement = (id: number): Promise<StudentSystemAnnouncementDetail> =>
+  apiClient.get(`/student/notifications/system-announcements/${id}`).then((res) => res.data as StudentSystemAnnouncementDetail);
+
+const systemAnnouncementTypes = ["general", "warning", "urgent", "reminder", "policy"];
+const systemAnnouncementTargets = ["active_students", "building", "floor", "room", "students"];
+
+export const isSystemAnnouncementNotification = (item: Pick<NotificationItem, "type" | "related_id" | "target_type">): boolean =>
+  Boolean(item.related_id) && systemAnnouncementTypes.includes(item.type) && systemAnnouncementTargets.includes(item.target_type ?? "");
 
 // ── Admin notifications ──
 

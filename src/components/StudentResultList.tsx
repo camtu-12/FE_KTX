@@ -1,11 +1,49 @@
 import type { NavAutocompleteSuggestion } from "../types/navAutocomplete";
+import { formatDate } from "../utils/dateFormat";
 
-const navStatusMeta: Record<string, { label: string; badge: string }> = {
-  ACTIVE: { label: "Đang lưu trú", badge: "border border-emerald-200 bg-emerald-50 text-emerald-700" },
-  CHECKOUT_REQUESTED: { label: "Yêu cầu thôi ở", badge: "border border-amber-200 bg-amber-50 text-amber-700" },
-  CHECKED_OUT: { label: "Đã thôi ở", badge: "border border-slate-200 bg-slate-50 text-slate-600" },
-  FORCED_CHECKOUT: { label: "Buộc thôi ở", badge: "border border-rose-200 bg-rose-50 text-rose-700" },
-};
+type StatusDisplay = { label: string; badge: string };
+
+function buildStatusDisplay(suggestion: NavAutocompleteSuggestion): StatusDisplay | null {
+  const status = suggestion.occupancy_status;
+  if (!status) {
+    return null;
+  }
+
+  if (status === "ACTIVE") {
+    const room =
+      suggestion.building_code && suggestion.room_number
+        ? `${suggestion.building_code}${suggestion.room_number}`
+        : null;
+    const bed = suggestion.bed_number ? `Giường ${suggestion.bed_number}` : null;
+    const location = [room ? `Phòng ${room}` : null, bed].filter(Boolean).join(", ");
+
+    return {
+      label: location ? `Đang ở — ${location}` : "Đang ở",
+      badge: "border border-emerald-200 bg-emerald-50 text-emerald-700",
+    };
+  }
+
+  if (status === "CHECKOUT_REQUESTED") {
+    return {
+      label: "Đang chờ xử lý thôi ở",
+      badge: "border border-amber-200 bg-amber-50 text-amber-700",
+    };
+  }
+
+  if (status === "CHECKED_OUT" || status === "FORCED_CHECKOUT") {
+    const dateLabel = suggestion.check_out_date ? formatDate(suggestion.check_out_date) : null;
+
+    return {
+      label: dateLabel ? `Đã rời đi — Hoàn tất ${dateLabel}` : "Đã rời đi",
+      badge:
+        status === "FORCED_CHECKOUT"
+          ? "border border-rose-200 bg-rose-50 text-rose-700"
+          : "border border-slate-200 bg-slate-50 text-slate-600",
+    };
+  }
+
+  return null;
+}
 
 function getSimilarityBadgeClassName(similarity: number): string {
   if (similarity >= 85) {
@@ -23,7 +61,7 @@ export default function StudentResultList({ suggestions, onSelect }: StudentResu
   return (
     <>
       {suggestions.map((suggestion) => {
-        const statusInfo = suggestion.occupancy_status ? navStatusMeta[suggestion.occupancy_status] : null;
+        const statusDisplay = buildStatusDisplay(suggestion);
         const initials = suggestion.full_name.charAt(0).toUpperCase();
 
         return (
@@ -51,9 +89,9 @@ export default function StudentResultList({ suggestions, onSelect }: StudentResu
               </span>
             )}
 
-            {suggestion.building_code && suggestion.room_number && (
-              <span className="flex-shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">
-                {suggestion.building_code}{suggestion.room_number}
+            {statusDisplay && (
+              <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${statusDisplay.badge}`}>
+                {statusDisplay.label}
               </span>
             )}
 
@@ -74,11 +112,11 @@ export default function StudentResultList({ suggestions, onSelect }: StudentResu
                 {suggestion.current_year && (
                   <p className="text-[#5570a0]">Năm học: <span className="font-semibold text-[#1b3766]">Năm {suggestion.current_year}</span></p>
                 )}
-                {statusInfo && (
+                {statusDisplay && (
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[#5570a0]">Trạng thái:</span>
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${statusInfo.badge}`}>
-                      {statusInfo.label}
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${statusDisplay.badge}`}>
+                      {statusDisplay.label}
                     </span>
                   </div>
                 )}

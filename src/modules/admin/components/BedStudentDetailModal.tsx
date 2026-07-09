@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { FileText, X } from "lucide-react";
 import type { BedStudent } from "../../../api/roomApi";
 import StudentMiniInfo from "./StudentMiniInfo";
 import { formatDate } from "../../../utils/dateFormat";
@@ -12,6 +12,8 @@ type BedStudentDetailModalProps = {
   bedNumber: string;
   roomCode: string;
   onClose: () => void;
+  /** Chỉ hiện nút "Xem chi tiết lưu trú đầy đủ" khi có occupancy để xem (student.occupancy?.id tồn tại). */
+  onViewFullOccupancyDetail?: () => void;
 };
 
 const hiddenKeys = new Set([
@@ -45,13 +47,6 @@ const sectionConfig = [
       "permanent_address",
     ],
   },
-];
-
-const extensionTabs = [
-  { id: "violations", label: "Vi phạm", empty: "📄 Chưa có dữ liệu vi phạm", keys: ["violations", "violation", "violation_history"] },
-  { id: "billing", label: "Công nợ", empty: "💰 Chưa có công nợ", keys: ["billing", "billings", "debts", "debt", "fees"] },
-  { id: "occupancy_history", label: "Lịch sử lưu trú", empty: "📄 Chưa có lịch sử lưu trú", keys: ["occupancy_history", "stay_history", "residence_history"] },
-  { id: "transfer_history", label: "Lịch sử chuyển giường", empty: "🔄 Chưa có lịch sử chuyển giường", keys: ["transfer_history", "room_change_log", "room_change_logs"] },
 ];
 
 function formatLabel(key: string) {
@@ -141,14 +136,6 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
-function getExtensionData(student: StudentRecord, keys: string[]) {
-  for (const key of keys) {
-    const value = student[key];
-    if (!isEmptyValue(value)) return value;
-  }
-  return null;
-}
-
 function InfoCard({ title, rows, className = "" }: { title: string; rows: Array<[string, unknown]>; className?: string }) {
   if (rows.length === 0) return null;
 
@@ -167,62 +154,14 @@ function InfoCard({ title, rows, className = "" }: { title: string; rows: Array<
   );
 }
 
-function DataPreview({ value }: { value: unknown }) {
-  if (isEmptyValue(value)) return null;
-
-  if (Array.isArray(value)) {
-    return (
-      <div className="space-y-2">
-        {value.map((item, index) => (
-          <div key={index} className="rounded-xl border border-[#e7eef9] bg-white px-3 py-2 text-sm text-[#1f3152]">
-            {typeof item === "object" && item !== null ? (
-              Object.entries(item as StudentRecord)
-                .filter(([key, entryValue]) => !isHiddenKey(key) && !isEmptyValue(entryValue))
-                .map(([key, entryValue]) => (
-                  <p key={key}>
-                    <span className="font-semibold text-[#61779d]">{formatLabel(key)}: </span>
-                    {formatValue(entryValue)}
-                  </p>
-                ))
-            ) : (
-              <p>{formatValue(item)}</p>
-            )}
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  if (typeof value === "object" && value !== null) {
-    return (
-      <div className="rounded-xl border border-[#e7eef9] bg-white px-3 py-2 text-sm text-[#1f3152]">
-        {Object.entries(value as StudentRecord)
-          .filter(([key, entryValue]) => !isHiddenKey(key) && !isEmptyValue(entryValue))
-          .map(([key, entryValue]) => (
-            <p key={key}>
-              <span className="font-semibold text-[#61779d]">{formatLabel(key)}: </span>
-              {formatValue(entryValue)}
-            </p>
-          ))}
-      </div>
-    );
-  }
-
-  return <p className="rounded-xl border border-[#e7eef9] bg-white px-3 py-2 text-sm font-semibold text-[#1f3152]">{formatValue(value)}</p>;
-}
-
-export default function BedStudentDetailModal({ student, bedNumber, roomCode, onClose }: BedStudentDetailModalProps) {
-  const [activeTab, setActiveTab] = useState(extensionTabs[0].id);
+export default function BedStudentDetailModal({
+  student,
+  bedNumber,
+  roomCode,
+  onClose,
+  onViewFullOccupancyDetail,
+}: BedStudentDetailModalProps) {
   const studentRecord = student as StudentRecord;
-
-  useEffect(() => {
-    const occupancy = student.occupancy ?? null;
-    console.log("Student detail occupancy", {
-      check_in_date: occupancy?.check_in_date ?? null,
-      check_out_date: occupancy?.check_out_date ?? null,
-      status: occupancy?.status ?? null,
-    });
-  }, [student.occupancy]);
 
   const sectionRows = useMemo(() => {
     return sectionConfig.map((section) => {
@@ -236,9 +175,6 @@ export default function BedStudentDetailModal({ student, bedNumber, roomCode, on
       return { title: section.title, rows };
     });
   }, [studentRecord]);
-
-  const activeExtension = extensionTabs.find((tab) => tab.id === activeTab) ?? extensionTabs[0];
-  const activeExtensionData = getExtensionData(studentRecord, activeExtension.keys);
 
   return createPortal(
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
@@ -270,31 +206,18 @@ export default function BedStudentDetailModal({ student, bedNumber, roomCode, on
             ))}
           </div>
 
-          <div className="mt-5 rounded-2xl border border-[#d8e4f5] bg-[#f8fbff] p-4 shadow-sm">
-            <div className="flex flex-wrap gap-2">
-              {extensionTabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${
-                    activeTab === tab.id ? "border-[#2563EB] bg-white text-[#2563EB]" : "border-slate-200 bg-white/70 text-[#61779d] hover:bg-white"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
+          {onViewFullOccupancyDetail ? (
+            <div className="mt-5">
+              <button
+                type="button"
+                onClick={onViewFullOccupancyDetail}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-5 py-3 text-sm font-bold text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.12)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white"
+              >
+                <FileText className="h-4 w-4" />
+                Xem chi tiết lưu trú đầy đủ
+              </button>
             </div>
-            <div className="mt-4">
-              {activeExtensionData ? (
-                <DataPreview value={activeExtensionData} />
-              ) : (
-                <div className="rounded-2xl border border-dashed border-[#cfdcf0] bg-white px-4 py-8 text-center text-sm font-semibold text-[#7c8fb5]">
-                  {activeExtension.empty}
-                </div>
-              )}
-            </div>
-          </div>
+          ) : null}
         </div>
       </div>
     </div>,

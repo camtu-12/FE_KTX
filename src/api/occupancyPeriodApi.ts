@@ -13,8 +13,15 @@ export type OccupancyPeriod = {
   status: OccupancyPeriodStatus;
   description: string | null;
   extensions_count?: number;
+  suggested_open_date?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type OccupancyPeriodSuggestion = {
+  target_check_out_date: string | null;
+  suggested_open_date: string | null;
+  students_count: number;
 };
 
 export type OccupancyPeriodPayload = {
@@ -53,3 +60,6 @@ export const getOpenOccupancyPeriod = (): Promise<OccupancyPeriod | null> =>
     const list = res.data as OccupancyPeriod[];
     return list.find((p) => p.status === "open") ?? null;
   });
+
+export const getOccupancyPeriodSuggestion = (): Promise<OccupancyPeriodSuggestion> =>
+  apiClient.get("/occupancy-periods/suggestion").then((res) => res.data as OccupancyPeriodSuggestion);

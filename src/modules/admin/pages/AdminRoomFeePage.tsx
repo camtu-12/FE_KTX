@@ -221,30 +221,37 @@ export default function AdminRoomFeePage() {
     };
   }, []);
 
-  const visibleBills = useMemo(() => {
+  // Base list áp mọi filter TRỪ statusFilter — dùng để tính số đếm cho 4 thẻ thống kê,
+  // để các thẻ không active vẫn hiện đúng số thật khi 1 thẻ khác đang lọc (không bị sập về 0).
+  const billsBeforeStatusFilter = useMemo(() => {
     const q = headerSearchValue.trim().toLowerCase();
     return bills.filter((bill) => {
       const text = [bill.studentCode, bill.fullName].join(" ").toLowerCase();
       return (
         (!q || text.includes(q)) &&
         (roomFilter === "all" || bill.room === roomFilter) &&
-        (statusFilter === "all" || bill.status === statusFilter) &&
         (quarterFilter === "all" || getQuarterFromMonth(bill.month) === Number(quarterFilter)) &&
         (yearFilter === "all" || bill.year === Number(yearFilter))
       );
     });
-  }, [bills, headerSearchValue, quarterFilter, roomFilter, statusFilter, yearFilter]);
+  }, [bills, headerSearchValue, quarterFilter, roomFilter, yearFilter]);
 
-  const totalCount = visibleBills.length;
-  const unpaidCount = visibleBills.filter((b) => b.status === "unpaid").length;
-  const paidCount = visibleBills.filter((b) => b.status === "paid").length;
-  const overdueCount = visibleBills.filter((b) => b.status === "overdue").length;
+  const visibleBills = useMemo(() => {
+    return billsBeforeStatusFilter.filter((bill) => statusFilter === "all" || bill.status === statusFilter);
+  }, [billsBeforeStatusFilter, statusFilter]);
 
-  const summaryCards = [
-    { label: "Tổng hóa đơn", value: totalCount, valueClassName: "text-[#244cb8]" },
-    { label: "Chưa thanh toán", value: unpaidCount, valueClassName: "text-[#9b6b00]" },
-    { label: "Đã thanh toán", value: paidCount, valueClassName: "text-[#16784b]" },
-    { label: "Quá hạn", value: overdueCount, valueClassName: "text-[#c4364f]" },
+  const totalCount = billsBeforeStatusFilter.length;
+  const unpaidCount = billsBeforeStatusFilter.filter((b) => b.status === "unpaid").length;
+  const paidCount = billsBeforeStatusFilter.filter((b) => b.status === "paid").length;
+  const overdueCount = billsBeforeStatusFilter.filter((b) => b.status === "overdue").length;
+  const exemptedCount = billsBeforeStatusFilter.filter((b) => b.status === "exempted").length;
+
+  const summaryCards: Array<{ label: string; value: number; valueClassName: string; filterValue: StatusFilter }> = [
+    { label: "Tổng hóa đơn", value: totalCount, valueClassName: "text-[#244cb8]", filterValue: "all" },
+    { label: "Chưa thanh toán", value: unpaidCount, valueClassName: "text-[#9b6b00]", filterValue: "unpaid" },
+    { label: "Đã thanh toán", value: paidCount, valueClassName: "text-[#16784b]", filterValue: "paid" },
+    { label: "Quá hạn", value: overdueCount, valueClassName: "text-[#c4364f]", filterValue: "overdue" },
+    { label: "Đã miễn", value: exemptedCount, valueClassName: "text-[#6d5bd0]", filterValue: "exempted" },
   ];
 
   const closeCreateModal = () => { setIsCreateOpen(false); setFormError(""); };
@@ -473,20 +480,36 @@ export default function AdminRoomFeePage() {
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {summaryCards.map((card, index) => (
-            <motion.article
-              key={card.label}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              whileHover={{ y: -4, scale: 1.02 }}
-              transition={{ duration: 0.32, delay: 0.08 + index * 0.04, ease: "easeOut" }}
-              className="relative overflow-hidden rounded-[26px] border border-[#d8e4f5] bg-white px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.09)] transition-shadow duration-300 hover:shadow-[0_22px_44px_rgba(36,76,184,0.16)]"
-            >
-              <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7c8fb5]">{card.label}</p>
-              <p className={`mt-3 text-[2rem] font-extrabold leading-none ${card.valueClassName}`}>{card.value}</p>
-            </motion.article>
-          ))}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {summaryCards.map((card, index) => {
+            const isActive = statusFilter === card.filterValue;
+
+            return (
+              <motion.article
+                key={card.label}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                whileHover={{ y: -4, scale: 1.02 }}
+                transition={{ duration: 0.32, delay: 0.08 + index * 0.04, ease: "easeOut" }}
+                role="button"
+                tabIndex={0}
+                aria-pressed={isActive}
+                onClick={() => setStatusFilter((current) => (current === card.filterValue ? "all" : card.filterValue))}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setStatusFilter((current) => (current === card.filterValue ? "all" : card.filterValue));
+                  }
+                }}
+                className={`relative cursor-pointer overflow-hidden rounded-[26px] border px-5 py-4 text-center shadow-[0_14px_30px_rgba(36,76,184,0.09)] outline-none transition-shadow duration-300 hover:shadow-[0_22px_44px_rgba(36,76,184,0.16)] focus-visible:ring-4 focus-visible:ring-[#244cb8]/25 ${
+                  isActive ? "border-[#244cb8] bg-[#244cb8]/5" : "border-[#d8e4f5] bg-white"
+                }`}
+              >
+                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7c8fb5]">{card.label}</p>
+                <p className={`mt-3 text-[2rem] font-extrabold leading-none ${card.valueClassName}`}>{card.value}</p>
+              </motion.article>
+            );
+          })}
         </div>
 
         <PaymentTable
@@ -766,7 +789,7 @@ function PaymentTable({
   rows: Array<{ key: number; cells: ReactNode[] }>;
   emptyMessage: string;
 }) {
-  const colWidths = ["15%", "20%", "10%", "8%", "8%", "15%", "14%", "10%"];
+  const colWidths = ["12%", "20%", "8%", "9%", "7%", "13%", "16%", "15%"];
   return (
     <div className="overflow-x-auto rounded-[22px] border border-[#d6e2f1] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
       <table className="w-full min-w-[980px] table-fixed border-separate border-spacing-0">

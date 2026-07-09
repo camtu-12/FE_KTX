@@ -129,8 +129,11 @@ const adminMenu: MenuItem[] = [
   },
   {
     label: "Quản lý nội dung",
-    to: "/admin/content/about",
     icon: FileText,
+    children: [
+      { label: "Trang giới thiệu", to: "/admin/content/about" },
+      { label: "Thông báo", to: "/admin/content/announcements" },
+    ],
   },
 ];
 
@@ -184,11 +187,13 @@ export default function Sidebar({ role }: SidebarProps) {
     location.pathname === "/admin/extensions" || location.pathname === "/admin/occupancy-periods";
   const isFreshmanGroupActive =
     location.pathname === "/admin/admission-candidates" || location.pathname === "/admin/dorm-reservations";
+  const isContentGroupActive = location.pathname.startsWith("/admin/content");
   const [isRegistrationGroupOpen, setIsRegistrationGroupOpen] = useState(isRegistrationGroupActive);
   const [isViolationGroupOpen, setIsViolationGroupOpen] = useState(isViolationGroupActive);
   const [isPaymentGroupOpen, setIsPaymentGroupOpen] = useState(isPaymentGroupActive);
   const [isExtensionGroupOpen, setIsExtensionGroupOpen] = useState(isExtensionGroupActive);
   const [isFreshmanGroupOpen, setIsFreshmanGroupOpen] = useState(isFreshmanGroupActive);
+  const [isContentGroupOpen, setIsContentGroupOpen] = useState(isContentGroupActive);
 
   return (
     <aside className="relative flex w-[260px] flex-col overflow-hidden border-r border-[#173a82] bg-[linear-gradient(160deg,#173979_0%,#2450b0_46%,#12316f_100%)] p-4 text-white shadow-[16px_0_34px_rgba(17,40,97,0.32)]">
@@ -208,6 +213,7 @@ export default function Sidebar({ role }: SidebarProps) {
               const isViolationGroup = item.label === "Quản lý hoạt động";
               const isExtensionGroup = item.label === "Gia hạn lưu trú";
               const isFreshmanGroup = item.label === "Tân sinh viên";
+              const isContentGroup = item.label === "Quản lý nội dung";
               const isOpen = isRegistrationGroup
                 ? isRegistrationGroupOpen || isRegistrationGroupActive
                 : isViolationGroup
@@ -218,10 +224,13 @@ export default function Sidebar({ role }: SidebarProps) {
                       ? isExtensionGroupOpen || isExtensionGroupActive
                       : isFreshmanGroup
                         ? isFreshmanGroupOpen || isFreshmanGroupActive
-                        : false;
+                        : isContentGroup
+                          ? isContentGroupOpen || isContentGroupActive
+                          : false;
               const isGroupActive =
                 item.children.some((child) => child.to === location.pathname) ||
-                (isPaymentGroup && isPaymentGroupActive);
+                (isPaymentGroup && isPaymentGroupActive) ||
+                (isContentGroup && isContentGroupActive);
               const ChevronIcon = isOpen ? ChevronUp : ChevronDown;
 
               return (
@@ -243,6 +252,9 @@ export default function Sidebar({ role }: SidebarProps) {
                       }
                       if (isFreshmanGroup) {
                         setIsFreshmanGroupOpen((current) => !current);
+                      }
+                      if (isContentGroup) {
+                        setIsContentGroupOpen((current) => !current);
                       }
                     }}
                     className={[

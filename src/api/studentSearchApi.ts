@@ -11,6 +11,8 @@ export type StudentSearchResult = {
   current_year: number | null;
   occupancy_status: string | null;
   occupancy_id: number | null;
+  bed_number: string | null;
+  check_out_date: string | null;
   registration_id: number | null;
 };
 
