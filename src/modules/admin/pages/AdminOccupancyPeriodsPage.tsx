@@ -67,15 +67,19 @@ const emptyForm: FormState = {
 
 type FormError = Partial<Record<keyof FormState, string>>;
 
-function validateForm(form: FormState): FormError {
+function validateForm(form: FormState, suggestion?: OccupancyPeriodSuggestion | null): FormError {
   const errors: FormError = {};
   if (!form.name.trim()) errors.name = "Vui lòng nhập tên đợt.";
   if (!form.start_date) errors.start_date = "Vui lòng chọn ngày bắt đầu nhận đơn.";
   if (!form.end_date) errors.end_date = "Vui lòng chọn ngày kết thúc nhận đơn.";
   if (form.start_date && form.end_date && form.end_date < form.start_date)
     errors.end_date = "Ngày kết thúc phải sau ngày bắt đầu.";
-  if (form.extension_until_date && form.end_date && form.extension_until_date < form.end_date)
-    errors.extension_until_date = "Ngày gia hạn đến phải sau ngày kết thúc nhận đơn.";
+  if (suggestion?.suggested_start_date && form.start_date && form.start_date !== suggestion.suggested_start_date)
+    errors.start_date = `Phải đúng ${formatDate(suggestion.suggested_start_date)} (1 tháng trước ngày kết thúc lưu trú hiện tại).`;
+  if (suggestion?.suggested_end_date && form.end_date && form.end_date !== suggestion.suggested_end_date)
+    errors.end_date = `Phải đúng ${formatDate(suggestion.suggested_end_date)} (7 ngày sau ngày bắt đầu nhận đơn).`;
+  if (form.extension_until_date && suggestion?.extension_until_date && form.extension_until_date < suggestion.extension_until_date)
+    errors.extension_until_date = `Phải đủ 1 năm kể từ ngày kết thúc lưu trú hiện tại (tối thiểu ${formatDate(suggestion.extension_until_date)}).`;
   return errors;
 }
 
@@ -134,7 +138,12 @@ export default function AdminOccupancyPeriodsPage() {
 
   const openCreate = () => {
     setEditingId(null);
-    setForm({ ...emptyForm, extension_until_date: suggestion?.extension_until_date ?? "" });
+    setForm({
+      ...emptyForm,
+      start_date: suggestion?.suggested_start_date ?? "",
+      end_date: suggestion?.suggested_end_date ?? "",
+      extension_until_date: suggestion?.extension_until_date ?? "",
+    });
     setFormErrors({});
     setApiError(null);
     setShowForm(true);
@@ -161,7 +170,7 @@ export default function AdminOccupancyPeriodsPage() {
   };
 
   const handleSave = async () => {
-    const errors = validateForm(form);
+    const errors = validateForm(form, suggestion);
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
       return;
@@ -260,6 +269,7 @@ export default function AdminOccupancyPeriodsPage() {
     key: keyof FormState,
     label: string,
     type: "text" | "date" | "textarea" = "text",
+    disabled = false,
   ) => (
     <div>
       <label className="mb-1 block text-xs font-semibold text-[#324B76]">{label}</label>
@@ -278,11 +288,12 @@ export default function AdminOccupancyPeriodsPage() {
           type={type}
           lang={type === "date" ? "vi" : undefined}
           value={form[key]}
+          disabled={disabled}
           onChange={(e) => {
             setForm((prev) => ({ ...prev, [key]: e.target.value }));
             setFormErrors((prev) => ({ ...prev, [key]: undefined }));
           }}
-          className="w-full rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-3 py-1.5 text-sm text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
+          className="w-full rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-3 py-1.5 text-sm text-[#1f3152] focus:border-[#244cb8] focus:outline-none disabled:cursor-not-allowed disabled:bg-[#eef2f8] disabled:text-[#7c8fb5]"
         />
       )}
       {formErrors[key] && <p className="mt-1 text-xs text-rose-600">{formErrors[key]}</p>}
@@ -521,8 +532,8 @@ export default function AdminOccupancyPeriodsPage() {
                     )}
                     {field("name", "Tên đợt gia hạn")}
                     <div className="grid grid-cols-2 gap-3">
-                      {field("start_date", "Ngày bắt đầu nhận đơn", "date")}
-                      {field("end_date", "Ngày kết thúc nhận đơn", "date")}
+                      {field("start_date", "Ngày bắt đầu nhận đơn", "date", true)}
+                      {field("end_date", "Ngày kết thúc nhận đơn", "date", true)}
                     </div>
                     {field("extension_until_date", "Gia hạn lưu trú đến (tuỳ chọn)", "date")}
                     {field("description", "Mô tả (tuỳ chọn)", "textarea")}
