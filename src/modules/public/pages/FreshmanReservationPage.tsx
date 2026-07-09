@@ -888,12 +888,6 @@ export default function FreshmanReservationPage() {
                 <h2 className="mb-2 text-xl font-bold text-[#1a2d52]">Hồ sơ đã được gửi thành công!</h2>
                 <p className="mb-4 text-sm text-[#5C7094]">BQL sẽ xem xét và phản hồi sớm nhất có thể.</p>
 
-                <div className="mx-auto mb-6 max-w-xs rounded-xl border border-[#dce7f6] bg-[#f5f9ff] p-4 text-left">
-                  <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-[#9aaac4]">Mã hồ sơ giữ chỗ</p>
-                  <p className="text-xl font-bold tracking-wider text-[#244cb8]">{reservation.reservationCode}</p>
-                  <p className="mt-2 text-xs text-[#62789f]">Lưu mã này để tra cứu trạng thái hồ sơ.</p>
-                </div>
-
                 <div className="rounded-xl border border-[#cfdcf0] bg-[linear-gradient(180deg,#f8fbff_0%,#eef5ff_100%)] px-4 py-4 text-sm text-left">
                   <p className="mb-2 font-semibold text-[#244cb8]">Bước tiếp theo sau khi nhập học:</p>
                   <ol className="space-y-1 text-xs text-[#3d5a9e]">
