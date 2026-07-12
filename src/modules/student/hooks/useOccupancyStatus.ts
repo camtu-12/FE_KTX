@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getMyRegistration, getMyRegistrationHistory } from "../../../api/registrationService";
 import type { RegistrationRequest } from "../../admin/data/registrationRequests";
 import { useAuthStore } from "../../auth/store";
@@ -27,6 +27,7 @@ export type UseOccupancyStatusResult = {
   /** true nếu sinh viên đã TỪNG có occupancy đạt PENDING_PAYMENT trở lên (tức đã từng có hóa đơn). */
   hasEverHadBillableOccupancy: boolean;
   latestRegistration: RegistrationRequest | null;
+  refresh: () => Promise<void>;
 };
 
 /**
@@ -40,39 +41,33 @@ export function useOccupancyStatus(): UseOccupancyStatusResult {
   const [latestRegistration, setLatestRegistration] = useState<RegistrationRequest | null>(null);
   const [history, setHistory] = useState<RegistrationRequest[]>([]);
 
-  useEffect(() => {
-    let isActive = true;
+  const refresh = useCallback(async () => {
+    if (!studentEmail) {
+      setLatestRegistration(null);
+      setHistory([]);
+      setIsLoading(false);
+      return;
+    }
 
-    const load = async () => {
-      if (!studentEmail) {
-        setIsLoading(false);
-        return;
-      }
-
-      setIsLoading(true);
-      try {
-        const [latest, hist] = await Promise.all([
-          getMyRegistration(studentEmail),
-          getMyRegistrationHistory(studentEmail),
-        ]);
-        if (!isActive) return;
-        setLatestRegistration(latest);
-        setHistory(hist);
-      } catch {
-        if (isActive) {
-          setLatestRegistration(null);
-          setHistory([]);
-        }
-      } finally {
-        if (isActive) setIsLoading(false);
-      }
-    };
-
-    void load();
-    return () => {
-      isActive = false;
-    };
+    setIsLoading(true);
+    try {
+      const [latest, hist] = await Promise.all([
+        getMyRegistration(studentEmail),
+        getMyRegistrationHistory(studentEmail),
+      ]);
+      setLatestRegistration(latest);
+      setHistory(hist);
+    } catch {
+      setLatestRegistration(null);
+      setHistory([]);
+    } finally {
+      setIsLoading(false);
+    }
   }, [studentEmail]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   const currentOccupancyStatus = latestRegistration?.occupancy_status ?? null;
   const isCurrentlyActive = currentOccupancyStatus === "ACTIVE";
@@ -90,5 +85,6 @@ export function useOccupancyStatus(): UseOccupancyStatusResult {
     hasEverBeenActive,
     hasEverHadBillableOccupancy,
     latestRegistration,
+    refresh,
   };
 }

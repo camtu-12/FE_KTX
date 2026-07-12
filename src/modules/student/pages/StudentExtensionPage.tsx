@@ -166,7 +166,7 @@ export default function StudentExtensionPage() {
         showToast("success", "Đã gửi yêu cầu gia hạn. Đang chờ admin xét duyệt.");
       }
       setReason("");
-      await Promise.all([loadHistory(), loadEligibility(), loadOccupancy()]);
+      await Promise.all([loadHistory(), loadEligibility(), occupancyStatus.refresh()]);
       setIsRequestModalOpen(false);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;

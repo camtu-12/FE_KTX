@@ -343,12 +343,12 @@ function AnnouncementList() {
             <thead>
               <tr className="text-xs uppercase tracking-[0.08em] text-[#6f84ad]">
                 <th className="w-[26%] border-b border-[#e5edf8] px-3 py-3">Tiêu đề</th>
-                <th className="w-[13%] border-b border-[#e5edf8] px-3 py-3">Loại</th>
-                <th className="w-[17%] border-b border-[#e5edf8] px-3 py-3">Đối tượng</th>
-                <th className="w-[11%] border-b border-[#e5edf8] px-3 py-3">Kênh gửi</th>
-                <th className="w-[12%] border-b border-[#e5edf8] px-3 py-3">Trạng thái</th>
-                <th className="w-[11%] border-b border-[#e5edf8] px-3 py-3">Ngày gửi</th>
-                <th className="w-[10%] border-b border-[#e5edf8] px-3 py-3">Thao tác</th>
+                <th className="w-[13%] border-b border-[#e5edf8] px-3 py-3 text-center">Loại</th>
+                <th className="w-[17%] border-b border-[#e5edf8] px-3 py-3 text-center">Đối tượng</th>
+                <th className="w-[11%] border-b border-[#e5edf8] px-3 py-3 text-center">Kênh gửi</th>
+                <th className="w-[12%] border-b border-[#e5edf8] px-3 py-3 text-center">Trạng thái</th>
+                <th className="w-[11%] border-b border-[#e5edf8] px-3 py-3 text-center">Ngày gửi</th>
+                <th className="w-[10%] border-b border-[#e5edf8] px-3 py-3 text-center">Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -363,14 +363,14 @@ function AnnouncementList() {
                   <td className="border-b border-[#eef3fb] px-3 py-4">
                     <p className="line-clamp-2 font-bold">{item.title}</p>
                   </td>
-                  <td className="border-b border-[#eef3fb] px-3 py-4"><Badge className={typeMeta[item.type].className}>{typeMeta[item.type].label}</Badge></td>
-                  <td className="border-b border-[#eef3fb] px-3 py-4"><span className="line-clamp-2">{item.target_label}</span></td>
-                  <td className="border-b border-[#eef3fb] px-3 py-4">{[item.send_web ? "Web" : null, item.send_email ? "Email" : null].filter(Boolean).join(", ")}</td>
-                  <td className="border-b border-[#eef3fb] px-3 py-4"><Badge className={statusMeta[item.status].className}>{statusMeta[item.status].label}</Badge></td>
-                  <td className="border-b border-[#eef3fb] px-3 py-4">{formatDateOnly(item.sent_at || item.scheduled_at || item.created_at)}</td>
+                  <td className="border-b border-[#eef3fb] px-3 py-4 text-center"><Badge className={typeMeta[item.type].className}>{typeMeta[item.type].label}</Badge></td>
+                  <td className="border-b border-[#eef3fb] px-3 py-4 text-center"><span className="line-clamp-2">{item.target_label}</span></td>
+                  <td className="border-b border-[#eef3fb] px-3 py-4 text-center">{[item.send_web ? "Web" : null, item.send_email ? "Email" : null].filter(Boolean).join(", ")}</td>
+                  <td className="border-b border-[#eef3fb] px-3 py-4 text-center"><Badge className={statusMeta[item.status].className}>{statusMeta[item.status].label}</Badge></td>
+                  <td className="border-b border-[#eef3fb] px-3 py-4 text-center">{formatDateOnly(item.sent_at || item.scheduled_at || item.created_at)}</td>
                   <td className="border-b border-[#eef3fb] px-3 py-4">
-                    <div className="flex flex-wrap gap-2">
-                      <Link to={`/admin/content/announcements/${item.id}`} className="inline-flex items-center gap-1 rounded-xl bg-[#eef5ff] px-2.5 py-2 text-xs font-bold text-[#244cb8]" title="Xem chi tiết"><Eye className="h-4 w-4" />Chi tiết</Link>
+                    <div className="flex flex-wrap justify-center gap-2">
+                      <Link to={`/admin/content/announcements/${item.id}`} className="rounded-xl bg-[#eef5ff] p-2 text-[#244cb8]" title="Xem chi tiết"><Eye className="h-4 w-4" /></Link>
                       {(item.status === "draft" || item.status === "scheduled") && <Link to={`/admin/content/announcements/${item.id}/edit`} className="rounded-xl bg-[#eef5ff] p-2 text-[#244cb8]" title="Chỉnh sửa"><Pencil className="h-4 w-4" /></Link>}
                       {item.status === "scheduled" && <button type="button" onClick={() => void handleUnschedule(item)} className="rounded-xl bg-slate-100 p-2 text-slate-600" title="Hủy hẹn giờ"><CalendarX className="h-4 w-4" /></button>}
                       {item.status === "draft" && <button type="button" onClick={() => void handleSend(item)} className="rounded-xl bg-emerald-50 p-2 text-emerald-700" title="Gửi"><Send className="h-4 w-4" /></button>}
@@ -849,6 +849,46 @@ function AnnouncementDetail({ id }: { id: number }) {
               </div>
             )}
           />
+          {item.target_type === "students" && (
+            <div className="rounded-2xl border border-[#e5edf8] bg-white p-4">
+              <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#7b8fb7]">Danh sách người nhận</p>
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full min-w-[640px] border-separate border-spacing-0 text-left text-sm">
+                  <thead className="text-xs uppercase tracking-[0.08em] text-[#6f84ad]">
+                    <tr>
+                      <th className="border-b border-[#e5edf8] px-3 py-3">MSSV</th>
+                      <th className="border-b border-[#e5edf8] px-3 py-3">Họ tên</th>
+                      <th className="border-b border-[#e5edf8] px-3 py-3">Trạng thái đọc</th>
+                      {item.send_email && <th className="border-b border-[#e5edf8] px-3 py-3">Trạng thái email</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(item.recipients ?? []).length === 0 ? (
+                      <tr><td colSpan={item.send_email ? 4 : 3} className="px-3 py-8 text-center text-[#6f84ad]">Chưa có người nhận.</td></tr>
+                    ) : (item.recipients ?? []).map((recipient) => (
+                      <tr key={recipient.id} className="text-[#1f3152]">
+                        <td className="border-b border-[#eef3fb] px-3 py-3 font-bold">{recipient.student_code || "-"}</td>
+                        <td className="border-b border-[#eef3fb] px-3 py-3">{recipient.full_name || "-"}</td>
+                        <td className="border-b border-[#eef3fb] px-3 py-3">
+                          {recipient.is_read
+                            ? <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">Đã đọc</Badge>
+                            : <Badge className="border border-slate-200 bg-slate-50 text-slate-600">Chưa đọc</Badge>}
+                        </td>
+                        {item.send_email && (
+                          <td className="border-b border-[#eef3fb] px-3 py-3">
+                            {recipient.email_status === "sent" && <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">Đã gửi</Badge>}
+                            {recipient.email_status === "failed" && <Badge className="border border-rose-200 bg-rose-50 text-rose-700">Lỗi</Badge>}
+                            {recipient.email_status === "pending" && <Badge className="border border-amber-200 bg-amber-50 text-amber-700">Đang chờ</Badge>}
+                            {recipient.email_status === "skipped" && <Badge className="border border-slate-200 bg-slate-50 text-slate-600">Bỏ qua</Badge>}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
 
         {failedModalOpen && item.send_email && stats.email_failed > 0 && (

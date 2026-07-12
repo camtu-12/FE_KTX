@@ -16,7 +16,6 @@ import type { RegistrationRequest } from "../data/registrationRequests";
 import type { DormRoom } from "../../../types/dormRoom";
 import { listViolationTypes, type ActivityCategory, type ViolationType } from "../../../api/violationTypeApi";
 import { createViolation } from "../../../api/violationApi";
-import { formatDate } from "../../../utils/dateFormat";
 import OccupancyDetailModal, { type OccupancyDetailModalStatus } from "../components/OccupancyDetailModal";
 import { searchStudentsForOccupancy } from "../../../api/studentSearchApi";
 import FaceSearchModal from "../components/FaceSearchModal";

@@ -680,6 +680,18 @@ export default function RegistrationPage() {
     return readFileAsDataUrl(new File([compressedBlob], file.name, { type: "image/jpeg" }));
   };
 
+  const dataUrlToFile = (dataUrl: string, filename: string): File => {
+    const [header, base64] = dataUrl.split(",");
+    const mimeMatch = header.match(/data:(.*);base64/);
+    const mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new File([bytes], filename, { type: mime });
+  };
+
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
   ) => {
@@ -1063,11 +1075,15 @@ export default function RegistrationPage() {
     setIsSubmitting(true);
 
     try {
-      await Promise.all([
+      const [portraitDataUrl, cccdFrontDataUrl, cccdBackDataUrl] = await Promise.all([
         toDataUrl(documentFiles.portraitPhoto as File),
         toDataUrl(documentFiles.cccdFrontPhoto as File),
         toDataUrl(documentFiles.cccdBackPhoto as File),
       ]);
+
+      const compressedPortrait = dataUrlToFile(portraitDataUrl, (documentFiles.portraitPhoto as File).name);
+      const compressedCccdFront = dataUrlToFile(cccdFrontDataUrl, (documentFiles.cccdFrontPhoto as File).name);
+      const compressedCccdBack = dataUrlToFile(cccdBackDataUrl, (documentFiles.cccdBackPhoto as File).name);
 
       const form = new FormData();
 
@@ -1107,24 +1123,34 @@ export default function RegistrationPage() {
       form.append("commitment_confirm", commitmentConfirmed ? "1" : "0");
 
       if (selectedCriteriaIds.length > 0) {
-        selectedCriteriaIds.forEach((id) => {
+        for (const id of selectedCriteriaIds) {
           form.append("priority_criteria_ids[]", String(id));
           const files = evidenceFiles[id];
           if (files && files.length > 0) {
-            files.slice(0, MAX_EVIDENCE_FILES).forEach((file) => {
+            const filesToUpload = files.slice(0, MAX_EVIDENCE_FILES);
+            const compressedFiles = await Promise.all(
+              filesToUpload.map(async (file) => {
+                if (file.type === "application/pdf") {
+                  return file;
+                }
+                const dataUrl = await toDataUrl(file);
+                return dataUrlToFile(dataUrl, file.name);
+              }),
+            );
+            compressedFiles.forEach((file) => {
               form.append(`priority_evidence_${id}[]`, file);
             });
           }
-        });
+        }
       }
 
       form.append("current_address", formData.current_address || "");
       form.append("father_birth_year", formData.father_birth_year || "");
       form.append("mother_birth_year", formData.mother_birth_year || "");
 
-      form.append("avatar", documentFiles.portraitPhoto as File);
-      form.append("cccd_front", documentFiles.cccdFrontPhoto as File);
-      form.append("cccd_back", documentFiles.cccdBackPhoto as File);
+      form.append("avatar", compressedPortrait);
+      form.append("cccd_front", compressedCccdFront);
+      form.append("cccd_back", compressedCccdBack);
 
       const res = await submitRegistration(form);
 

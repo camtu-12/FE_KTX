@@ -57,11 +57,6 @@ const DOC_FIELDS: DocumentField[] = ["portraitPhoto", "cccdFrontPhoto", "cccdBac
 const acceptedDocTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const maxDocSize = 5 * 1024 * 1024;
 
-// ── Verify-step styles (original glass style) ──────────────────────────────
-const verifyInputCls =
-  "h-12 w-full rounded-2xl border border-[#d5e1f2] bg-white px-4 py-3 text-sm font-medium text-[#1f3152] outline-none transition-all duration-300 placeholder:text-[#a8b7ce] hover:border-[#b7cae9] hover:bg-[#fbfdff] focus:border-[#244cb8] focus:bg-white focus:ring-4 focus:ring-[#244cb8]/10";
-const verifyIconInputCls = `${verifyInputCls} pl-11`;
-
 // ── Registration-form styles (matches RegistrationPage.tsx) ─────────────────
 const regCard =
   "rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] transition-all duration-300 ease-out hover:border-[#aac3ea] hover:shadow-[0_22px_44px_rgba(36,76,184,0.14)] sm:p-7";
@@ -410,7 +405,7 @@ export default function FreshmanReservationPage() {
             Đăng ký KTX tân sinh viên
           </h1>
           <p className="mx-auto mt-3 max-w-xl text-base leading-7 text-[#5f7498]">
-            Dành cho thí sinh trúng tuyển chưa có MSSV. Hồ sơ này sẽ tự động tạo đơn đăng ký lưu trú khi bạn xác nhận nhập học.
+            Dành cho tân sinh viên. Hồ sơ này sẽ tự động tạo đơn đăng ký lưu trú khi bạn xác nhận nhập học.
           </p>
         </div>
 

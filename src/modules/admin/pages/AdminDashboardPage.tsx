@@ -436,16 +436,33 @@ export default function AdminDashboardPage() {
 
   type AlertEntry = { count: number; label: string; to: string; icon: React.ElementType };
 
-  // Đơn "chờ duyệt tay" có thể nằm ở đợt chính (main) hoặc quanh năm (rolling), và ở tab
-  // "pending" hay "review" trong tab đó — ưu tiên trỏ tới bucket nào thật sự đang có đơn
-  // (review trước vì cấp bách hơn), thay vì luôn cứng sang main/pending như trước.
-  const pendingRegistrationsTarget = (() => {
+  // "Đơn chờ duyệt tay" chỉ tính nhóm auto_decision='review' hoặc có priority chờ xác minh
+  // (tab "Cần xem lại" trên trang danh sách) — KHÔNG gộp chung với tổng số đơn submitted,
+  // để số hiển thị khớp đúng với badge "Cần xem lại" mà admin thấy khi bấm vào.
+  const reviewTarget = (() => {
     const b = alerts.pending_registrations_breakdown;
-    const order: Array<[("main" | "rolling"), ("review" | "pending")]> = [
+    const order: Array<["main" | "rolling", "review"]> = [
       ["main", "review"],
       ["rolling", "review"],
+    ];
+    const hit = order.find(([channel, filter]) => b?.[channel]?.[filter] > 0);
+    if (!hit) return "/admin/registrations";
+    const [channel, filter] = hit;
+    return `/admin/registrations?channel=${channel}&filter=${filter}`;
+  })();
+  const reviewCount =
+    (alerts.pending_registrations_breakdown?.main?.review ?? 0) +
+    (alerts.pending_registrations_breakdown?.rolling?.review ?? 0);
+
+  // "Đơn chờ xử lý" = tổng số đơn status='submitted' (mọi tab, mọi kênh) — bổ sung riêng để
+  // phân biệt với "Đơn chờ duyệt tay" (chỉ nhóm review) ở trên.
+  const allPendingTarget = (() => {
+    const b = alerts.pending_registrations_breakdown;
+    const order: Array<[("main" | "rolling"), ("pending" | "review")]> = [
       ["main", "pending"],
       ["rolling", "pending"],
+      ["main", "review"],
+      ["rolling", "review"],
     ];
     const hit = order.find(([channel, filter]) => b?.[channel]?.[filter] > 0);
     if (!hit) return "/admin/registrations";
@@ -455,7 +472,8 @@ export default function AdminDashboardPage() {
 
   const group1: AlertEntry[] = [
     { count: alerts.overdue_invoices,      label: "Hóa đơn quá hạn chưa thanh toán", to: "/admin/payments/room-fees?status=overdue", icon: CreditCard },
-    { count: alerts.pending_registrations, label: "Đơn chờ duyệt tay",               to: pendingRegistrationsTarget,                icon: FileText },
+    { count: reviewCount,                  label: "Đơn chờ duyệt tay",               to: reviewTarget,                              icon: FileText },
+    { count: alerts.pending_registrations, label: "Đơn chờ xử lý",                   to: allPendingTarget,                          icon: FileText },
   ].filter((i) => i.count > 0);
 
   const group2: AlertEntry[] = [

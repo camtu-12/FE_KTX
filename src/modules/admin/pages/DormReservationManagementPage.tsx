@@ -376,7 +376,7 @@ export default function DormReservationManagementPage() {
         <div className="flex items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-[#1a2d52]">Hồ sơ giữ chỗ KTX tân sinh viên</h1>
-            <p className="mt-1 text-sm text-[#62789f]">{total} hồ sơ — Quản lý đăng ký giữ chỗ trước khi có MSSV.</p>
+            <p className="mt-1 text-sm text-[#62789f]">{total} hồ sơ — Quản lý hồ sơ đăng ký tân sinh viên.</p>
           </div>
           <button type="button" onClick={() => void load(1)} disabled={loading} className={secondaryBtn}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Làm mới
@@ -487,6 +487,18 @@ export default function DormReservationManagementPage() {
                 <div className="flex shrink-0 flex-wrap gap-2">
                   <button type="button" onClick={() => void handleOpenDetail(r)} className={`${secondaryBtn} h-9 px-3 text-xs`}>Chi tiết</button>
                   <button type="button" onClick={() => { setNoteTarget(r); setNoteText(r.adminNote ?? ""); }} className={`${secondaryBtn} h-9 px-3 text-xs`}>Ghi chú</button>
+                  {isActive(r) && r.status === "submitted" && (
+                    <button type="button" disabled={actionId === r.id} onClick={() => void handleWaitlist(r)} className={`${secondaryBtn} h-9 px-3 text-xs`}>
+                      {actionId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                      Chuyển vào danh sách chờ
+                    </button>
+                  )}
+                  {r.status !== "converted" && r.status !== "cancelled" && (
+                    <button type="button" disabled={actionId === r.id} onClick={() => void handleCancel(r)} className={`${warningBtn} h-9 px-3 text-xs`}>
+                      {actionId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                      Hủy hồ sơ
+                    </button>
+                  )}
                 </div>
               </div>
             </motion.div>

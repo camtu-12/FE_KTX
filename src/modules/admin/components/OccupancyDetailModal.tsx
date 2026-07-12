@@ -265,7 +265,7 @@ export default function OccupancyDetailModal({
                 </p>
               </div>
             </div>
-          ) : occupancy.status !== "CHECKOUT_REQUESTED" && occupancyDetail?.cancelled_checkout_request ? (
+          ) : occupancyDetail?.cancelled_checkout_request ? (
             <div className="flex items-start gap-3 rounded-2xl border-2 border-slate-300 bg-slate-100 p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
               <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200">
                 <Ban className="h-4 w-4 text-slate-600" />

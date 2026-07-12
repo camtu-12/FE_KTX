@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowUp, ChevronDown, Filter, X } from "lucide-react";
+import { ArrowUp, ChevronDown, Filter, LoaderCircle, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
@@ -40,6 +40,7 @@ export default function AdminRegistrationsPage() {
   const [shouldSkipAnim] = useState(() => Boolean(routeState?.openRequestId));
 
   const [requests, setRequests] = useState<RegistrationRequest[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<AdminTab>(() => {
     const ch = searchParams.get("channel");
     return ch === "rolling" ? "rolling" : "main";
@@ -108,7 +109,7 @@ export default function AdminRegistrationsPage() {
       const data = await getRegistrations();
       if (mounted) setRequests(data);
     };
-    void load();
+    void load().finally(() => { if (mounted) setIsLoading(false); });
     getRegistrationPeriods().then((ps) => { if (mounted) setPeriods(ps); }).catch(() => {});
     const onUpdate = () => { if (mounted) void load(); };
     window.addEventListener("ktx-registrations-updated", onUpdate);
@@ -487,7 +488,7 @@ export default function AdminRegistrationsPage() {
         onClick={() => setOpenDropdownId(openDropdownId === r.id ? null : r.id)}
         className="inline-flex h-10 min-w-[132px] items-center justify-center gap-2 rounded-xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-4 text-[13px] font-semibold text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.09)] transition hover:-translate-y-0.5 hover:border-[#9eb9e6] hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
       >
-        Đổi đề xuất <ChevronDown className="h-3.5 w-3.5" />
+        {r.auto_decision ? "Đổi đề xuất" : "Xử lý đơn"} <ChevronDown className="h-3.5 w-3.5" />
       </button>
       {openDropdownId === r.id ? (
         <div className="absolute right-0 top-full z-50 mt-1 w-36 overflow-hidden rounded-xl border border-[#d7e2f2] bg-white shadow-[0_12px_28px_rgba(15,23,42,0.16)]">
@@ -810,6 +811,22 @@ export default function AdminRegistrationsPage() {
   ];
 
   // ─── Render ──────────────────────────────────────────────
+  if (isLoading) {
+    return (
+      <motion.section
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="relative isolate flex min-h-[calc(100vh-5rem-28px)] flex-col items-center justify-center rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
+      >
+        <div className="flex h-40 w-full max-w-3xl flex-col items-center justify-center rounded-3xl bg-white/80 p-6 text-center shadow-[0_20px_60px_rgba(36,76,184,0.12)] backdrop-blur-sm">
+          <LoaderCircle className="mb-3 h-8 w-8 animate-spin text-[#244CB8]" />
+          <p className="text-sm font-medium text-[#1F3152]">Đang tải danh sách đơn đăng ký...</p>
+        </div>
+      </motion.section>
+    );
+  }
+
   return (
     <>
       <motion.section

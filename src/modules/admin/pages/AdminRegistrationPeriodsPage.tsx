@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
-import type { ElementType, ReactNode } from "react";
+import type { ClipboardEvent, ElementType, KeyboardEvent, ReactNode } from "react";
 import { useOutletContext } from "react-router-dom";
 import type { AdminLayoutOutletContext, PeriodAutocompleteSuggestion } from "../../../layouts/AdminLayout";
 import {
@@ -129,6 +129,26 @@ const emptyForm: RegistrationPeriodPayload = {
 
 type FormError = Partial<Record<keyof RegistrationPeriodPayload, string>>;
 type PeriodDateField = "start_date" | "end_date" | "stay_start_date" | "stay_end_date";
+type NumericPeriodField = "processing_days" | "bed_selection_days" | "initial_payment_due_days";
+
+const periodModificationLockedMessage =
+  "Không thể sửa hoặc xóa đợt đã mở/đã đóng. Vui lòng tạo đợt mới nếu cần thay đổi.";
+
+const formFieldOrder: Array<keyof RegistrationPeriodPayload> = [
+  "name",
+  "channel",
+  "school_year",
+  "semester",
+  "start_date",
+  "end_date",
+  "processing_days",
+  "bed_selection_days",
+  "initial_payment_due_days",
+  "stay_start_date",
+  "stay_end_date",
+  "allow_admission_candidates",
+  "requires_student_code",
+];
 
 const periodDateFields = new Set<keyof RegistrationPeriodPayload>([
   "start_date",
@@ -195,6 +215,16 @@ function dateToInputValue(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function addDays(date: Date, amount: number) {
+  const next = startOfDay(date);
+  next.setDate(next.getDate() + amount);
+  return next;
+}
+
 function addMonths(date: Date, amount: number) {
   return new Date(date.getFullYear(), date.getMonth() + amount, 1);
 }
@@ -212,6 +242,49 @@ function getCalendarDates(monthDate: Date) {
   });
 }
 
+function getStayStartMinDate(form: RegistrationPeriodPayload) {
+  const endDate = dateInputToDate(form.end_date);
+  if (!endDate) return null;
+
+  const procDays = form.processing_days ?? 0;
+  const bedDays = form.bed_selection_days ?? 0;
+  const dueDays = form.initial_payment_due_days ?? 0;
+  return addDays(endDate, procDays + bedDays + dueDays);
+}
+
+function schoolYearBounds(value?: string | null) {
+  const match = String(value ?? "").trim().match(/^(\d{4})-(\d{4})$/);
+  if (!match) return null;
+
+  const startYear = Number(match[1]);
+  const endYear = Number(match[2]);
+  if (endYear !== startYear + 1) return null;
+
+  return { startYear, endYear };
+}
+
+function semesterEndDate(schoolYear: { startYear: number; endYear: number }, semester?: string | null) {
+  switch (semester) {
+    case "1":
+      return new Date(schoolYear.startYear, 11, 31);
+    case "2":
+      return new Date(schoolYear.endYear, 4, 31);
+    case "3":
+      return new Date(schoolYear.endYear, 7, 31);
+    default:
+      return null;
+  }
+}
+
+function isValidPositiveInteger(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1;
+}
+
+function canModifyPeriod(period: RegistrationPeriodData) {
+  const startDate = dateInputToDate(period.start_date);
+  return period.status === "pending" && startDate !== null && startDate > startOfDay(new Date());
+}
+
 function validate(
   form: RegistrationPeriodPayload,
   periods: RegistrationPeriodData[],
@@ -222,30 +295,56 @@ function validate(
   const endDate = normalizePeriodDate(form.end_date);
   const stayStartDate = normalizePeriodDate(form.stay_start_date);
   const stayEndDate = normalizePeriodDate(form.stay_end_date);
+  const today = startOfDay(new Date());
 
   if (!form.name.trim()) errors.name = "Vui lòng nhập tên đợt.";
 
+  if (!form.channel || !["main", "rolling"].includes(form.channel))
+    errors.channel = "Vui lòng chọn kênh.";
+
+  let schoolYear = null as ReturnType<typeof schoolYearBounds>;
   if (!form.school_year?.trim()) {
     errors.school_year = "Vui lòng nhập năm học.";
   } else {
-    const syMatch = form.school_year.trim().match(/^(\d{4})-(\d{4})$/);
-    if (!syMatch || Number(syMatch[2]) !== Number(syMatch[1]) + 1)
-      errors.school_year = "Năm học không hợp lệ. Ví dụ: 2025-2026";
+    schoolYear = schoolYearBounds(form.school_year);
+    if (!schoolYear) {
+      errors.school_year = "Năm học phải có định dạng YYYY-YYYY.";
+    } else if (new Date(schoolYear.endYear, 7, 31) < today) {
+      errors.school_year = "Không thể tạo hoặc sửa đợt đăng ký cho năm học đã kết thúc.";
+    }
   }
 
-  if (!form.semester || !["1", "2", "3"].includes(form.semester))
-    errors.semester = "Vui lòng chọn học kỳ.";
+  if (!errors.school_year) {
+    if (!form.semester || !["1", "2", "3"].includes(form.semester)) {
+      errors.semester = "Vui lòng chọn học kỳ.";
+    } else if (schoolYear) {
+      const endOfSemester = semesterEndDate(schoolYear, form.semester);
+      if (endOfSemester && endOfSemester < today)
+        errors.semester = "Không thể tạo hoặc sửa đợt đăng ký cho học kỳ đã kết thúc.";
+    }
+  }
 
   if (!form.start_date) errors.start_date = "Vui lòng chọn ngày bắt đầu.";
   else if (startDate === null) errors.start_date = "Vui lòng nhập ngày theo định dạng dd/mm/yyyy.";
   if (!form.end_date) errors.end_date = "Vui lòng chọn ngày kết thúc.";
   else if (endDate === null) errors.end_date = "Vui lòng nhập ngày theo định dạng dd/mm/yyyy.";
-  if (form.stay_start_date && stayStartDate === null) errors.stay_start_date = "Vui lòng nhập ngày theo định dạng dd/mm/yyyy.";
-  if (form.stay_end_date && stayEndDate === null) errors.stay_end_date = "Vui lòng nhập ngày theo định dạng dd/mm/yyyy.";
+  if (!form.stay_start_date) errors.stay_start_date = "Vui lòng chọn ngày bắt đầu.";
+  else if (stayStartDate === null) errors.stay_start_date = "Vui lòng nhập ngày theo định dạng dd/mm/yyyy.";
+  if (!form.stay_end_date) errors.stay_end_date = "Vui lòng chọn ngày kết thúc.";
+  else if (stayEndDate === null) errors.stay_end_date = "Vui lòng nhập ngày theo định dạng dd/mm/yyyy.";
   if (startDate && endDate && endDate < startDate)
     errors.end_date = "Ngày kết thúc phải sau ngày bắt đầu.";
-  if (stayStartDate && stayEndDate && stayEndDate < stayStartDate)
-    errors.stay_end_date = "Ngày kết thúc lưu trú phải sau ngày bắt đầu.";
+  if (stayStartDate && stayEndDate && stayEndDate <= stayStartDate)
+    errors.stay_end_date = "Ngày kết thúc phải sau ngày bắt đầu.";
+
+  if (form.processing_days == null) errors.processing_days = "Vui lòng nhập số ngày xử lý.";
+  else if (!isValidPositiveInteger(form.processing_days)) errors.processing_days = "Số ngày phải lớn hơn hoặc bằng 1.";
+  if (form.bed_selection_days == null) errors.bed_selection_days = "Vui lòng nhập số ngày chọn giường.";
+  else if (!isValidPositiveInteger(form.bed_selection_days)) errors.bed_selection_days = "Số ngày phải lớn hơn hoặc bằng 1.";
+  if (form.initial_payment_due_days == null)
+    errors.initial_payment_due_days = "Vui lòng nhập số ngày thanh toán.";
+  else if (!isValidPositiveInteger(form.initial_payment_due_days))
+    errors.initial_payment_due_days = "Số ngày phải lớn hơn hoặc bằng 1.";
 
   // Rule 1: Mỗi năm học chỉ được có 1 đợt chính
   if (form.channel === "main" && !errors.school_year) {
@@ -281,21 +380,22 @@ function validate(
       errors.start_date = `Thời gian nhận đơn trùng với đợt '${overlap.name}' đang hoạt động.`;
   }
 
-  if (form.initial_payment_due_days == null || form.initial_payment_due_days === ("" as unknown as null))
-    errors.initial_payment_due_days = "Vui lòng nhập số ngày thanh toán.";
-  else if (form.initial_payment_due_days < 1)
-    errors.initial_payment_due_days = "Số ngày phải lớn hơn 0.";
-
   // Rule 4: stay_start_date >= end_date + processing_days + bed_selection_days + initial_payment_due_days
-  if (stayStartDate && endDate && !errors.end_date && !errors.stay_start_date) {
+  if (
+    stayStartDate &&
+    endDate &&
+    !errors.end_date &&
+    !errors.stay_start_date &&
+    !errors.processing_days &&
+    !errors.bed_selection_days &&
+    !errors.initial_payment_due_days
+  ) {
     const procDays = form.processing_days ?? 0;
     const bedDays = form.bed_selection_days ?? 0;
     const dueDays = form.initial_payment_due_days ?? 0;
-    const totalDays = procDays + bedDays + dueDays;
-    const minDate = new Date(endDate);
-    minDate.setDate(minDate.getDate() + totalDays);
-    const minDateStr = dateToInputValue(minDate);
-    if (stayStartDate < minDateStr) {
+    const minDate = getStayStartMinDate(form);
+    const minDateStr = minDate ? dateToInputValue(minDate) : null;
+    if (minDateStr && stayStartDate < minDateStr) {
       const minFormatted = formatDate(minDateStr);
       errors.stay_start_date =
         `Ngày bắt đầu lưu trú tối thiểu phải là ${minFormatted} ` +
@@ -332,6 +432,25 @@ export default function AdminRegistrationPeriodsPage() {
 
   const { headerSearchValue, setPeriodAutocomplete } = useOutletContext<AdminLayoutOutletContext>();
   const periodCardRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const formFieldRefs = useRef<Partial<Record<keyof RegistrationPeriodPayload, HTMLDivElement | null>>>({});
+
+  const setFieldRef = (key: keyof RegistrationPeriodPayload) => (node: HTMLDivElement | null) => {
+    formFieldRefs.current[key] = node;
+  };
+
+  const focusFirstError = (errors: FormError) => {
+    const firstKey = formFieldOrder.find((key) => Boolean(errors[key]));
+    if (!firstKey) return;
+
+    const node = formFieldRefs.current[firstKey];
+    if (!node) return;
+
+    node.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.setTimeout(() => {
+      const focusable = node.querySelector<HTMLElement>("input, select, button, [tabindex]");
+      focusable?.focus();
+    }, 180);
+  };
 
   const handleSelectPeriod = (suggestion: PeriodAutocompleteSuggestion) => {
     setPeriodAutocomplete(null);
@@ -449,6 +568,11 @@ export default function AdminRegistrationPeriodsPage() {
   };
 
   const openEdit = (period: RegistrationPeriodData) => {
+    if (!canModifyPeriod(period)) {
+      setApiError(periodModificationLockedMessage);
+      return;
+    }
+
     const initialStartDate = toDateInputValue(period.start_date) || "";
     setEditingId(period.id);
     setForm({
@@ -484,11 +608,14 @@ export default function AdminRegistrationPeriodsPage() {
   const handleSave = async () => {
     const errors = validate(form, periods, editingId);
     if (Object.keys(errors).length > 0) {
+      setApiError(null);
       setFormErrors(errors);
+      focusFirstError(errors);
       return;
     }
     setSaving(true);
     setApiError(null);
+    setFormErrors({});
     try {
       const payload: RegistrationPeriodPayload = {
         ...form,
@@ -513,7 +640,9 @@ export default function AdminRegistrationPeriodsPage() {
         for (const [key, msgs] of Object.entries(apiFieldErrors)) {
           mapped[key as keyof RegistrationPeriodPayload] = Array.isArray(msgs) ? msgs[0] : String(msgs);
         }
-        setFormErrors((prev) => ({ ...prev, ...mapped }));
+        setApiError(null);
+        setFormErrors(mapped);
+        window.setTimeout(() => focusFirstError(mapped), 0);
       } else {
         setApiError(data?.message ?? "Lưu không thành công.");
       }
@@ -528,6 +657,11 @@ export default function AdminRegistrationPeriodsPage() {
       setApiError("Không thể xóa đợt này vì đã có đơn đăng ký. Vui lòng xử lý hết đơn trước khi xóa.");
       return;
     }
+    if (period && !canModifyPeriod(period)) {
+      setApiError(periodModificationLockedMessage);
+      return;
+    }
+
     setDeletingId(id);
     setApiError(null);
     try {
@@ -563,6 +697,62 @@ export default function AdminRegistrationPeriodsPage() {
     }
   };
 
+  const today = startOfDay(new Date());
+  const startDateMinDate = today;
+  const endDateMinDate = (() => {
+    const startDate = dateInputToDate(form.start_date);
+    return startDate ?? today;
+  })();
+  const calculatedStayStartMinDate = getStayStartMinDate(form);
+  const stayStartMinDate = calculatedStayStartMinDate ?? today;
+  const stayEndMinDate = (() => {
+    const stayStartDate = dateInputToDate(form.stay_start_date);
+    return stayStartDate ? addDays(stayStartDate, 1) : today;
+  })();
+
+  const inputClass = (key: keyof RegistrationPeriodPayload) =>
+    `w-full rounded-xl border px-3 py-1.5 text-sm text-[#1f3152] focus:outline-none ${
+      formErrors[key]
+        ? "border-rose-400 bg-rose-50 focus:border-rose-500"
+        : "border-[#cfdcf0] bg-[#f7faff] focus:border-[#244cb8]"
+    }`;
+
+  const dateInputClass = (key: keyof RegistrationPeriodPayload) =>
+    `flex w-full items-center rounded-xl border text-sm text-[#1f3152] transition ${
+      formErrors[key]
+        ? "border-rose-400 bg-rose-50 focus-within:border-rose-500"
+        : "border-[#cfdcf0] bg-[#f7faff] focus-within:border-[#244cb8]"
+    }`;
+
+  const selectClass = (key: keyof RegistrationPeriodPayload) =>
+    `w-full appearance-none rounded-xl border px-3 py-1.5 pr-7 text-sm text-[#1f3152] focus:outline-none ${
+      formErrors[key]
+        ? "border-rose-400 bg-rose-50 focus:border-rose-500"
+        : "border-[#cfdcf0] bg-[#f7faff] focus:border-[#244cb8]"
+    }`;
+
+  const preventInvalidNumberKey = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (["e", "E", "+", "-", ".", ","].includes(event.key)) {
+      event.preventDefault();
+    }
+  };
+
+  const preventInvalidNumberPaste = (event: ClipboardEvent<HTMLInputElement>) => {
+    if (!/^\d+$/.test(event.clipboardData.getData("text"))) {
+      event.preventDefault();
+    }
+  };
+
+  const handleNumberChange = (key: NumericPeriodField, value: string) => {
+    if (value !== "" && !/^\d+$/.test(value)) return;
+
+    const nextValue = value === "" ? null : Number(value);
+    setForm((prev) => ({ ...prev, [key]: nextValue }));
+    if (isValidPositiveInteger(nextValue)) {
+      setFormErrors((prev) => ({ ...prev, [key]: undefined }));
+    }
+  };
+
   const field = (key: keyof RegistrationPeriodPayload, label: string, type = "text", extra?: React.InputHTMLAttributes<HTMLInputElement>, minDate?: Date) => {
     const isDateField = type === "date" && isPeriodDateField(key);
     const dateValue = isDateField ? toDateInputValue(form[key] as string) || "" : "";
@@ -570,15 +760,15 @@ export default function AdminRegistrationPeriodsPage() {
     const selectedDate = isDateField ? dateInputToDate(dateValue) : null;
     const isCalendarOpen = isDateField && openDateField === key;
     const calendarDates = isDateField ? getCalendarDates(calendarMonth) : [];
-    const minDay = minDate ? new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate()) : null;
+    const minDay = minDate ? startOfDay(minDate) : null;
     const shouldOpenCalendarBelow = key === "start_date" || key === "end_date";
 
     return (
-      <div>
+      <div ref={setFieldRef(key)}>
         <label className="mb-1 block text-xs font-semibold text-[#324B76]">{label}</label>
         {isDateField ? (
           <div className="relative">
-            <div className="flex w-full items-center rounded-xl border border-[#cfdcf0] bg-[#f7faff] text-sm text-[#1f3152] transition focus-within:border-[#244cb8]">
+            <div className={dateInputClass(key)}>
               <input
                 type="text"
                 inputMode="numeric"
@@ -675,7 +865,7 @@ export default function AdminRegistrationPeriodsPage() {
                         }}
                         className={`inline-flex h-8 items-center justify-center rounded-lg text-xs font-semibold transition ${
                           isBeforeMin
-                            ? "cursor-not-allowed text-[#cdd6e4] line-through"
+                            ? "text-[#c7d1e1] line-through disabled:pointer-events-none"
                             : isSelected
                               ? "bg-[#244cb8] text-white shadow-[0_8px_16px_rgba(36,76,184,0.22)]"
                               : isCurrentMonth
@@ -699,7 +889,7 @@ export default function AdminRegistrationPeriodsPage() {
               setForm((prev) => ({ ...prev, [key]: e.target.value }));
               setFormErrors((prev) => ({ ...prev, [key]: undefined }));
             }}
-            className="w-full rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-3 py-1.5 text-sm text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
+            className={inputClass(key)}
             {...extra}
           />
         )}
@@ -787,6 +977,7 @@ export default function AdminRegistrationPeriodsPage() {
             const periodStatus = period.status as PeriodStatus;
             const periodChannel = period.channel as PeriodChannel;
             const totalRegistrations = period.registrations_count ?? 0;
+            const isModifiable = canModifyPeriod(period);
 
             return (
             <motion.div
@@ -948,7 +1139,7 @@ export default function AdminRegistrationPeriodsPage() {
 
               {/* Nút hành động theo trạng thái */}
               <div className="mt-4 flex flex-wrap items-center justify-end gap-2.5 border-t border-[#eef3fb] pt-3.5">
-                {period.status === "pending" && (
+                {isModifiable && (
                   <>
                     <button type="button" onClick={() => openEdit(period)}
                       className={secondaryActionClass}>
@@ -992,16 +1183,6 @@ export default function AdminRegistrationPeriodsPage() {
                         </span>
                       );
                     })()}
-                    <button type="button" onClick={() => openEdit(period)}
-                      className={secondaryActionClass}>
-                      Sửa
-                    </button>
-                    <button type="button"
-                      disabled={deletingId === period.id}
-                      onClick={() => void handleDelete(period.id)}
-                      className={dangerActionClass}>
-                      {deletingId === period.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Xóa
-                    </button>
                   </>
                 )}
                 {period.status === "processing" && (
@@ -1032,30 +1213,12 @@ export default function AdminRegistrationPeriodsPage() {
                       className={primaryActionClass}>
                       {confirmingBatchId === period.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Xác nhận tất cả
                     </button>
-                    <button type="button" onClick={() => openEdit(period)}
-                      className={secondaryActionClass}>
-                      Sửa
-                    </button>
                   </>
                 )}
                 {period.status === "closed" && period.channel === "main" && (
                   <Link to={`/admin/registrations?period=${period.id}&channel=${period.channel}`} className={secondaryActionClass}>
                     Xem kết quả
                   </Link>
-                )}
-                {period.status === "closed" && period.channel === "rolling" && (
-                  <>
-                    <button type="button" onClick={() => openEdit(period)}
-                      className={secondaryActionClass}>
-                      Sửa
-                    </button>
-                    <button type="button"
-                      disabled={deletingId === period.id}
-                      onClick={() => void handleDelete(period.id)}
-                      className={dangerActionClass}>
-                      {deletingId === period.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Xóa
-                    </button>
-                  </>
                 )}
               </div>
             </motion.div>
@@ -1105,13 +1268,16 @@ export default function AdminRegistrationPeriodsPage() {
 
                 <>
                     {/* Channel */}
-                    <div>
+                    <div ref={setFieldRef("channel")}>
                       <label className="mb-1 block text-xs font-semibold text-[#324B76]">Kênh</label>
                       <div className="relative">
                         <select
                           value={form.channel}
-                          onChange={(e) => setForm((prev) => ({ ...prev, channel: e.target.value as PeriodChannel }))}
-                          className="w-full appearance-none rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-3 py-1.5 pr-7 text-sm text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
+                          onChange={(e) => {
+                            setForm((prev) => ({ ...prev, channel: e.target.value as PeriodChannel }));
+                            setFormErrors((prev) => ({ ...prev, channel: undefined }));
+                          }}
+                          className={selectClass("channel")}
                         >
                           <option value="main">Đợt chính</option>
                           <option value="rolling">Quanh năm</option>
@@ -1124,7 +1290,7 @@ export default function AdminRegistrationPeriodsPage() {
                     {/* School year & Semester */}
                     <div className="grid grid-cols-2 gap-2.5">
                       {field("school_year", "Năm học (vd: 2025-2026)")}
-                      <div>
+                      <div ref={setFieldRef("semester")}>
                         <label className="mb-1 block text-xs font-semibold text-[#324B76]">Học kỳ</label>
                         <div className="relative">
                           <select
@@ -1133,7 +1299,7 @@ export default function AdminRegistrationPeriodsPage() {
                               setForm((prev) => ({ ...prev, semester: e.target.value }));
                               setFormErrors((prev) => ({ ...prev, semester: undefined }));
                             }}
-                            className="w-full appearance-none rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-3 py-1.5 pr-7 text-sm text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
+                            className={selectClass("semester")}
                           >
                             <option value="">Chọn học kỳ</option>
                             <option value="1">Học kỳ 1</option>
@@ -1149,67 +1315,61 @@ export default function AdminRegistrationPeriodsPage() {
 
                 {/* Intake dates */}
                 <div className="grid grid-cols-2 gap-2.5">
-                  {field("start_date", "Ngày bắt đầu nhận đơn", "date", undefined, (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })())}
-                  {field("end_date", "Ngày kết thúc nhận đơn", "date", undefined, (() => {
-                    const startVal = toDateInputValue(form.start_date);
-                    if (startVal) { const d = new Date(startVal); d.setDate(d.getDate() + 1); return d; }
-                    const d = new Date(); d.setHours(0,0,0,0); return d;
-                  })())}
+                  {field("start_date", "Ngày bắt đầu nhận đơn", "date", undefined, startDateMinDate)}
+                  {field("end_date", "Ngày kết thúc nhận đơn", "date", undefined, endDateMinDate)}
                 </div>
 
                 {/* Processing days, stay dates, bed selection */}
                 <>
                     {/* Processing days */}
-                    <div>
+                    <div ref={setFieldRef("processing_days")}>
                       <label className="mb-1 block text-xs font-semibold text-[#324B76]">Số ngày xử lý đơn & phân phòng</label>
                       <input
                         type="number"
                         min={1}
+                        step={1}
+                        inputMode="numeric"
                         value={form.processing_days ?? ""}
-                        onChange={(e) =>
-                          setForm((prev) => ({
-                            ...prev,
-                            processing_days: e.target.value === "" ? null : Number(e.target.value),
-                          }))
-                        }
-                        className="w-full rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-3 py-1.5 text-sm text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
+                        onKeyDown={preventInvalidNumberKey}
+                        onPaste={preventInvalidNumberPaste}
+                        onChange={(e) => handleNumberChange("processing_days", e.target.value)}
+                        className={inputClass("processing_days")}
                         placeholder="Nhập số ngày"
                       />
                       {formErrors.processing_days && <p className="mt-1 text-xs text-rose-600">{formErrors.processing_days}</p>}
                     </div>
 
                     {/* Bed selection days */}
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-[#324B76]">Số ngày chọn giường (tuỳ chọn)</label>
+                    <div ref={setFieldRef("bed_selection_days")}>
+                      <label className="mb-1 block text-xs font-semibold text-[#324B76]">Số ngày chọn giường</label>
                       <input
                         type="number"
-                        min={0}
+                        min={1}
+                        step={1}
+                        inputMode="numeric"
                         value={form.bed_selection_days ?? ""}
-                        onChange={(e) =>
-                          setForm((prev) => ({
-                            ...prev,
-                            bed_selection_days: e.target.value === "" ? null : Number(e.target.value),
-                          }))
-                        }
-                        className="w-full rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-3 py-1.5 text-sm text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
-                        placeholder="Để trống nếu không giới hạn"
+                        onKeyDown={preventInvalidNumberKey}
+                        onPaste={preventInvalidNumberPaste}
+                        onChange={(e) => handleNumberChange("bed_selection_days", e.target.value)}
+                        className={inputClass("bed_selection_days")}
+                        placeholder="Nhập số ngày"
                       />
+                      {formErrors.bed_selection_days && <p className="mt-1 text-xs text-rose-600">{formErrors.bed_selection_days}</p>}
                     </div>
 
                     {/* Initial payment due days */}
-                    <div>
+                    <div ref={setFieldRef("initial_payment_due_days")}>
                       <label className="mb-1 block text-xs font-semibold text-[#324B76]">Số ngày thanh toán hóa đơn đầu</label>
                       <input
                         type="number"
                         min={1}
+                        step={1}
+                        inputMode="numeric"
                         value={form.initial_payment_due_days ?? ""}
-                        onChange={(e) =>
-                          setForm((prev) => ({
-                            ...prev,
-                            initial_payment_due_days: e.target.value === "" ? null : Number(e.target.value),
-                          }))
-                        }
-                        className={`w-full rounded-xl border px-3 py-1.5 text-sm text-[#1f3152] focus:border-[#244cb8] focus:outline-none ${formErrors.initial_payment_due_days ? "border-rose-400 bg-rose-50" : "border-[#cfdcf0] bg-[#f7faff]"}`}
+                        onKeyDown={preventInvalidNumberKey}
+                        onPaste={preventInvalidNumberPaste}
+                        onChange={(e) => handleNumberChange("initial_payment_due_days", e.target.value)}
+                        className={inputClass("initial_payment_due_days")}
                         placeholder="Nhập số ngày"
                       />
                       {formErrors.initial_payment_due_days && (
@@ -1221,59 +1381,69 @@ export default function AdminRegistrationPeriodsPage() {
                     <div className="rounded-xl border border-[#cfdcf0] bg-[#f7faff] p-2.5">
                       <p className="mb-2 text-xs font-semibold text-[#324B76]">Thời gian lưu trú</p>
                       <div className="grid grid-cols-2 gap-2.5">
-                        {field("stay_start_date", "Bắt đầu lưu trú", "date", undefined, (() => {
-                          const endVal = toDateInputValue(form.end_date);
-                          const gap = form.processing_days ?? 0;
-                          if (endVal && gap > 0) { const d = new Date(endVal); d.setDate(d.getDate() + gap); return d; }
-                          if (endVal) { const d = new Date(endVal); d.setDate(d.getDate() + 1); return d; }
-                          const d = new Date(); d.setHours(0,0,0,0); return d;
-                        })())}
+                        {field("stay_start_date", "Bắt đầu lưu trú", "date", undefined, stayStartMinDate)}
                         {form.channel === "rolling" ? (
-                          <div>
+                          <div ref={setFieldRef("stay_end_date")}>
                             <label className="mb-1 block text-xs font-semibold text-[#324B76]">Kết thúc lưu trú</label>
-                            <div className="w-full cursor-not-allowed rounded-xl border border-[#cfdcf0] bg-[#eef2f8] px-3 py-1.5 text-sm text-[#5d7299]">
+                            <div className={`w-full cursor-not-allowed rounded-xl border px-3 py-1.5 text-sm text-[#5d7299] ${
+                              formErrors.stay_end_date ? "border-rose-400 bg-rose-50" : "border-[#cfdcf0] bg-[#eef2f8]"
+                            }`}>
                               {form.stay_end_date ? getDateFieldText(form.stay_end_date) : "Chưa xác định (đợt chính chưa có ngày kết thúc)"}
                             </div>
                             <p className="mt-1 text-[11px] text-[#8598bd]">Tự động theo đợt chính cùng năm học, không thể chỉnh sửa.</p>
                             {formErrors.stay_end_date && <p className="mt-1 text-xs text-rose-600">{formErrors.stay_end_date}</p>}
                           </div>
                         ) : (
-                          field("stay_end_date", "Kết thúc lưu trú", "date", undefined, (() => {
-                            const stayStartVal = toDateInputValue(form.stay_start_date);
-                            if (stayStartVal) { const d = new Date(stayStartVal); d.setDate(d.getDate() + 1); return d; }
-                            const d = new Date(); d.setHours(0,0,0,0); return d;
-                          })())
+                          field("stay_end_date", "Kết thúc lưu trú", "date", undefined, stayEndMinDate)
                         )}
                       </div>
                     </div>
                   </>
 
                   {/* Tân sinh viên */}
-                  <div className="rounded-xl border border-[#cfdcf0] bg-[#f7faff] p-2.5">
-                    <p className="mb-2 text-xs font-semibold text-[#324B76]">Cài đặt tân sinh viên</p>
+                  <div ref={(node) => {
+                    formFieldRefs.current.allow_admission_candidates = node;
+                    formFieldRefs.current.requires_student_code = node;
+                  }} className={`rounded-xl border p-2.5 ${
+                    formErrors.allow_admission_candidates || formErrors.requires_student_code
+                      ? "border-rose-400 bg-rose-50"
+                      : "border-[#cfdcf0] bg-[#f7faff]"
+                  }`}>
+                    <p className="mb-2 text-xs font-semibold text-[#324B76]">Đối tượng đăng ký</p>
                     <div className="space-y-2.5">
                       <label className="flex cursor-pointer items-center gap-2.5">
                         <input
                           type="checkbox"
                           checked={form.allow_admission_candidates ?? false}
-                          onChange={(e) => setForm((prev) => ({ ...prev, allow_admission_candidates: e.target.checked }))}
+                          onChange={(e) => {
+                            setForm((prev) => ({ ...prev, allow_admission_candidates: e.target.checked }));
+                            setFormErrors((prev) => ({ ...prev, allow_admission_candidates: undefined }));
+                          }}
                           className="h-4 w-4 rounded border-[#cfdcf0] accent-[#244cb8]"
                         />
                         <span className="text-xs font-semibold text-[#324B76]">
-                          Cho phép tân sinh viên chưa có MSSV đăng ký
+                          Tân sinh viên
                         </span>
                       </label>
                       <label className="flex cursor-pointer items-center gap-2.5">
                         <input
                           type="checkbox"
                           checked={form.requires_student_code ?? true}
-                          onChange={(e) => setForm((prev) => ({ ...prev, requires_student_code: e.target.checked }))}
+                          onChange={(e) => {
+                            setForm((prev) => ({ ...prev, requires_student_code: e.target.checked }));
+                            setFormErrors((prev) => ({ ...prev, requires_student_code: undefined }));
+                          }}
                           className="h-4 w-4 rounded border-[#cfdcf0] accent-[#244cb8]"
                         />
                         <span className="text-xs font-semibold text-[#324B76]">
-                          Yêu cầu MSSV khi đăng ký
+                          Sinh viên đang học (năm 1-4)
                         </span>
                       </label>
+                      {(formErrors.allow_admission_candidates || formErrors.requires_student_code) && (
+                        <p className="text-xs text-rose-600">
+                          {formErrors.allow_admission_candidates || formErrors.requires_student_code}
+                        </p>
+                      )}
                     </div>
                   </div>
               </div>
