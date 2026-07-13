@@ -83,9 +83,12 @@ export type LatestRegistration = {
   status: "submitted" | "approved" | "rejected";
   rejection_reason: string | null;
   assigned_room_id: number | null;
+  assigned_room_name: string | null;
   bed_id: number | null;
+  selected_bed_number: string | null;
   bed_approval_status: "pending" | "approved" | "rejected" | null;
   occupancy_status: string | null;
+  bed_selection_deadline: string | null;
 };
 
 export type StudentDashboardData = {

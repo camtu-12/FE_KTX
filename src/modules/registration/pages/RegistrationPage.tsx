@@ -192,9 +192,9 @@ const backendFieldToFormField: Partial<Record<string, keyof FormData>> = {
   mother_birth_year: "mother_birth_year",
   mother_job: "mother_job",
   mother_phone: "mother_phone",
-  parent_name: "relationName",
-  parent_phone: "relationPhone",
-  parent_relationship: "relationship",
+  emergency_contact_name: "relationName",
+  emergency_contact_phone: "relationPhone",
+  emergency_contact_relationship: "relationship",
   parent_address: "familyContactAddress",
   stay_from_date: "dormStartDate",
   stay_to_date: "dormEndDate",
@@ -387,6 +387,10 @@ export default function RegistrationPage() {
   const [isCheckingMssv, setIsCheckingMssv] = useState(false);
   const [studentDataReadonly, setStudentDataReadonly] = useState(false);
   const [autoLoaded, setAutoLoaded] = useState(false);
+  // Field cha/mẹ + liên hệ khẩn cấp chỉ readonly từng field một, tùy field đó đã có
+  // sẵn dữ liệu (khác null/rỗng) trong students hay chưa — khác với 14 field Bước 1
+  // vốn luôn readonly một khi đã autoLoaded (vì các cột đó not-null ngay từ lúc tạo tài khoản).
+  const [prefilledFamilyFieldNames, setPrefilledFamilyFieldNames] = useState<Set<keyof FormData>>(new Set());
   const [priorityCriteriaList, setPriorityCriteriaList] = useState<PriorityCriteria[]>([]);
   const [selectedCriteriaIds, setSelectedCriteriaIds] = useState<number[]>([]);
   const [evidenceFiles, setEvidenceFiles] = useState<Record<number, File[]>>({});
@@ -463,6 +467,31 @@ export default function RegistrationPage() {
         return val;
       };
 
+      const family = profile.family;
+
+      // Chỉ những field thật sự có giá trị (khác null/rỗng) trong students mới bị khóa
+      // readonly — field null vẫn cho nhập tay như trước (VD sinh viên chưa được seed).
+      const familyFieldSource: Partial<Record<keyof FormData, string | null | undefined>> = {
+        father_name: family?.father_name,
+        father_birth_year: family?.father_birth_year,
+        father_job: family?.father_job,
+        father_phone: family?.father_phone,
+        mother_name: family?.mother_name,
+        mother_birth_year: family?.mother_birth_year,
+        mother_job: family?.mother_job,
+        mother_phone: family?.mother_phone,
+        familyContactAddress: family?.parent_address,
+        relationName: family?.emergency_contact_name,
+        relationPhone: family?.emergency_contact_phone,
+        relationship: family?.emergency_contact_relationship,
+      };
+      const nextPrefilledFamilyFields = new Set<keyof FormData>();
+      (Object.keys(familyFieldSource) as Array<keyof FormData>).forEach((key) => {
+        const val = familyFieldSource[key];
+        if (val && val.trim() !== "") nextPrefilledFamilyFields.add(key);
+      });
+      setPrefilledFamilyFieldNames(nextPrefilledFamilyFields);
+
       setFormData((prev) => ({
         ...prev,
         mssv: student.student_code ?? trimmed,
@@ -479,6 +508,18 @@ export default function RegistrationPage() {
         cccdIssueDate: mapDate(student.cccd_issued_date),
         cccdIssuePlace: student.cccd_issued_place ?? prev.cccdIssuePlace,
         address: student.permanent_address ?? prev.address,
+        father_name: family?.father_name ?? prev.father_name,
+        father_birth_year: family?.father_birth_year ?? prev.father_birth_year,
+        father_job: family?.father_job ?? prev.father_job,
+        father_phone: family?.father_phone ?? prev.father_phone,
+        mother_name: family?.mother_name ?? prev.mother_name,
+        mother_birth_year: family?.mother_birth_year ?? prev.mother_birth_year,
+        mother_job: family?.mother_job ?? prev.mother_job,
+        mother_phone: family?.mother_phone ?? prev.mother_phone,
+        familyContactAddress: family?.parent_address ?? prev.familyContactAddress,
+        relationName: family?.emergency_contact_name ?? prev.relationName,
+        relationPhone: family?.emergency_contact_phone ?? prev.relationPhone,
+        relationship: family?.emergency_contact_relationship ?? prev.relationship,
       }));
 
       setStudentDataReadonly(true);
@@ -947,6 +988,11 @@ export default function RegistrationPage() {
     let commitmentError = "";
 
     for (const field of requiredFields) {
+      // Field cha/mẹ/liên hệ khẩn cấp đang readonly (đã có sẵn từ students) thì bỏ qua
+      // bắt buộc ở đây — giá trị chắc chắn có sẵn, không phải do người dùng vừa xóa trống.
+      if (prefilledFamilyFieldNames.has(field)) {
+        continue;
+      }
       if (!formData[field].trim()) {
         nextErrors[field] = `Vui lòng điền ${formFieldLabels[field]}`;
         continue;
@@ -971,22 +1017,28 @@ export default function RegistrationPage() {
       nextErrors.phone = "Số điện thoại phải gồm đúng 10 chữ số.";
     }
 
-    if (!formData.father_phone.trim()) {
-      nextErrors.father_phone = "Vui lòng nhập số điện thoại cha.";
-    } else if (!phoneRegex.test(formData.father_phone.trim())) {
-      nextErrors.father_phone = "Số điện thoại cha phải gồm đúng 10 chữ số.";
+    if (!prefilledFamilyFieldNames.has("father_phone")) {
+      if (!formData.father_phone.trim()) {
+        nextErrors.father_phone = "Vui lòng nhập số điện thoại cha.";
+      } else if (!phoneRegex.test(formData.father_phone.trim())) {
+        nextErrors.father_phone = "Số điện thoại cha phải gồm đúng 10 chữ số.";
+      }
     }
 
-    if (!formData.mother_phone.trim()) {
-      nextErrors.mother_phone = "Vui lòng nhập số điện thoại mẹ.";
-    } else if (!phoneRegex.test(formData.mother_phone.trim())) {
-      nextErrors.mother_phone = "Số điện thoại mẹ phải gồm đúng 10 chữ số.";
+    if (!prefilledFamilyFieldNames.has("mother_phone")) {
+      if (!formData.mother_phone.trim()) {
+        nextErrors.mother_phone = "Vui lòng nhập số điện thoại mẹ.";
+      } else if (!phoneRegex.test(formData.mother_phone.trim())) {
+        nextErrors.mother_phone = "Số điện thoại mẹ phải gồm đúng 10 chữ số.";
+      }
     }
 
-    if (!formData.relationPhone.trim()) {
-      nextErrors.relationPhone = "Vui lòng nhập SĐT người liên hệ.";
-    } else if (!phoneRegex.test(formData.relationPhone.trim())) {
-      nextErrors.relationPhone = "Số điện thoại liên hệ phải gồm đúng 10 chữ số.";
+    if (!prefilledFamilyFieldNames.has("relationPhone")) {
+      if (!formData.relationPhone.trim()) {
+        nextErrors.relationPhone = "Vui lòng nhập SĐT người liên hệ.";
+      } else if (!phoneRegex.test(formData.relationPhone.trim())) {
+        nextErrors.relationPhone = "Số điện thoại liên hệ phải gồm đúng 10 chữ số.";
+      }
     }
 
     if (!formData.cccd.trim()) {
@@ -1106,9 +1158,9 @@ export default function RegistrationPage() {
       form.append("religion", formData.religion);
       form.append("permanent_address", formData.address);
 
-      form.append("parent_name", formData.relationName);
-      form.append("parent_phone", formData.relationPhone);
-      form.append("parent_relationship", formData.relationship);
+      form.append("emergency_contact_name", formData.relationName);
+      form.append("emergency_contact_phone", formData.relationPhone);
+      form.append("emergency_contact_relationship", formData.relationship);
 
       form.append("father_name", formData.father_name);
       form.append("father_phone", formData.father_phone);
@@ -1284,10 +1336,12 @@ export default function RegistrationPage() {
       "address",
     ]);
     const isPrefilled = (
-      studentDataReadonly ||
-      autoLoaded ||
-      Boolean(studentCodeFromAuth && formData.mssv && studentCodeFromAuth === formData.mssv)
-    ) && prefilledFieldNames.has(config.name);
+      (
+        studentDataReadonly ||
+        autoLoaded ||
+        Boolean(studentCodeFromAuth && formData.mssv && studentCodeFromAuth === formData.mssv)
+      ) && prefilledFieldNames.has(config.name)
+    ) || prefilledFamilyFieldNames.has(config.name);
 
     // If MSSV was auto-loaded from auth, hide the visible MSSV field but keep a hidden input for submission
     if (config.name === "mssv" && (studentDataReadonly || (studentCodeFromAuth && studentCodeFromAuth === formData.mssv))) {

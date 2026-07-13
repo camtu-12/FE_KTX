@@ -44,6 +44,15 @@ function formatDate(date: string | null | undefined): string {
   return d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+function formatDateTimeForSentence(date: string | null | undefined): string | null {
+  if (!date) return null;
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return null;
+  const time = d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+  const day = d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return `${time} ${day}`;
+}
+
 function getOutstandingAmount(invoice: CurrentInvoice | null): number {
   if (!invoice) return 0;
 
@@ -252,9 +261,10 @@ function getRegistrationHeroState(registration: LatestRegistration | null) {
   }
 
   if (registration.occupancy_status === "PENDING_PAYMENT") {
+    const roomName = registration.assigned_room_name || "phòng đã phân";
     return {
-      title: "Vui lòng thanh toán để hoàn tất lưu trú",
-      description: "Bạn đã chọn giường. Thanh toán hóa đơn tháng đầu để kích hoạt lưu trú.",
+      title: "Bạn đã hoàn tất chọn giường",
+      description: `Bạn đã hoàn tất chọn giường tại phòng ${roomName}.\nChúc bạn có thời gian học tập và sinh hoạt tốt tại KTX.`,
       buttonLabel: "Thanh toán ngay",
       to: "/student/payment",
       secondaryLabel: "Xem hồ sơ",
@@ -265,11 +275,17 @@ function getRegistrationHeroState(registration: LatestRegistration | null) {
   }
 
   if (registration.occupancy_status === "ROOM_CONFIRMED") {
+    const roomName = registration.assigned_room_name || "chưa xác định";
+    const deadline = formatDateTimeForSentence(registration.bed_selection_deadline);
+    const reminder = deadline
+      ? `Vui lòng chọn giường trước ${deadline} để hoàn tất thủ tục lưu trú.`
+      : "Vui lòng chọn giường để hoàn tất thủ tục lưu trú.";
+
     return {
-      title: "Bạn đã được phân phòng!",
-      description: "Vui lòng vào chọn giường để hoàn tất thủ tục lưu trú.",
+      title: "Bạn đã được phân phòng ký túc xá",
+      description: `Bạn đã được phân vào phòng: ${roomName}.\n\n${reminder}`,
       buttonLabel: "Chọn giường",
-      to: "/student/room",
+      to: "/student/select-bed",
       secondaryLabel: "Xem hồ sơ",
       secondaryTo: "/student/room-status",
       Icon: CheckCircle2,
@@ -306,7 +322,7 @@ function HeroBannerEmpty({ registration }: { registration: LatestRegistration | 
           <Icon className="h-8 w-8 text-white" />
         </div>
         <h1 className="text-2xl font-extrabold tracking-tight">{state.title}</h1>
-        <p className="mt-2 max-w-xl text-[15px] font-medium leading-6 text-blue-100">{state.description}</p>
+        <p className="mt-2 max-w-xl whitespace-pre-line text-[15px] font-medium leading-6 text-blue-100">{state.description}</p>
         <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
           <Link
             to={state.to}

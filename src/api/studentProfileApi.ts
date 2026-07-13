@@ -36,6 +36,9 @@ export type StudentProfileFamily = {
   mother_job: string | null;
   mother_phone: string | null;
   parent_address: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+  emergency_contact_relationship: string | null;
 };
 
 export type StudentProfileResidence = {

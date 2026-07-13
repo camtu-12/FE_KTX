@@ -28,6 +28,9 @@ export type CandidateVerifyResult = {
   courseYear: string | null;
   schoolYear: string | null;
   gender: string | null;
+  cccd: string | null;
+  phone: string | null;
+  permanentAddress: string | null;
 };
 
 export type DormReservation = {
@@ -180,8 +183,6 @@ type PaginatedResponse<T> = {
 
 export const verifyAdmissionCandidate = async (payload: {
   admission_code: string;
-  date_of_birth?: string;
-  cccd?: string;
 }): Promise<CandidateVerifyResult> => {
   const res = await API.post("/admission-candidates/verify", payload);
   const d = res.data as {
@@ -193,6 +194,9 @@ export const verifyAdmissionCandidate = async (payload: {
     course_year: string | null;
     school_year: string | null;
     gender: string | null;
+    cccd: string | null;
+    phone: string | null;
+    permanent_address: string | null;
   };
   return {
     id: d.id,
@@ -203,15 +207,15 @@ export const verifyAdmissionCandidate = async (payload: {
     courseYear: d.course_year,
     schoolYear: d.school_year,
     gender: d.gender,
+    cccd: d.cccd,
+    phone: d.phone,
+    permanentAddress: d.permanent_address,
   };
 };
 
 export const createDormReservation = async (payload: {
   admission_code: string;
-  date_of_birth?: string;
-  cccd?: string;
   registration_period_id: number;
-  phone?: string;
   email?: string;
   priority_note?: string;
   father_name?: string;

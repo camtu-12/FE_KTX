@@ -229,13 +229,22 @@ function ConfirmBedModal({
   );
 }
 
-function useDeadlineCountdown(roomAssignedAt: string | null | undefined, bedSelectionDays: number | null | undefined) {
+function useDeadlineCountdown(
+  bedSelectionDeadline: string | null | undefined,
+  roomAssignedAt: string | null | undefined,
+  bedSelectionDays: number | null | undefined,
+) {
   const deadline = useMemo(() => {
+    if (bedSelectionDeadline) {
+      const d = new Date(bedSelectionDeadline);
+      if (!Number.isNaN(d.getTime())) return d;
+    }
     if (!roomAssignedAt || bedSelectionDays === null || bedSelectionDays === undefined) return null;
     const d = new Date(roomAssignedAt);
     d.setDate(d.getDate() + bedSelectionDays);
+    d.setHours(17, 0, 0, 0);
     return d;
-  }, [bedSelectionDays, roomAssignedAt]);
+  }, [bedSelectionDeadline, bedSelectionDays, roomAssignedAt]);
 
   const [remaining, setRemaining] = useState<string>("");
   const [isExpired, setIsExpired] = useState(false);
@@ -437,9 +446,13 @@ export default function BedSelectionPage() {
     return (bedId: number) => occupied.has(bedId);
   }, [assignedBeds]);
 
-  // Deadline countdown — uses room_assigned_at from BE and the period's bed_selection_days.
+  // Deadline countdown — prefer BE deadline; fallback keeps the shared 17:00 cutoff.
   const roomAssignedAt = request?.room_assigned_at ?? null;
-  const { remaining, isExpired } = useDeadlineCountdown(roomAssignedAt, request?.bed_selection_days);
+  const { remaining, isExpired } = useDeadlineCountdown(
+    request?.bed_selection_deadline,
+    roomAssignedAt,
+    request?.bed_selection_days,
+  );
 
   useEffect(() => {
     if (errorMessage && errorRef.current) {

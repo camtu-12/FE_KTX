@@ -85,6 +85,7 @@ export type RegistrationRequest = {
   auto_decision_reason?: string | null;
   registration_period_id?: number | null;
   bed_selection_days?: number | null;
+  bed_selection_deadline?: string | null;
   room_assigned_at?: string | null;
   blacklist?: BlacklistInfo | null;
   channel?: 'main' | 'rolling' | null;

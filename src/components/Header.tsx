@@ -563,7 +563,7 @@ export default function Header({
                                   {unread && <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-[#ff5a6b]" />}
                                 </div>
                                   <p className="mt-0.5 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-[#8aa4cc]">{notificationTypeLabel(item.type)}</p>
-                                  <p className="mt-0.5 line-clamp-2 text-[0.75rem] leading-snug text-[#6b7fa8]">{item.content}</p>
+                                  <p className="mt-0.5 whitespace-pre-line text-[0.75rem] leading-snug text-[#6b7fa8]">{item.content}</p>
                                   <p className="mt-1 text-[0.7rem] text-[#94a6c4]">{relativeTime(item.created_at)}</p>
                                 </div>
                               </button>

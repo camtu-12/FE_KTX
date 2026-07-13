@@ -223,9 +223,12 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
     registration.parent_address,
     student.parent_address,
   );
-  const relationName = firstDefinedString(existingFormData.relationName, registration.parent_name, student.parent_name);
-  const relationPhone = firstDefinedString(existingFormData.relationPhone, registration.parent_phone, student.parent_phone);
-  const relationship = firstDefinedString(existingFormData.relationship, registration.parent_relationship, student.parent_relationship, "parent");
+  // registration.parent_name/parent_phone/parent_relationship chưa từng tồn tại làm cột
+  // thật trên registrations (bug cũ) — đọc đúng emergency_contact_* mới, parent_* giữ lại
+  // cuối danh sách chỉ để tương thích ngược nếu có bản ghi cũ nào đó từng có giá trị này.
+  const relationName = firstDefinedString(existingFormData.relationName, registration.emergency_contact_name, student.emergency_contact_name, registration.parent_name, student.parent_name);
+  const relationPhone = firstDefinedString(existingFormData.relationPhone, registration.emergency_contact_phone, student.emergency_contact_phone, registration.parent_phone, student.parent_phone);
+  const relationship = firstDefinedString(existingFormData.relationship, registration.emergency_contact_relationship, student.emergency_contact_relationship, registration.parent_relationship, student.parent_relationship, "parent");
   const dormStartDate = firstDefinedString(existingFormData.dormStartDate, registration.stay_from_date, registration.dormStartDate);
   const dormEndDate = firstDefinedString(existingFormData.dormEndDate, registration.stay_to_date, registration.dormEndDate);
 
@@ -337,6 +340,7 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
     auto_decision_reason: firstDefinedString(registration.auto_decision_reason) || null,
     registration_period_id: toNumberOrNull(registration.registration_period_id) ?? null,
     bed_selection_days: toNumberOrNull(registration.bed_selection_days ?? registrationPeriod.bed_selection_days) ?? null,
+    bed_selection_deadline: firstDefinedString(registration.bed_selection_deadline) || null,
     room_assigned_at: firstDefinedString(registration.room_assigned_at, registration.occupancy_created_at) || null,
     blacklist: blacklist
       ? {

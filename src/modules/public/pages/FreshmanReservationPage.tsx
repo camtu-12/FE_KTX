@@ -90,7 +90,6 @@ export default function FreshmanReservationPage() {
 
   // verify form
   const [admissionCode, setAdmissionCode] = useState("");
-  const [cccd, setCccd] = useState("");
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [candidate, setCandidate] = useState<CandidateVerifyResult | null>(null);
@@ -99,7 +98,6 @@ export default function FreshmanReservationPage() {
   const [periods, setPeriods] = useState<Array<{ id: number; name: string; schoolYear: string; semester: string }>>([]);
   const [periodsLoading, setPeriodsLoading] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState<number | "">("");
-  const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
 
   // family info
@@ -181,13 +179,10 @@ export default function FreshmanReservationPage() {
   const handleVerify = async () => {
     setVerifyError(null);
     if (!admissionCode.trim()) { setVerifyError("Vui lòng nhập mã hồ sơ trúng tuyển."); return; }
-    if (!cccd.trim()) { setVerifyError("Vui lòng nhập số CCCD."); return; }
-    if (!/^\d{12}$/.test(cccd.trim())) { setVerifyError("Số CCCD phải gồm đúng 12 chữ số."); return; }
     setVerifyLoading(true);
     try {
       const result = await verifyAdmissionCandidate({
         admission_code: admissionCode.trim(),
-        cccd: cccd.trim(),
       });
       setCandidate(result);
       setStep("form");
@@ -292,7 +287,6 @@ export default function FreshmanReservationPage() {
     if (!motherJob.trim())       errors.mother_job      = "Vui lòng nhập nghề nghiệp mẹ.";
     if (!motherPhone.trim())     errors.mother_phone    = "Vui lòng nhập số điện thoại mẹ.";
     else if (!/^\d{10}$/.test(motherPhone.trim())) errors.mother_phone = "Số điện thoại mẹ phải gồm đúng 10 chữ số.";
-    if (phone.trim() && !/^\d{10}$/.test(phone.trim())) errors.phone = "Số điện thoại phải gồm đúng 10 chữ số.";
     if (!parentAddress.trim())   errors.parent_address  = "Vui lòng nhập địa chỉ thường trú.";
     if (!commitmentConfirm)      errors.commitment_confirm = "Vui lòng xác nhận cam kết trước khi gửi hồ sơ.";
     setFormErrors(errors);
@@ -302,9 +296,7 @@ export default function FreshmanReservationPage() {
     try {
       const payload: Parameters<typeof createDormReservation>[0] = {
         admission_code: admissionCode.trim(),
-        cccd: cccd.trim(),
         registration_period_id: selectedPeriod as number,
-        ...(phone.trim() ? { phone: phone.trim() } : {}),
         ...(email.trim() ? { email: email.trim() } : {}),
         father_name: fatherName.trim(),
         father_birth_year: fatherBirthYear.trim(),
@@ -360,8 +352,8 @@ export default function FreshmanReservationPage() {
 
   const resetAll = () => {
     setStep("verify"); setCandidate(null);
-    setAdmissionCode(""); setCccd("");
-    setSelectedPeriod(""); setPhone(""); setEmail("");
+    setAdmissionCode("");
+    setSelectedPeriod(""); setEmail("");
     setFatherName(""); setFatherBirthYear(""); setFatherJob(""); setFatherPhone("");
     setMotherName(""); setMotherBirthYear(""); setMotherJob(""); setMotherPhone("");
     setParentAddress(""); setCommitmentConfirm(false);
@@ -475,14 +467,6 @@ export default function FreshmanReservationPage() {
                   </div>
                 </div>
 
-                <div>
-                  <label className={regLabelCls}>Số CCCD/CMND <span className="text-red-500">*</span></label>
-                  <div className="relative">
-                    <IdCard className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#90A2BF]" />
-                    <input type="text" value={cccd} onChange={(e) => { setCccd(e.target.value); setVerifyError(null); }} placeholder="Nhập số CCCD 12 chữ số" className={regIconInput()} />
-                  </div>
-                </div>
-
                 {verifyError && (
                   <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-700">
                     <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {verifyError}
@@ -518,7 +502,10 @@ export default function FreshmanReservationPage() {
                   <div><dt className="text-[#62789f]">Ngày sinh</dt><dd className="font-semibold text-[#1a2d52]">{candidate.dateOfBirth}</dd></div>
                   <div><dt className="text-[#62789f]">Mã hồ sơ</dt><dd className="font-mono text-xs font-semibold text-[#1a2d52]">{candidate.admissionCode}</dd></div>
                   <div><dt className="text-[#62789f]">Giới tính</dt><dd className="font-semibold text-[#1a2d52]">{candidate.gender ? genderLabel[candidate.gender] : "—"}</dd></div>
-                  {candidate.majorName && <div className="sm:col-span-2"><dt className="text-[#62789f]">Ngành</dt><dd className="font-semibold text-[#1a2d52]">{candidate.majorName}</dd></div>}
+                  <div><dt className="text-[#62789f]">CCCD</dt><dd className="font-semibold text-[#1a2d52]">{candidate.cccd ?? "—"}</dd></div>
+                  <div><dt className="text-[#62789f]">Số điện thoại</dt><dd className="font-semibold text-[#1a2d52]">{candidate.phone ?? "—"}</dd></div>
+                  {candidate.majorName && <div><dt className="text-[#62789f]">Ngành</dt><dd className="font-semibold text-[#1a2d52]">{candidate.majorName}</dd></div>}
+                  <div className="sm:col-span-2"><dt className="text-[#62789f]">Địa chỉ thường trú</dt><dd className="font-semibold text-[#1a2d52]">{candidate.permanentAddress ?? "—"}</dd></div>
                 </dl>
               </div>
 
@@ -563,21 +550,11 @@ export default function FreshmanReservationPage() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <label className={regLabelCls}>Số điện thoại</label>
-                      <div className="relative">
-                        <Phone className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#90A2BF]" />
-                        <input type="tel" value={phone} onChange={(e) => { setPhone(e.target.value); setFormErrors((p) => ({ ...p, phone: "" })); }} placeholder="0901234567" className={regIconInput()} />
-                      </div>
-                      {formErrors.phone && <p className="mt-1 text-xs text-rose-600">{formErrors.phone}</p>}
-                    </div>
-                    <div>
-                      <label className={regLabelCls}>Email</label>
-                      <div className="relative">
-                        <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#90A2BF]" />
-                        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" className={regIconInput()} />
-                      </div>
+                  <div>
+                    <label className={regLabelCls}>Email</label>
+                    <div className="relative">
+                      <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#90A2BF]" />
+                      <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" className={regIconInput()} />
                     </div>
                   </div>
                 </div>
