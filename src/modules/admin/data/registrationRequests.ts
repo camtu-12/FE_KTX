@@ -26,9 +26,11 @@ export type RegistrationFormData = {
   cccdIssuePlace: string;
   address: string;
   father_name: string;
+  father_birth_year: string;
   father_phone: string;
   father_job: string;
   mother_name: string;
+  mother_birth_year: string;
   mother_phone: string;
   mother_job: string;
   familyContactAddress: string;

@@ -36,6 +36,7 @@ import AdminSystemAnnouncementsPage from "../modules/admin/pages/AdminSystemAnno
 import AdmissionCandidateManagementPage from "../modules/admin/pages/AdmissionCandidateManagementPage";
 import DormReservationManagementPage from "../modules/admin/pages/DormReservationManagementPage";
 import FreshmanReservationPage from "../modules/public/pages/FreshmanReservationPage";
+import FreshmanReservationStatusPage from "../modules/public/pages/FreshmanReservationStatusPage";
 import ApplicationDocumentsPage from "../modules/public/pages/ApplicationDocumentsPage";
 import ContactPage from "../modules/public/pages/ContactPage";
 import EligibilityPage from "../modules/public/pages/EligibilityPage";
@@ -70,6 +71,7 @@ export default function AppRoutes() {
           <Route path="ho-so-can-chuan-bi" element={<ApplicationDocumentsPage />} />
           <Route path="quy-trinh-xet-duyet" element={<RegistrationProcessPage />} />
           <Route path="freshman-reservation" element={<FreshmanReservationPage />} />
+          <Route path="freshman-reservation/status" element={<FreshmanReservationStatusPage />} />
         </Route>
 
         <Route path="/login" element={<LoginPage />} />

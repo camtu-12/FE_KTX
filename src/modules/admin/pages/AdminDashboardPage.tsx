@@ -8,7 +8,6 @@ import {
   CreditCard,
   FileText,
   LogOut,
-  Mail,
   RefreshCw,
   TrendingUp,
   Users,
@@ -432,7 +431,7 @@ export default function AdminDashboardPage() {
     );
   }
 
-  const { stats, alerts, queue, charts, finance } = data;
+  const { stats, alerts, charts, finance } = data;
 
   type AlertEntry = { count: number; label: string; to: string; icon: React.ElementType };
 
@@ -589,18 +588,6 @@ export default function AdminDashboardPage() {
           secondary="giường đang bảo trì"
         />
       </div>
-
-      {/* Cảnh báo hàng đợi email (queue worker) — chỉ hiện khi có tồn đọng, để phát hiện sớm
-          nếu Windows Service (queue:work) bị dừng mà không ai để ý. */}
-      {queue.failed_jobs > 0 || queue.pending_jobs > 20 ? (
-        <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-800">
-          <Mail size={14} className="shrink-0" />
-          <span>
-            Hàng đợi email: {queue.pending_jobs} đang chờ
-            {queue.failed_jobs > 0 ? `, ${queue.failed_jobs} lỗi` : ""} — kiểm tra queue worker (Windows Service) có đang chạy không.
-          </span>
-        </div>
-      ) : null}
 
       {/* ── 2. Alerts ──────────────────────────────────────────────────────── */}
       {hasAlerts ? (

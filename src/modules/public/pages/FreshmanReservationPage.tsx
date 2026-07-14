@@ -7,20 +7,18 @@ import {
   ClipboardList,
   FileText,
   GraduationCap,
-  Home,
   IdCard,
   ImagePlus,
   Loader2,
   LoaderCircle,
   Mail,
-  Phone,
   Search,
   Upload,
   User,
-  Users,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { getPriorityCriteria } from "../../../api/registrationApi";
 import { getRegistrationPeriods } from "../../../api/registrationApi";
 import {
@@ -33,8 +31,9 @@ import {
   type DormReservation,
   type ReservationPriority,
 } from "../../../api/dormReservationApi";
+import ReservationProgressCard from "../components/ReservationProgressCard";
 
-type Step = "verify" | "form" | "success";
+type Step = "verify" | "existing" | "form" | "success";
 type DocumentField = "portraitPhoto" | "cccdFrontPhoto" | "cccdBackPhoto";
 type BlurLevel = "ok" | "warn" | "blur" | "small" | "analyzing" | null;
 
@@ -63,8 +62,6 @@ const regCard =
 const regInputCls =
   "mt-1 h-11 w-full rounded-xl border border-[#D6E2F1] bg-[#F6F9FD] px-4 text-sm text-[#1F3152] placeholder:text-[#90A2BF] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] transition-all duration-300 ease-out hover:border-[#B9CDEE] hover:bg-white hover:shadow-[0_14px_28px_rgba(36,76,184,0.10)] focus:border-[#244CB8] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#244CB8]/14";
 const regLabelCls = "block text-sm font-medium text-[#5A7094]";
-const regTextareaCls =
-  "mt-1 min-h-[80px] w-full rounded-xl border border-[#D6E2F1] bg-[#F6F9FD] px-4 py-2.5 text-sm text-[#1F3152] placeholder:text-[#90A2BF] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] transition-all duration-300 ease-out hover:border-[#B9CDEE] hover:bg-white focus:border-[#244CB8] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#244CB8]/14";
 const regIconInput = (extra = "") =>
   `${regInputCls} pl-11 ${extra}`;
 
@@ -73,25 +70,16 @@ const primaryBtn =
 const secondaryBtn =
   "inline-flex items-center gap-2 rounded-2xl border border-[#c5d4f0] bg-[linear-gradient(135deg,#ffffff_0%,#f1f6ff_48%,#e8f0ff_100%)] px-5 py-2.5 text-sm font-semibold text-[#244CB8] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_22px_rgba(36,76,184,0.10)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#a9c0ea] hover:text-[#173D97] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_16px_28px_rgba(36,76,184,0.16)] active:scale-[0.98] disabled:opacity-50";
 
-function RegField({ label, error, fullWidth, children }: { label: string; error?: string; fullWidth?: boolean; children: React.ReactNode }) {
-  return (
-    <div className={fullWidth ? "md:col-span-2" : ""}>
-      <label className={regLabelCls}>{label} <span className="text-red-500">*</span></label>
-      {children}
-      {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
-    </div>
-  );
-}
-
 const genderLabel: Record<string, string> = { male: "Nam", female: "Nữ" };
-
 export default function FreshmanReservationPage() {
+  const navigate = useNavigate();
   const [step, setStep] = useState<Step>("verify");
 
   // verify form
   const [admissionCode, setAdmissionCode] = useState("");
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [verifyResult, setVerifyResult] = useState<CandidateVerifyResult | null>(null);
   const [candidate, setCandidate] = useState<CandidateVerifyResult | null>(null);
 
   // reservation form
@@ -99,17 +87,6 @@ export default function FreshmanReservationPage() {
   const [periodsLoading, setPeriodsLoading] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState<number | "">("");
   const [email, setEmail] = useState("");
-
-  // family info
-  const [fatherName, setFatherName] = useState("");
-  const [fatherBirthYear, setFatherBirthYear] = useState("");
-  const [fatherJob, setFatherJob] = useState("");
-  const [fatherPhone, setFatherPhone] = useState("");
-  const [motherName, setMotherName] = useState("");
-  const [motherBirthYear, setMotherBirthYear] = useState("");
-  const [motherJob, setMotherJob] = useState("");
-  const [motherPhone, setMotherPhone] = useState("");
-  const [parentAddress, setParentAddress] = useState("");
   const [commitmentConfirm, setCommitmentConfirm] = useState(false);
 
   const [submitLoading, setSubmitLoading] = useState(false);
@@ -178,14 +155,32 @@ export default function FreshmanReservationPage() {
 
   const handleVerify = async () => {
     setVerifyError(null);
+    setVerifyResult(null);
     if (!admissionCode.trim()) { setVerifyError("Vui lòng nhập mã hồ sơ trúng tuyển."); return; }
     setVerifyLoading(true);
     try {
       const result = await verifyAdmissionCandidate({
         admission_code: admissionCode.trim(),
       });
-      setCandidate(result);
-      setStep("form");
+      if (result.existingReservation) {
+        setCandidate(null);
+        setVerifyResult(result);
+        setStep("existing");
+        return;
+      }
+      if (result.verificationStatus === "admitted") {
+        setCandidate(result);
+        setStep("form");
+        return;
+      }
+
+      setCandidate(null);
+      setVerifyResult(result);
+      if (result.verificationStatus === "cancelled") {
+        setVerifyError("Hồ sơ trúng tuyển đã bị hủy hoặc không còn hiệu lực. Vui lòng liên hệ nhà trường để được hỗ trợ.");
+      } else if (result.verificationStatus === "not_found") {
+        setVerifyError("Không tìm thấy hồ sơ trúng tuyển phù hợp.");
+      }
     } catch (err: unknown) {
       setVerifyError(
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
@@ -277,17 +272,6 @@ export default function FreshmanReservationPage() {
     setSubmitError(null);
     const errors: Record<string, string> = {};
     if (!selectedPeriod)         errors.period          = "Vui lòng chọn đợt đăng ký.";
-    if (!fatherName.trim())      errors.father_name     = "Vui lòng nhập họ tên cha.";
-    if (!fatherBirthYear.trim()) errors.father_birth_year = "Vui lòng nhập năm sinh cha.";
-    if (!fatherJob.trim())       errors.father_job      = "Vui lòng nhập nghề nghiệp cha.";
-    if (!fatherPhone.trim())     errors.father_phone    = "Vui lòng nhập số điện thoại cha.";
-    else if (!/^\d{10}$/.test(fatherPhone.trim())) errors.father_phone = "Số điện thoại cha phải gồm đúng 10 chữ số.";
-    if (!motherName.trim())      errors.mother_name     = "Vui lòng nhập họ tên mẹ.";
-    if (!motherBirthYear.trim()) errors.mother_birth_year = "Vui lòng nhập năm sinh mẹ.";
-    if (!motherJob.trim())       errors.mother_job      = "Vui lòng nhập nghề nghiệp mẹ.";
-    if (!motherPhone.trim())     errors.mother_phone    = "Vui lòng nhập số điện thoại mẹ.";
-    else if (!/^\d{10}$/.test(motherPhone.trim())) errors.mother_phone = "Số điện thoại mẹ phải gồm đúng 10 chữ số.";
-    if (!parentAddress.trim())   errors.parent_address  = "Vui lòng nhập địa chỉ thường trú.";
     if (!commitmentConfirm)      errors.commitment_confirm = "Vui lòng xác nhận cam kết trước khi gửi hồ sơ.";
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) return;
@@ -298,15 +282,6 @@ export default function FreshmanReservationPage() {
         admission_code: admissionCode.trim(),
         registration_period_id: selectedPeriod as number,
         ...(email.trim() ? { email: email.trim() } : {}),
-        father_name: fatherName.trim(),
-        father_birth_year: fatherBirthYear.trim(),
-        father_job: fatherJob.trim(),
-        father_phone: fatherPhone.trim(),
-        mother_name: motherName.trim(),
-        mother_birth_year: motherBirthYear.trim(),
-        mother_job: motherJob.trim(),
-        mother_phone: motherPhone.trim(),
-        parent_address: parentAddress.trim(),
         commitment_confirm: true,
       };
       const res = await createDormReservation(payload);
@@ -352,11 +327,10 @@ export default function FreshmanReservationPage() {
 
   const resetAll = () => {
     setStep("verify"); setCandidate(null);
+    setVerifyResult(null);
     setAdmissionCode("");
     setSelectedPeriod(""); setEmail("");
-    setFatherName(""); setFatherBirthYear(""); setFatherJob(""); setFatherPhone("");
-    setMotherName(""); setMotherBirthYear(""); setMotherJob(""); setMotherPhone("");
-    setParentAddress(""); setCommitmentConfirm(false);
+    setCommitmentConfirm(false);
     setDocumentFiles(initDocFiles()); setDocumentErrors({}); setBlurStatus(initBlurStatus());
     setReservation(null); setCriteria([]); setSelectedCriteria(new Set());
     setEvidenceFiles(new Map()); setClaimedPriorities([]);
@@ -370,14 +344,14 @@ export default function FreshmanReservationPage() {
       teal: "border border-[#2a7cb8] bg-[radial-gradient(circle_at_30%_30%,#1f7ab8_0%,#1a6ca8_58%,#145994_100%)] text-[#a5dfff] shadow-[inset_0_1px_0_rgba(100,190,255,0.26),0_12px_24px_rgba(36,76,184,0.18)]",
     }[variant];
     return (
-      <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] ${bg}`}>
+      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] ${bg}`}>
         {icon}
       </div>
     );
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] px-4 py-8 sm:py-10">
+    <div className="relative min-h-[calc(100vh-110px)] overflow-hidden bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] px-4 py-5 sm:py-6">
       <div className="pointer-events-none absolute -left-24 top-10 h-72 w-72 rounded-full bg-[#2f63da]/10 blur-3xl" />
       <div className="pointer-events-none absolute right-[-7rem] top-28 h-80 w-80 rounded-full bg-[#31b7d4]/12 blur-3xl" />
       <div className="pointer-events-none absolute inset-0 opacity-[0.18] [background-image:linear-gradient(#2f63da0f_1px,transparent_1px),linear-gradient(90deg,#2f63da0f_1px,transparent_1px)] [background-size:34px_34px]" />
@@ -389,30 +363,31 @@ export default function FreshmanReservationPage() {
         className="relative mx-auto max-w-2xl"
       >
         {/* Header */}
-        <div className="mb-7 text-center sm:mb-8">
-          <span className="mb-5 inline-flex h-20 w-20 items-center justify-center rounded-[1.65rem] bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_62%,#31b7d4_100%)] text-white shadow-[0_22px_44px_rgba(36,76,184,0.28)] ring-8 ring-white/70">
-            <GraduationCap className="h-10 w-10" />
+        <div className="mb-5 text-center">
+          <span className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-[1.35rem] bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_62%,#31b7d4_100%)] text-white shadow-[0_18px_34px_rgba(36,76,184,0.24)] ring-8 ring-white/70">
+            <GraduationCap className="h-8 w-8" />
           </span>
-          <h1 className="text-[2.25rem] font-extrabold leading-tight text-[#15305f] sm:text-[2.5rem]">
+          <h1 className="text-[2rem] font-extrabold leading-tight text-[#15305f] sm:text-[2.25rem]">
             Đăng ký KTX tân sinh viên
           </h1>
-          <p className="mx-auto mt-3 max-w-xl text-base leading-7 text-[#5f7498]">
+          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#5f7498] sm:text-base">
             Dành cho tân sinh viên. Hồ sơ này sẽ tự động tạo đơn đăng ký lưu trú khi bạn xác nhận nhập học.
           </p>
         </div>
 
         {/* Step indicator */}
-        <div className="mb-7 flex items-center justify-center rounded-[1.35rem] border border-[#cfdcf0] bg-white/90 px-4 py-4 text-sm font-semibold shadow-[0_14px_34px_rgba(36,76,184,0.10)] backdrop-blur-xl">
-          {(["verify", "form", "success"] as Step[]).map((s, i) => {
+        <div className="mb-5 flex items-center justify-center rounded-[1.25rem] border border-[#cfdcf0] bg-white/90 px-4 py-3 text-sm font-semibold shadow-[0_12px_28px_rgba(36,76,184,0.10)] backdrop-blur-xl">
+          {(["verify", "form", "success"] as const).map((s, i) => {
             const labels = ["Xác minh", "Đăng ký", "Hoàn tất"];
-            const current = step === s;
-            const done = ["verify", "form", "success"].indexOf(step) > i;
+            const flowStep = step === "existing" ? "verify" : step;
+            const current = flowStep === s;
+            const done = ["verify", "form", "success"].indexOf(flowStep) > i;
             return (
               <div key={s} className="flex flex-1 items-center last:flex-none sm:flex-none">
                 <div className="flex min-w-0 flex-col items-center gap-2 sm:min-w-[6.5rem]">
                   <motion.span
                     layout
-                    className={`inline-flex h-11 w-11 items-center justify-center rounded-full border text-sm font-extrabold shadow-sm transition-all duration-300 ${
+                    className={`inline-flex h-10 w-10 items-center justify-center rounded-full border text-sm font-extrabold shadow-sm transition-all duration-300 ${
                       current
                         ? "border-[#244cb8] bg-[#244cb8] text-white shadow-[0_12px_24px_rgba(36,76,184,0.25)]"
                         : done
@@ -422,7 +397,7 @@ export default function FreshmanReservationPage() {
                   >
                     {done ? <CheckCircle2 className="h-5 w-5" /> : i + 1}
                   </motion.span>
-                  <span className={`truncate text-xs font-bold transition-colors duration-300 sm:text-sm ${current ? "text-[#244cb8]" : done ? "text-emerald-600" : "text-[#8fa0b8]"}`}>
+                  <span className={`truncate text-xs font-bold transition-colors duration-300 ${current ? "text-[#244cb8]" : done ? "text-emerald-600" : "text-[#8fa0b8]"}`}>
                     {labels[i]}
                   </span>
                 </div>
@@ -445,14 +420,14 @@ export default function FreshmanReservationPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.26, ease: "easeOut" }}
-              className="rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] sm:p-8"
+              className="rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-5 shadow-[0_14px_30px_rgba(36,76,184,0.08)] sm:p-6"
             >
-              <div className="mb-6 flex items-center gap-3">
+              <div className="mb-4 flex items-center gap-3">
                 <SectionIcon icon={<Search className="h-5 w-5 stroke-[2.2]" />} variant="blue" />
                 <h2 className="text-lg font-semibold text-[#1F3152]">Xác minh thí sinh trúng tuyển</h2>
               </div>
 
-              <div className="space-y-5">
+              <div className="space-y-4">
                 <div>
                   <label className={regLabelCls}>Mã hồ sơ trúng tuyển <span className="text-red-500">*</span></label>
                   <div className="relative">
@@ -460,7 +435,7 @@ export default function FreshmanReservationPage() {
                     <input
                       type="text"
                       value={admissionCode}
-                      onChange={(e) => { setAdmissionCode(e.target.value); setVerifyError(null); }}
+                      onChange={(e) => { setAdmissionCode(e.target.value); setVerifyError(null); setVerifyResult(null); }}
                       placeholder="Ví dụ: 01_TT_XTS_GBTT_00319"
                       className={regIconInput()}
                     />
@@ -473,11 +448,61 @@ export default function FreshmanReservationPage() {
                   </div>
                 )}
 
-                <button type="button" disabled={verifyLoading} onClick={() => void handleVerify()} className={`${primaryBtn} w-full h-11`}>
-                  {verifyLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                  Xác minh và tiếp tục
-                </button>
+                {verifyResult?.verificationStatus === "enrolled" && (
+                  <div className="rounded-[18px] border border-sky-200 bg-[linear-gradient(180deg,#f0f9ff_0%,#ffffff_100%)] p-4 text-[#1F3152] shadow-[0_12px_26px_rgba(36,76,184,0.08)]">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-sky-200 bg-sky-50 text-sky-600">
+                        <CheckCircle2 className="h-5 w-5 stroke-[2.4]" aria-hidden="true" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold">Bạn đã chính thức là sinh viên của trường.</p>
+                        <p className="mt-1 text-sm font-medium text-[#5C7094]">Vui lòng đăng ký ký túc xá bằng MSSV.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {verifyResult?.verificationStatus !== "enrolled" && (
+                  <>
+                    <button type="button" disabled={verifyLoading} onClick={() => void handleVerify()} className={`${primaryBtn} w-full h-11`}>
+                      {verifyLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                      Xác minh và tiếp tục
+                    </button>
+                    <p className="flex flex-wrap items-center justify-center gap-1.5 text-center text-sm font-medium text-[#5C7094]">
+                      <span>Đã đăng ký giữ chỗ trước đó?</span>
+                      <button
+                        type="button"
+                        onClick={() => navigate("/freshman-reservation/status")}
+                        className="inline-flex items-center gap-1 font-semibold text-[#244CB8] transition-colors hover:text-[#173D97]"
+                      >
+                        <Search className="h-4 w-4" />
+                        Tra cứu trạng thái hồ sơ
+                      </button>
+                    </p>
+                  </>
+                )}
               </div>
+            </motion.div>
+          )}
+
+          {step === "existing" && verifyResult?.existingReservation && (
+            <motion.div
+              key="existing"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.26, ease: "easeOut" }}
+              className="contents"
+            >
+              <ReservationProgressCard
+                reservation={verifyResult.existingReservation}
+                message={verifyResult.message}
+                onCheckAnother={resetAll}
+                onOpenLookup={() => navigate("/freshman-reservation/status", {
+                  state: { reservationCode: verifyResult.existingReservation?.reservationCode ?? "" },
+                })}
+                onLogin={() => navigate("/login")}
+              />
             </motion.div>
           )}
 
@@ -492,20 +517,36 @@ export default function FreshmanReservationPage() {
               className="space-y-5"
             >
               {/* Candidate info card */}
-              <div className="rounded-[22px] border border-emerald-200/80 bg-[linear-gradient(135deg,#f0fdf4_0%,#ffffff_100%)] p-5 shadow-[0_14px_30px_rgba(16,185,129,0.10)] sm:p-6">
-                <div className="mb-4 flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                  <span className="font-semibold text-emerald-800">Đã xác minh — Thông tin thí sinh</span>
+              <div className="rounded-[22px] border border-emerald-200 bg-[linear-gradient(180deg,#ffffff_0%,#f3fcf7_100%)] p-5 shadow-[0_14px_30px_rgba(16,185,129,0.10)] sm:p-6">
+                <div className="mb-5 flex items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
+                    <CheckCircle2 className="h-5 w-5 stroke-[2.4]" aria-hidden="true" />
+                  </div>
+                  <h2 className="text-lg font-semibold text-[#1F3152]">Thông tin thí sinh đã xác minh</h2>
                 </div>
-                <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-                  <div><dt className="text-[#62789f]">Họ tên</dt><dd className="font-semibold text-[#1a2d52]">{candidate.fullName}</dd></div>
-                  <div><dt className="text-[#62789f]">Ngày sinh</dt><dd className="font-semibold text-[#1a2d52]">{candidate.dateOfBirth}</dd></div>
-                  <div><dt className="text-[#62789f]">Mã hồ sơ</dt><dd className="font-mono text-xs font-semibold text-[#1a2d52]">{candidate.admissionCode}</dd></div>
-                  <div><dt className="text-[#62789f]">Giới tính</dt><dd className="font-semibold text-[#1a2d52]">{candidate.gender ? genderLabel[candidate.gender] : "—"}</dd></div>
-                  <div><dt className="text-[#62789f]">CCCD</dt><dd className="font-semibold text-[#1a2d52]">{candidate.cccd ?? "—"}</dd></div>
-                  <div><dt className="text-[#62789f]">Số điện thoại</dt><dd className="font-semibold text-[#1a2d52]">{candidate.phone ?? "—"}</dd></div>
-                  {candidate.majorName && <div><dt className="text-[#62789f]">Ngành</dt><dd className="font-semibold text-[#1a2d52]">{candidate.majorName}</dd></div>}
-                  <div className="sm:col-span-2"><dt className="text-[#62789f]">Địa chỉ thường trú</dt><dd className="font-semibold text-[#1a2d52]">{candidate.permanentAddress ?? "—"}</dd></div>
+                <dl className="mx-auto grid max-w-5xl grid-cols-1 gap-x-16 gap-y-6 text-base md:grid-cols-2">
+                  <div className="min-w-0">
+                    <dt className="text-sm font-medium text-[#6F84A7]">Họ và tên</dt>
+                    <dd className="mt-1 text-lg font-semibold text-[#1F3152]">{candidate.fullName}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-sm font-medium text-[#6F84A7]">Giới tính</dt>
+                    <dd className="mt-1 font-semibold text-[#1F3152]">
+                      {candidate.gender ? genderLabel[candidate.gender] ?? candidate.gender : ""}
+                    </dd>
+                  </div>
+                  {candidate.majorName && (
+                    <div className="min-w-0">
+                      <dt className="text-sm font-medium text-[#6F84A7]">Ngành học</dt>
+                      <dd className="mt-1 font-semibold text-[#1F3152]">{candidate.majorName}</dd>
+                    </div>
+                  )}
+                  {candidate.courseYear?.trim() && (
+                    <div className="min-w-0">
+                      <dt className="text-sm font-medium text-[#6F84A7]">Khóa</dt>
+                      <dd className="mt-1 font-semibold text-[#1F3152]">{candidate.courseYear}</dd>
+                    </div>
+                  )}
                 </dl>
               </div>
 
@@ -551,80 +592,21 @@ export default function FreshmanReservationPage() {
                   </div>
 
                   <div>
-                    <label className={regLabelCls}>Email</label>
+                    <label className={regLabelCls}>Email cá nhân</label>
                     <div className="relative">
                       <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#90A2BF]" />
-                      <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" className={regIconInput()} />
+                      <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="a@gmail.com" className={regIconInput()} />
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Family info */}
-              <div className={regCard}>
-                <div className="flex items-start gap-3">
-                  <SectionIcon icon={<Users className="h-5 w-5 stroke-[2.2]" />} variant="dark" />
-                  <div>
-                    <span className="text-xs font-semibold uppercase tracking-wide text-[#2F83C9]">Bước 2</span>
-                    <h2 className="text-lg font-semibold text-[#1F3152]">Thông tin người thân</h2>
-                    <p className="mt-0.5 text-sm text-[#5C7094]">Dùng để tự động tạo đơn đăng ký lưu trú khi xác nhận nhập học</p>
-                  </div>
-                </div>
-
-                <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <RegField label="Họ tên cha" error={formErrors.father_name}>
-                    <input type="text" value={fatherName} onChange={(e) => { setFatherName(e.target.value); setFormErrors((p) => ({ ...p, father_name: "" })); }} placeholder="Nhập họ tên cha" className={regInputCls} />
-                  </RegField>
-                  <RegField label="Năm sinh cha" error={formErrors.father_birth_year}>
-                    <input type="text" value={fatherBirthYear} onChange={(e) => { setFatherBirthYear(e.target.value); setFormErrors((p) => ({ ...p, father_birth_year: "" })); }} placeholder="Ví dụ: 1970" className={regInputCls} />
-                  </RegField>
-                  <RegField label="SĐT cha" error={formErrors.father_phone}>
-                    <div className="relative">
-                      <Phone className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#90A2BF]" />
-                      <input type="tel" value={fatherPhone} onChange={(e) => { setFatherPhone(e.target.value); setFormErrors((p) => ({ ...p, father_phone: "" })); }} placeholder="Số điện thoại cha" className={regIconInput()} />
-                    </div>
-                  </RegField>
-                  <RegField label="Nghề nghiệp cha" error={formErrors.father_job}>
-                    <input type="text" value={fatherJob} onChange={(e) => { setFatherJob(e.target.value); setFormErrors((p) => ({ ...p, father_job: "" })); }} placeholder="Nhập nghề nghiệp cha" className={regInputCls} />
-                  </RegField>
-
-                  <RegField label="Họ tên mẹ" error={formErrors.mother_name}>
-                    <input type="text" value={motherName} onChange={(e) => { setMotherName(e.target.value); setFormErrors((p) => ({ ...p, mother_name: "" })); }} placeholder="Nhập họ tên mẹ" className={regInputCls} />
-                  </RegField>
-                  <RegField label="Năm sinh mẹ" error={formErrors.mother_birth_year}>
-                    <input type="text" value={motherBirthYear} onChange={(e) => { setMotherBirthYear(e.target.value); setFormErrors((p) => ({ ...p, mother_birth_year: "" })); }} placeholder="Ví dụ: 1975" className={regInputCls} />
-                  </RegField>
-                  <RegField label="SĐT mẹ" error={formErrors.mother_phone}>
-                    <div className="relative">
-                      <Phone className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#90A2BF]" />
-                      <input type="tel" value={motherPhone} onChange={(e) => { setMotherPhone(e.target.value); setFormErrors((p) => ({ ...p, mother_phone: "" })); }} placeholder="Số điện thoại mẹ" className={regIconInput()} />
-                    </div>
-                  </RegField>
-                  <RegField label="Nghề nghiệp mẹ" error={formErrors.mother_job}>
-                    <input type="text" value={motherJob} onChange={(e) => { setMotherJob(e.target.value); setFormErrors((p) => ({ ...p, mother_job: "" })); }} placeholder="Nhập nghề nghiệp mẹ" className={regInputCls} />
-                  </RegField>
-
-                  <RegField label="Địa chỉ thường trú" error={formErrors.parent_address} fullWidth>
-                    <div className="relative">
-                      <Home className="pointer-events-none absolute left-4 top-3 h-4 w-4 text-[#90A2BF]" />
-                      <textarea
-                        rows={2}
-                        value={parentAddress}
-                        onChange={(e) => { setParentAddress(e.target.value); setFormErrors((p) => ({ ...p, parent_address: "" })); }}
-                        placeholder="Nhập địa chỉ liên hệ"
-                        className={`${regTextareaCls} pl-11`}
-                      />
-                    </div>
-                  </RegField>
-                </div>
-              </div>
-
-              {/* Step 3: Document uploads */}
+              {/* Step 2: Document uploads */}
               <div className="rounded-[22px] border border-[#c9d8ef] bg-[linear-gradient(180deg,#eef5ff_0%,#e7f0ff_42%,#edf4fd_100%)] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] transition-all duration-300 hover:border-[#9fbde9] hover:shadow-[0_16px_30px_rgba(36,76,184,0.10)] sm:p-6">
                 <div className="flex items-start gap-3">
                   <SectionIcon icon={<IdCard className="h-5 w-5 stroke-[2.2]" />} variant="teal" />
                   <div>
-                    <span className="text-xs font-semibold uppercase tracking-wide text-[#2F83C9]">Bước 3</span>
+                    <span className="text-xs font-semibold uppercase tracking-wide text-[#2F83C9]">Bước 2</span>
                     <h2 className="text-lg font-semibold text-[#1F3152]">Hình ảnh & giấy tờ</h2>
                     <p className="mt-0.5 text-sm text-[#5C7094]">Ảnh đại diện và CCCD để BQL xác minh — kéo thả hoặc nhấn để chọn</p>
                   </div>
@@ -733,13 +715,13 @@ export default function FreshmanReservationPage() {
                 </div>
               </div>
 
-              {/* Step 4: Priority criteria */}
+              {/* Step 3: Priority criteria */}
               {(criteriaLoading || criteria.length > 0) && (
                 <div className={regCard}>
                   <div className="flex items-start gap-3">
                     <SectionIcon icon={<Award className="h-5 w-5 stroke-[2.2]" />} variant="teal" />
                     <div>
-                      <span className="text-xs font-semibold uppercase tracking-wide text-[#2F83C9]">Bước 4</span>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-[#2F83C9]">Bước 3</span>
                       <h2 className="text-lg font-semibold text-[#1F3152]">Tiêu chí ưu tiên</h2>
                       <p className="mt-0.5 text-sm text-[#5C7094]">Tuỳ chọn — giúp tăng cơ hội được xét duyệt khi quá số chỗ</p>
                     </div>
@@ -817,7 +799,7 @@ export default function FreshmanReservationPage() {
                   <label htmlFor="commitmentConfirm" className="flex-1 cursor-pointer">
                     <p className="text-sm font-semibold leading-6 text-[#1F3152]">Cam kết thông tin trung thực <span className="text-red-500">*</span></p>
                     <p className="mt-0.5 text-sm leading-6 text-[#5C7094]">
-                      Tôi xác nhận tất cả thông tin khai báo trong hồ sơ này là đúng sự thật. Thông tin gia đình sẽ được dùng để tự động tạo đơn đăng ký lưu trú khi tôi xác nhận nhập học.
+                      Tôi xác nhận tất cả thông tin khai báo trong hồ sơ này là đúng sự thật. Đơn đăng ký lưu trú sẽ được tự động tạo khi tôi xác nhận nhập học.
                     </p>
                   </label>
                 </div>

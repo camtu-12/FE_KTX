@@ -39,9 +39,9 @@
       setEmailError("");
       setPasswordError("");
 
-      // Allow either email or MSSV. If input contains @ assume email (admin or normal), skip MSSV format checks.
+      // Sinh viên đăng nhập bằng MSSV; email chỉ dùng cho tài khoản quản trị.
       if (!trimmedStudentCode) {
-        setEmailError("Vui lòng nhập MSSV hoặc email.");
+        setEmailError("Vui lòng nhập MSSV hoặc email quản trị.");
         hasError = true;
       } else if (/@/.test(trimmedStudentCode)) {
         // basic email format check

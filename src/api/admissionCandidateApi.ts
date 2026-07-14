@@ -5,6 +5,40 @@ import apiClient from "../lib/apiClient";
 export type CandidateStatus = "admitted" | "enrolled" | "cancelled";
 export type CandidateGender = "male" | "female";
 
+export type EnrolledStudent = {
+  id: number;
+  studentCode: string;
+  fullName: string;
+  dateOfBirth: string | null;
+  gender: CandidateGender | null;
+  className: string | null;
+  faculty: string | null;
+  courseYear: string | null;
+  currentYear: number | null;
+  phone: string | null;
+  email: string | null;
+  schoolEmail: string | null;
+  cccd: string | null;
+  cccdIssuedDate: string | null;
+  cccdIssuedPlace: string | null;
+  nationality: string | null;
+  ethnicity: string | null;
+  religion: string | null;
+  permanentAddress: string | null;
+  fatherName: string | null;
+  fatherBirthYear: string | null;
+  fatherJob: string | null;
+  fatherPhone: string | null;
+  motherName: string | null;
+  motherBirthYear: string | null;
+  motherJob: string | null;
+  motherPhone: string | null;
+  parentAddress: string | null;
+  emergencyContactName: string | null;
+  emergencyContactPhone: string | null;
+  emergencyContactRelationship: string | null;
+};
+
 export type AdmissionCandidate = {
   id: number;
   admissionCode: string;
@@ -24,7 +58,12 @@ export type AdmissionCandidate = {
   status: CandidateStatus;
   enrolledAt: string | null;
   studentId: number | null;
-  student: { id: number; studentCode: string; fullName: string } | null;
+  student: EnrolledStudent | null;
+  dormReservations?: Array<{
+    id: number;
+    status: string;
+    convertedRegistrationId: number | null;
+  }>;
   dormReservationsCount?: number;
   createdAt: string;
   updatedAt: string;
@@ -47,22 +86,6 @@ export type CandidatePayload = {
   status?: CandidateStatus;
 };
 
-export type EnrollPayload = {
-  student_code: string;
-  class_name: string;
-  email?: string | null;
-  phone?: string | null;
-  faculty?: string | null;
-  course_year?: string | null;
-  current_year?: number | null;
-  cccd_issued_date?: string | null;
-  cccd_issued_place?: string | null;
-  nationality?: string | null;
-  ethnicity?: string | null;
-  religion?: string | null;
-  permanent_address?: string | null;
-};
-
 type ApiCandidate = {
   id: number;
   admission_code: string;
@@ -82,7 +105,43 @@ type ApiCandidate = {
   status: CandidateStatus;
   enrolled_at: string | null;
   student_id: number | null;
-  student?: { id: number; student_code: string; full_name: string } | null;
+  student?: {
+    id: number;
+    student_code: string;
+    full_name: string;
+    date_of_birth: string | null;
+    gender: CandidateGender | null;
+    class_name: string | null;
+    faculty: string | null;
+    course_year: string | null;
+    current_year: number | null;
+    phone: string | null;
+    email: string | null;
+    cccd: string | null;
+    cccd_issued_date: string | null;
+    cccd_issued_place: string | null;
+    nationality: string | null;
+    ethnicity: string | null;
+    religion: string | null;
+    permanent_address: string | null;
+    father_name: string | null;
+    father_birth_year: string | null;
+    father_job: string | null;
+    father_phone: string | null;
+    mother_name: string | null;
+    mother_birth_year: string | null;
+    mother_job: string | null;
+    mother_phone: string | null;
+    parent_address: string | null;
+    emergency_contact_name: string | null;
+    emergency_contact_phone: string | null;
+    emergency_contact_relationship: string | null;
+  } | null;
+  dorm_reservations?: Array<{
+    id: number;
+    status: string;
+    converted_registration_id: number | null;
+  }>;
   dorm_reservations_count?: number;
   created_at: string;
   updated_at: string;
@@ -109,8 +168,45 @@ function normalizeCandidate(c: ApiCandidate): AdmissionCandidate {
     enrolledAt: c.enrolled_at,
     studentId: c.student_id,
     student: c.student
-      ? { id: c.student.id, studentCode: c.student.student_code, fullName: c.student.full_name }
+      ? {
+          id: c.student.id,
+          studentCode: c.student.student_code,
+          fullName: c.student.full_name,
+          dateOfBirth: c.student.date_of_birth,
+          gender: c.student.gender,
+          className: c.student.class_name,
+          faculty: c.student.faculty,
+          courseYear: c.student.course_year,
+          currentYear: c.student.current_year,
+          phone: c.student.phone,
+          email: c.student.email,
+          schoolEmail: c.student.email,
+          cccd: c.student.cccd,
+          cccdIssuedDate: c.student.cccd_issued_date,
+          cccdIssuedPlace: c.student.cccd_issued_place,
+          nationality: c.student.nationality,
+          ethnicity: c.student.ethnicity,
+          religion: c.student.religion,
+          permanentAddress: c.student.permanent_address,
+          fatherName: c.student.father_name,
+          fatherBirthYear: c.student.father_birth_year,
+          fatherJob: c.student.father_job,
+          fatherPhone: c.student.father_phone,
+          motherName: c.student.mother_name,
+          motherBirthYear: c.student.mother_birth_year,
+          motherJob: c.student.mother_job,
+          motherPhone: c.student.mother_phone,
+          parentAddress: c.student.parent_address,
+          emergencyContactName: c.student.emergency_contact_name,
+          emergencyContactPhone: c.student.emergency_contact_phone,
+          emergencyContactRelationship: c.student.emergency_contact_relationship,
+        }
       : null,
+    dormReservations: c.dorm_reservations?.map((r) => ({
+      id: r.id,
+      status: r.status,
+      convertedRegistrationId: r.converted_registration_id,
+    })),
     dormReservationsCount: c.dorm_reservations_count,
     createdAt: c.created_at,
     updatedAt: c.updated_at,
@@ -155,15 +251,6 @@ export const updateAdminCandidate = async (id: number, payload: Partial<Candidat
 export const deleteAdminCandidate = async (id: number): Promise<{ message: string }> => {
   const res = await apiClient.delete(`/admin/admission-candidates/${id}`);
   return res.data as { message: string };
-};
-
-export const enrollCandidate = async (
-  id: number,
-  payload: EnrollPayload,
-): Promise<{ message: string; candidate: AdmissionCandidate; student: { id: number; student_code: string; full_name: string } }> => {
-  const res = await apiClient.post(`/admin/admission-candidates/${id}/enroll`, payload);
-  const data = res.data as { message: string; candidate: ApiCandidate; student: { id: number; student_code: string; full_name: string } };
-  return { message: data.message, candidate: normalizeCandidate(data.candidate), student: data.student };
 };
 
 // ─── Bulk enroll ──────────────────────────────────────────────────────────────

@@ -156,7 +156,7 @@ export default function RegisterForm() {
         password_confirmation: trimmed.confirmPassword,
       });
 
-      setSuccessMessage("Tạo tài khoản thành công. Bạn có thể đăng nhập bằng email sinh viên.");
+      setSuccessMessage("Tạo tài khoản thành công. Bạn có thể đăng nhập bằng MSSV.");
 
       setTimeout(() => navigate("/login"), 1200);
     } catch (error) {

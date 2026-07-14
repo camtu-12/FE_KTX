@@ -515,9 +515,11 @@ export default function AdminRegistrationDetailPage() {
 
   const familyFields: FieldConfig[] = [
     { name: "father_name", label: "Họ tên cha" },
+    { name: "father_birth_year", label: "Năm sinh cha" },
     { name: "father_phone", label: "SĐT cha", type: "tel" },
     { name: "father_job", label: "Nghề nghiệp cha" },
     { name: "mother_name", label: "Họ tên mẹ" },
+    { name: "mother_birth_year", label: "Năm sinh mẹ" },
     { name: "mother_phone", label: "SĐT mẹ", type: "tel" },
     { name: "mother_job", label: "Nghề nghiệp mẹ" },
     { name: "familyContactAddress", label: "Địa chỉ liên hệ cha/mẹ", fullWidth: true },

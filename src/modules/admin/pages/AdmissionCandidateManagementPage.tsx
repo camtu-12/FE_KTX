@@ -2,7 +2,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
   CheckCircle2,
-  ChevronDown,
   Eye,
   FileSpreadsheet,
   GraduationCap,
@@ -10,7 +9,6 @@ import {
   RefreshCw,
   Trash2,
   Upload,
-  UserCheck,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -19,13 +17,12 @@ import { useOutletContext } from "react-router-dom";
 import {
   bulkEnrollCandidates,
   deleteAdminCandidate,
-  enrollCandidate,
+  getAdminCandidate,
   getAdminCandidates,
   type AdmissionCandidate,
   type BulkEnrollResult,
   type CandidatePayload,
   type CandidateStatus,
-  type EnrollPayload,
 } from "../../../api/admissionCandidateApi";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import { formatDate } from "../../../utils/dateFormat";
@@ -44,7 +41,13 @@ const deleteIconBtn =
 const STATUS_LABELS: Record<CandidateStatus, string> = {
   admitted: "Trúng tuyển",
   enrolled: "Đã nhập học",
-  cancelled: "Đã huỷ",
+  cancelled: "Đã hủy",
+};
+
+const STATUS_BADGE_CLASSES: Record<CandidateStatus, string> = {
+  admitted: "border-sky-200 bg-sky-50 text-sky-700",
+  enrolled: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  cancelled: "border-rose-200 bg-rose-50 text-rose-700",
 };
 type FormErrors = Partial<Record<string, string>>;
 
@@ -64,30 +67,37 @@ const emptyPayload: CandidatePayload = {
   status: "admitted",
 };
 
-const emptyEnroll: EnrollPayload = {
-  student_code: "",
-  class_name: "",
-  email: null,
-  phone: null,
-  faculty: null,
-  course_year: null,
-  current_year: 1,
-  cccd_issued_date: null,
-  cccd_issued_place: null,
-  nationality: null,
-  ethnicity: null,
-  religion: null,
-  permanent_address: null,
-};
-
-function FieldGroup({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+function FieldGroup({ label, error, children, className = "" }: { label: string; error?: string; children: React.ReactNode; className?: string }) {
   return (
-    <div>
+    <div className={className}>
       <label className="mb-1 block text-xs font-semibold text-[#324B76]">{label}</label>
       {children}
       {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
     </div>
   );
+}
+
+function CandidateStatusBadge({ status, label }: { status: CandidateStatus; label?: string }) {
+  return (
+    <span className={`inline-flex w-fit items-center rounded-full border px-2.5 py-1 text-xs font-bold ${STATUS_BADGE_CLASSES[status]}`}>
+      {label ?? STATUS_LABELS[status]}
+    </span>
+  );
+}
+
+function getDetailTitle(status?: CandidateStatus) {
+  if (status === "enrolled") return "Chi tiết sinh viên đã nhập học";
+  if (status === "cancelled") return "Chi tiết hồ sơ đã hủy";
+  return "Chi tiết hồ sơ trúng tuyển";
+}
+
+function getReservationConversionStatus(candidate: AdmissionCandidate | null) {
+  if (!candidate) return null;
+  const reservation = candidate.dormReservations?.find((item) => item.convertedRegistrationId || item.status === "converted");
+  if (!reservation) return null;
+  return reservation.convertedRegistrationId || reservation.status === "converted"
+    ? "Đã chuyển đổi hồ sơ giữ chỗ"
+    : STATUS_LABELS[candidate.status];
 }
 
 export default function AdmissionCandidateManagementPage() {
@@ -105,13 +115,8 @@ export default function AdmissionCandidateManagementPage() {
   // detail modal
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<CandidatePayload>(emptyPayload);
-  const [formErrors, setFormErrors] = useState<FormErrors>({});
-
-  // enroll modal
-  const [enrollTarget, setEnrollTarget] = useState<AdmissionCandidate | null>(null);
-  const [enrollForm, setEnrollForm] = useState<EnrollPayload>(emptyEnroll);
-  const [enrollErrors, setEnrollErrors] = useState<FormErrors>({});
-  const [enrollLoading, setEnrollLoading] = useState(false);
+  const [detailCandidate, setDetailCandidate] = useState<AdmissionCandidate | null>(null);
+  const [, setFormErrors] = useState<FormErrors>({});
 
   // delete confirm
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -169,9 +174,15 @@ export default function AdmissionCandidateManagementPage() {
       school_year: c.schoolYear,
       status: c.status === "enrolled" ? "admitted" : c.status,
     });
+    setDetailCandidate(c);
     setFormErrors({});
     setApiError(null);
     setShowForm(true);
+    void getAdminCandidate(c.id)
+      .then((fresh) => setDetailCandidate(fresh))
+      .catch(() => {
+        setApiError("Không thể tải chi tiết hồ sơ mới nhất.");
+      });
   };
 
   // ── Delete ─────────────────────────────────────────────────────────────────
@@ -187,34 +198,6 @@ export default function AdmissionCandidateManagementPage() {
       showToast("error", msg);
     } finally {
       setDeletingId(null);
-    }
-  };
-
-  // ── Enroll ─────────────────────────────────────────────────────────────────
-  const handleEnroll = async () => {
-    const errs: FormErrors = {};
-    if (!enrollForm.student_code.trim()) errs.student_code = "Bắt buộc.";
-    if (!enrollForm.class_name.trim()) errs.class_name = "Bắt buộc.";
-    if (Object.keys(errs).length) { setEnrollErrors(errs); return; }
-
-    setEnrollLoading(true);
-    try {
-      const res = await enrollCandidate(enrollTarget!.id, enrollForm);
-      setCandidates((prev) => prev.map((c) => (c.id === enrollTarget!.id ? res.candidate : c)));
-      showToast("success", `Đã tạo sinh viên ${res.student.student_code}. Sinh viên chưa có tài khoản.`);
-      setEnrollTarget(null);
-    } catch (err: unknown) {
-      const data = (err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } })?.response?.data;
-      const fe = data?.errors;
-      if (fe) {
-        const mapped: FormErrors = {};
-        for (const [k, v] of Object.entries(fe)) mapped[k] = Array.isArray(v) ? v[0] : String(v);
-        setEnrollErrors(mapped);
-      } else {
-        setEnrollErrors({ student_code: data?.message ?? "Không thể tạo sinh viên." });
-      }
-    } finally {
-      setEnrollLoading(false);
     }
   };
 
@@ -255,18 +238,60 @@ export default function AdmissionCandidateManagementPage() {
     }
   };
 
-  const ef = (key: keyof EnrollPayload, label: string, type = "text") => (
-    <FieldGroup label={label} error={enrollErrors[key]}>
-      <input
-        type={type}
-        value={(enrollForm[key] as string) ?? ""}
-        onChange={(e) => setEnrollForm((prev) => ({ ...prev, [key]: e.target.value || null }))}
-        className={inputCls}
-      />
-    </FieldGroup>
-  );
-
   const detailInputCls = `${inputCls} disabled:cursor-default disabled:bg-[#f7faff] disabled:text-[#1f3152] disabled:opacity-100`;
+  const detailStatus = detailCandidate?.status ?? "admitted";
+  const isEnrolledDetail = detailStatus === "enrolled";
+  const reservationConversionStatus = getReservationConversionStatus(detailCandidate);
+  const enrolledStudent = detailCandidate?.student;
+  const hasDetailValue = (value: string | number | null | undefined) =>
+    value !== null && value !== undefined && String(value).trim() !== "";
+  const normalizeDetailValue = (value: string | number | null | undefined) =>
+    hasDetailValue(value) ? String(value).trim() : "";
+  const displayPhone = hasDetailValue(form.phone) ? form.phone : enrolledStudent?.phone;
+  const hasChangedDetailValue = (
+    current: string | number | null | undefined,
+    original: string | number | null | undefined,
+  ) => hasDetailValue(current) && normalizeDetailValue(current) !== normalizeDetailValue(original);
+  const genderLabel = (gender: "male" | "female" | null | undefined) =>
+    gender === "male" ? "Nam" : gender === "female" ? "Nữ" : null;
+  const relationshipLabel = (relationship: string | null | undefined) => {
+    if (relationship === "father") return "Cha";
+    if (relationship === "mother") return "Mẹ";
+    if (relationship === "sibling") return "Anh/chị/em";
+    if (relationship === "relative") return "Người thân";
+    return relationship;
+  };
+  const detailField = (label: string, value: string | number | null | undefined, type = "text", fullWidth = false) =>
+    hasDetailValue(value) ? (
+      <FieldGroup label={label} className={fullWidth ? "sm:col-span-2 lg:col-span-3" : ""}>
+        <input type={type} value={String(value)} readOnly className={detailInputCls} disabled />
+      </FieldGroup>
+    ) : null;
+  const detailDateField = (label: string, value: string | null | undefined) =>
+    hasDetailValue(value) ? detailField(label, formatDate(value as string)) : null;
+  const detailChangedDateField = (label: string, current: string | null | undefined, original: string | null | undefined) =>
+    hasChangedDetailValue(current, original) ? detailField(label, formatDate(current as string)) : null;
+  const detailSection = (title: string | null, tone: "blue" | "emerald", children: React.ReactNode[]) => {
+    const visibleChildren = children.filter(Boolean);
+    if (visibleChildren.length === 0) return null;
+
+    return (
+      <div className={`space-y-3 rounded-2xl border p-4 ${
+        tone === "emerald"
+          ? "border-emerald-200 bg-emerald-50/60"
+          : "border-[#d6e2f1] bg-[#fbfdff]"
+      }`}>
+        {title && (
+          <h3 className={`text-xs font-extrabold uppercase tracking-[0.14em] ${
+            tone === "emerald" ? "text-emerald-700" : "text-[#244cb8]"
+          }`}>
+            {title}
+          </h3>
+        )}
+        <div className="grid grid-cols-1 gap-x-7 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">{visibleChildren}</div>
+      </div>
+    );
+  };
 
   return (
     <motion.section
@@ -315,7 +340,7 @@ export default function AdmissionCandidateManagementPage() {
 
         {/* Filters */}
         <div className="mt-4 flex flex-wrap gap-2">
-          {(["", "admitted", "enrolled"] as const).map((s) => (
+          {(["", "admitted", "enrolled", "cancelled"] as const).map((s) => (
             <button
               key={s}
               type="button"
@@ -355,7 +380,10 @@ export default function AdmissionCandidateManagementPage() {
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="text-base font-bold text-[#1a2d52]">{c.fullName}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-base font-bold text-[#1a2d52]">{c.fullName}</p>
+                    <CandidateStatusBadge status={c.status} />
+                  </div>
                   <p className="mt-0.5 font-mono text-xs text-[#62789f]">{c.admissionCode}</p>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
@@ -455,7 +483,7 @@ export default function AdmissionCandidateManagementPage() {
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.96, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 16 }}
-              className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-[24px] border border-[#c1d6f4] bg-white shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
+              className="flex max-h-[82dvh] w-[min(96vw,92rem)] flex-col overflow-hidden rounded-[24px] border border-[#c1d6f4] bg-white shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
@@ -588,71 +616,95 @@ export default function AdmissionCandidateManagementPage() {
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.96, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 16 }}
-              className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-[24px] border border-[#c1d6f4] bg-white shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
+              className="flex max-h-[calc(100dvh-4rem)] w-full max-w-4xl flex-col overflow-hidden rounded-[24px] border border-[#c1d6f4] bg-white shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex shrink-0 items-center justify-between border-b border-[#eef3fb] px-5 py-3">
-                <h2 className="text-lg font-bold text-[#1a2d52]">Chi tiết hồ sơ trúng tuyển</h2>
-                <button type="button" onClick={() => setShowForm(false)} className="text-[#7c8fb5] hover:text-[#1a2d52]">
-                  <X className="h-5 w-5" />
-                </button>
+                <h2 className="text-lg font-bold text-[#1a2d52]">{getDetailTitle(detailStatus)}</h2>
+                <div className="flex items-center gap-3">
+                  <CandidateStatusBadge
+                    status={detailStatus}
+                    label={detailStatus === "admitted" ? "Chưa nhập học" : undefined}
+                  />
+                  <button type="button" onClick={() => setShowForm(false)} className="text-[#7c8fb5] hover:text-[#1a2d52]">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 [scrollbar-gutter:stable]">
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-8 [scrollbar-gutter:stable]">
                 {apiError && (
                   <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{apiError}</div>
                 )}
-                <div className="space-y-3">
-                  <FieldGroup label="Mã hồ sơ trúng tuyển *" error={formErrors.admission_code}>
-                    <input type="text" value={form.admission_code} onChange={(e) => setForm((p) => ({ ...p, admission_code: e.target.value }))} className={detailInputCls} placeholder="01_TT_XTS_GBTT_00319" disabled />
-                  </FieldGroup>
-                  <FieldGroup label="Họ và tên *" error={formErrors.full_name}>
-                    <input type="text" value={form.full_name} onChange={(e) => setForm((p) => ({ ...p, full_name: e.target.value }))} className={detailInputCls} disabled />
-                  </FieldGroup>
-                  <div className="grid grid-cols-2 gap-3">
-                    <FieldGroup label="Ngày sinh *" error={formErrors.date_of_birth}>
-                      <input type="text" value={formatDate(form.date_of_birth)} readOnly className={detailInputCls} disabled />
-                    </FieldGroup>
-                    <FieldGroup label="Giới tính" error={formErrors.gender}>
-                      <div className="relative">
-                        <select value={form.gender ?? ""} onChange={(e) => setForm((p) => ({ ...p, gender: (e.target.value as "male" | "female") || null }))} className={`${detailInputCls} appearance-none pr-7`} disabled>
-                          <option value="">Chưa chọn</option>
-                          <option value="male">Nam</option>
-                          <option value="female">Nữ</option>
-                        </select>
-                        <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7c8fb5]" />
-                      </div>
-                    </FieldGroup>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <FieldGroup label="CCCD" error={formErrors.cccd}>
-                      <input type="text" value={form.cccd ?? ""} onChange={(e) => setForm((p) => ({ ...p, cccd: e.target.value || null }))} className={detailInputCls} disabled />
-                    </FieldGroup>
-                    <FieldGroup label="SĐT" error={formErrors.phone}>
-                      <input type="tel" value={form.phone ?? ""} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value || null }))} className={detailInputCls} disabled />
-                    </FieldGroup>
-                  </div>
-                  <FieldGroup label="Email" error={formErrors.email}>
-                    <input type="email" value={form.email ?? ""} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value || null }))} className={detailInputCls} disabled />
-                  </FieldGroup>
-                  <div className="grid grid-cols-2 gap-3">
-                    <FieldGroup label="Ngành học">
-                      <input type="text" value={form.major_name ?? ""} onChange={(e) => setForm((p) => ({ ...p, major_name: e.target.value || null }))} className={detailInputCls} placeholder="Tên ngành" disabled />
-                    </FieldGroup>
-                    <FieldGroup label="Mã ngành">
-                      <input type="text" value={form.major_code ?? ""} onChange={(e) => setForm((p) => ({ ...p, major_code: e.target.value || null }))} className={detailInputCls} disabled />
-                    </FieldGroup>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <FieldGroup label="Khoá (vd: 2026-2030)">
-                      <input type="text" value={form.course_year ?? ""} onChange={(e) => setForm((p) => ({ ...p, course_year: e.target.value || null }))} className={detailInputCls} disabled />
-                    </FieldGroup>
-                    <FieldGroup label="Năm học (vd: 2026-2027)">
-                      <input type="text" value={form.school_year ?? ""} onChange={(e) => setForm((p) => ({ ...p, school_year: e.target.value || null }))} className={detailInputCls} disabled />
-                    </FieldGroup>
-                  </div>
-                  <FieldGroup label="Địa chỉ thường trú">
-                    <input type="text" value={form.permanent_address ?? ""} onChange={(e) => setForm((p) => ({ ...p, permanent_address: e.target.value || null }))} className={detailInputCls} disabled />
-                  </FieldGroup>
+                <div className="space-y-4">
+                  {detailSection(isEnrolledDetail ? "Thông tin trúng tuyển" : null, "blue", [
+                    detailField("Mã hồ sơ", form.admission_code),
+                    detailField("Họ tên", form.full_name),
+                    detailDateField("Ngày sinh", form.date_of_birth),
+                    detailField("Giới tính", genderLabel(form.gender)),
+                    detailField("Số điện thoại", displayPhone, "tel"),
+                    detailField("Ngành", form.major_name),
+                    detailField("Mã ngành", form.major_code),
+                    detailField("Khóa", form.course_year),
+                    detailField("Năm học", form.school_year),
+                    detailField("Email cá nhân", form.email, "email", true),
+                    detailField("CCCD", form.cccd),
+                    detailField("Địa chỉ thường trú", form.permanent_address, "text", true),
+                  ])}
+
+                  {isEnrolledDetail && detailSection("Thông tin học tập sau nhập học", "emerald", [
+                    detailField("MSSV", enrolledStudent?.studentCode),
+                    detailField("Lớp", enrolledStudent?.className),
+                    detailField("Khoa", enrolledStudent?.faculty),
+                    detailField("Khóa", enrolledStudent?.courseYear),
+                    detailField("Năm hiện tại", enrolledStudent?.currentYear),
+                    hasChangedDetailValue(enrolledStudent?.schoolEmail, form.email)
+                      ? detailField("Email trường", enrolledStudent?.schoolEmail, "email", true)
+                      : null,
+                    detailDateField("Ngày nhập học", detailCandidate?.enrolledAt),
+                    detailField("Trạng thái chuyển đổi hồ sơ giữ chỗ", reservationConversionStatus),
+                  ])}
+
+                  {isEnrolledDetail && detailSection("Thông tin cá nhân sau nhập học", "emerald", [
+                    hasChangedDetailValue(enrolledStudent?.fullName, form.full_name)
+                      ? detailField("Họ tên hiện tại", enrolledStudent?.fullName)
+                      : null,
+                    detailChangedDateField("Ngày sinh hiện tại", enrolledStudent?.dateOfBirth, form.date_of_birth),
+                    hasChangedDetailValue(enrolledStudent?.gender, form.gender)
+                      ? detailField("Giới tính hiện tại", genderLabel(enrolledStudent?.gender))
+                      : null,
+                    hasChangedDetailValue(enrolledStudent?.cccd, form.cccd)
+                      ? detailField("CCCD hiện tại", enrolledStudent?.cccd)
+                      : null,
+                    detailDateField("Ngày cấp CCCD", enrolledStudent?.cccdIssuedDate),
+                    detailField("Nơi cấp CCCD", enrolledStudent?.cccdIssuedPlace),
+                    detailField("Quốc tịch", enrolledStudent?.nationality),
+                    detailField("Dân tộc", enrolledStudent?.ethnicity),
+                    detailField("Tôn giáo", enrolledStudent?.religion),
+                    hasChangedDetailValue(enrolledStudent?.permanentAddress, form.permanent_address)
+                      ? detailField("Địa chỉ thường trú hiện tại", enrolledStudent?.permanentAddress, "text", true)
+                      : null,
+                  ])}
+
+                  {isEnrolledDetail && detailSection("Thông tin cha", "emerald", [
+                    detailField("Họ tên", enrolledStudent?.fatherName),
+                    detailField("Năm sinh", enrolledStudent?.fatherBirthYear),
+                    detailField("Nghề nghiệp", enrolledStudent?.fatherJob),
+                    detailField("SĐT", enrolledStudent?.fatherPhone, "tel"),
+                  ])}
+
+                  {isEnrolledDetail && detailSection("Thông tin mẹ", "emerald", [
+                    detailField("Họ tên", enrolledStudent?.motherName),
+                    detailField("Năm sinh", enrolledStudent?.motherBirthYear),
+                    detailField("Nghề nghiệp", enrolledStudent?.motherJob),
+                    detailField("SĐT", enrolledStudent?.motherPhone, "tel"),
+                  ])}
+
+                  {isEnrolledDetail && detailSection("Liên hệ gia đình và khẩn cấp", "emerald", [
+                    detailField("Địa chỉ cha/mẹ", enrolledStudent?.parentAddress, "text", true),
+                    detailField("Người liên hệ khẩn cấp", enrolledStudent?.emergencyContactName),
+                    detailField("Quan hệ", relationshipLabel(enrolledStudent?.emergencyContactRelationship)),
+                    detailField("SĐT liên hệ khẩn cấp", enrolledStudent?.emergencyContactPhone, "tel"),
+                  ])}
                 </div>
               </div>
               <div className="flex shrink-0 justify-end gap-2 border-t border-[#eef3fb] px-5 py-3">
@@ -665,81 +717,6 @@ export default function AdmissionCandidateManagementPage() {
         document.body,
       )}
 
-      {/* ── Enroll Modal ── */}
-      <AnimatePresence>
-        {enrollTarget && (
-          <motion.div
-            key="enroll-overlay"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-3"
-            onClick={() => setEnrollTarget(null)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 16 }}
-              className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-[24px] border border-[#c1d6f4] bg-white shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex shrink-0 items-center justify-between border-b border-[#eef3fb] px-5 py-3">
-                <h2 className="text-lg font-bold text-[#1a2d52]">Xác nhận nhập học — Tạo sinh viên</h2>
-                <button type="button" onClick={() => setEnrollTarget(null)} className="text-[#7c8fb5] hover:text-[#1a2d52]"><X className="h-5 w-5" /></button>
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 [scrollbar-gutter:stable]">
-                {/* Candidate summary */}
-                <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm">
-                  <p className="font-semibold text-[#1a2d52]">{enrollTarget.fullName}</p>
-                  <p className="text-xs text-[#62789f]">{enrollTarget.admissionCode} · Ngày sinh: {formatDate(enrollTarget.dateOfBirth)}</p>
-                </div>
-
-                <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
-                  <strong>Lưu ý:</strong> Sau khi tạo sinh viên, tài khoản sẽ KHÔNG được tạo tự động. Sinh viên cần tự đăng ký tài khoản tại <strong>/register</strong> bằng MSSV.
-                </div>
-
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <FieldGroup label="MSSV *" error={enrollErrors.student_code}>
-                      <input type="text" value={enrollForm.student_code} onChange={(e) => setEnrollForm((p) => ({ ...p, student_code: e.target.value }))} className={inputCls} placeholder="DH52201001" />
-                      {enrollTarget?.expectedStudentCode && enrollForm.student_code === enrollTarget.expectedStudentCode && (
-                        <p className="mt-1 text-xs text-blue-600">Tự động điền từ hồ sơ tuyển sinh.</p>
-                      )}
-                    </FieldGroup>
-                    <FieldGroup label="Lớp *" error={enrollErrors.class_name}>
-                      <input type="text" value={enrollForm.class_name} onChange={(e) => setEnrollForm((p) => ({ ...p, class_name: e.target.value }))} className={inputCls} placeholder="DH52201" />
-                    </FieldGroup>
-                  </div>
-                  {ef("faculty", "Khoa / Ngành")}
-                  <div className="grid grid-cols-2 gap-3">
-                    {ef("course_year", "Khoá (vd: 2026-2030)")}
-                    <FieldGroup label="Năm hiện tại">
-                      <input type="number" min={1} max={10} value={enrollForm.current_year ?? 1} onChange={(e) => setEnrollForm((p) => ({ ...p, current_year: Number(e.target.value) }))} className={inputCls} />
-                    </FieldGroup>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {ef("email", "Email", "email")}
-                    {ef("phone", "SĐT", "tel")}
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {ef("cccd_issued_date", "Ngày cấp CCCD", "date")}
-                    {ef("cccd_issued_place", "Nơi cấp CCCD")}
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {ef("nationality", "Quốc tịch")}
-                    {ef("ethnicity", "Dân tộc")}
-                  </div>
-                  {ef("religion", "Tôn giáo")}
-                  {ef("permanent_address", "Địa chỉ thường trú")}
-                </div>
-              </div>
-              <div className="flex shrink-0 justify-end gap-2 border-t border-[#eef3fb] px-5 py-3">
-                <button type="button" onClick={() => setEnrollTarget(null)} className="rounded-xl border border-[#d6e2f1] bg-white px-4 py-1.5 text-sm font-semibold text-[#5d7299] hover:bg-[#f5f9ff]">Hủy</button>
-                <button type="button" disabled={enrollLoading} onClick={() => void handleEnroll()} className={`${primaryBtn} h-9`}>
-                  {enrollLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-                  <UserCheck className="h-4 w-4" /> Tạo sinh viên
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </motion.section>
   );
 }

@@ -212,9 +212,11 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
   );
   const address = firstDefinedString(existingFormData.address, registration.address, student.permanent_address, student.address);
   const fatherName = firstDefinedString(existingFormData.father_name, registration.father_name, student.father_name);
+  const fatherBirthYear = firstDefinedString(existingFormData.father_birth_year, registration.father_birth_year, student.father_birth_year);
   const fatherPhone = firstDefinedString(existingFormData.father_phone, registration.father_phone, student.father_phone);
   const fatherJob = firstDefinedString(existingFormData.father_job, registration.father_job, student.father_job);
   const motherName = firstDefinedString(existingFormData.mother_name, registration.mother_name, student.mother_name);
+  const motherBirthYear = firstDefinedString(existingFormData.mother_birth_year, registration.mother_birth_year, student.mother_birth_year);
   const motherPhone = firstDefinedString(existingFormData.mother_phone, registration.mother_phone, student.mother_phone);
   const motherJob = firstDefinedString(existingFormData.mother_job, registration.mother_job, student.mother_job);
   const familyContactAddress = firstDefinedString(
@@ -248,9 +250,11 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
     cccdIssuePlace,
     address,
     father_name: fatherName,
+    father_birth_year: fatherBirthYear,
     father_phone: fatherPhone,
     father_job: fatherJob,
     mother_name: motherName,
+    mother_birth_year: motherBirthYear,
     mother_phone: motherPhone,
     mother_job: motherJob,
     familyContactAddress,

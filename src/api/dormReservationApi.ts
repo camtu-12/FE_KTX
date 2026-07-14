@@ -19,18 +19,22 @@ export type ReservationStatus =
   | "expired"
   | "cancelled";
 
+export type ReservationProgress = {
+  reservationCode: string | null;
+  status: ReservationStatus;
+  submittedAt: string | null;
+  periodName: string | null;
+  rejectionReason?: string | null;
+};
+
 export type CandidateVerifyResult = {
-  id: number;
-  admissionCode: string;
-  fullName: string;
-  dateOfBirth: string;
+  verificationStatus: "admitted" | "enrolled" | "cancelled" | "not_found";
+  message: string | null;
+  fullName: string | null;
   majorName: string | null;
   courseYear: string | null;
-  schoolYear: string | null;
   gender: string | null;
-  cccd: string | null;
-  phone: string | null;
-  permanentAddress: string | null;
+  existingReservation: ReservationProgress | null;
 };
 
 export type DormReservation = {
@@ -186,30 +190,61 @@ export const verifyAdmissionCandidate = async (payload: {
 }): Promise<CandidateVerifyResult> => {
   const res = await API.post("/admission-candidates/verify", payload);
   const d = res.data as {
-    id: number;
-    admission_code: string;
-    full_name: string;
-    date_of_birth: string;
-    major_name: string | null;
-    course_year: string | null;
-    school_year: string | null;
-    gender: string | null;
-    cccd: string | null;
-    phone: string | null;
-    permanent_address: string | null;
+    verification_status: "admitted" | "enrolled" | "cancelled" | "not_found";
+    message?: string | null;
+    full_name?: string | null;
+    major_name?: string | null;
+    course_year?: string | null;
+    gender?: string | null;
+    existing_reservation?: {
+      reservation_code: string | null;
+      status: ReservationStatus;
+      submitted_at: string | null;
+      period_name: string | null;
+    } | null;
   };
   return {
-    id: d.id,
-    admissionCode: d.admission_code,
-    fullName: d.full_name,
-    dateOfBirth: d.date_of_birth,
-    majorName: d.major_name,
-    courseYear: d.course_year,
-    schoolYear: d.school_year,
-    gender: d.gender,
-    cccd: d.cccd,
-    phone: d.phone,
-    permanentAddress: d.permanent_address,
+    verificationStatus: d.verification_status,
+    message: d.message ?? null,
+    fullName: d.full_name ?? null,
+    majorName: d.major_name ?? null,
+    courseYear: d.course_year ?? null,
+    gender: d.gender ?? null,
+    existingReservation: d.existing_reservation
+      ? {
+          reservationCode: d.existing_reservation.reservation_code,
+          status: d.existing_reservation.status,
+          submittedAt: d.existing_reservation.submitted_at,
+          periodName: d.existing_reservation.period_name,
+        }
+      : null,
+  };
+};
+
+export const lookupDormReservation = async (payload: {
+  reservation_code: string;
+}): Promise<{ message: string; reservation: ReservationProgress }> => {
+  const res = await API.post("/dorm-reservations/lookup", payload);
+  const d = res.data as {
+    message: string;
+    reservation: {
+      reservation_code: string | null;
+      status: ReservationStatus;
+      submitted_at: string | null;
+      period_name: string | null;
+      rejection_reason?: string | null;
+    };
+  };
+
+  return {
+    message: d.message,
+    reservation: {
+      reservationCode: d.reservation.reservation_code,
+      status: d.reservation.status,
+      submittedAt: d.reservation.submitted_at,
+      periodName: d.reservation.period_name,
+      rejectionReason: d.reservation.rejection_reason ?? null,
+    },
   };
 };
 
@@ -230,8 +265,37 @@ export const createDormReservation = async (payload: {
   commitment_confirm?: boolean;
 }): Promise<{ message: string; reservation: DormReservation }> => {
   const res = await API.post("/dorm-reservations", payload);
-  const d = res.data as { message: string; reservation: ApiReservation };
-  return { message: d.message, reservation: normalizeReservation(d.reservation) };
+  const d = res.data as {
+    message: string;
+    reservation: {
+      id: number;
+      reservation_code: string | null;
+      status: ReservationStatus;
+    };
+  };
+  return {
+    message: d.message,
+    reservation: {
+      id: d.reservation.id,
+      admissionCandidateId: 0,
+      registrationPeriodId: null,
+      reservationCode: d.reservation.reservation_code,
+      studentCode: null,
+      status: d.reservation.status,
+      priorityNote: null,
+      rejectionReason: null,
+      adminNote: null,
+      avatarUrl: null,
+      cccdFrontUrl: null,
+      cccdBackUrl: null,
+      submittedAt: null,
+      approvedAt: null,
+      expiresAt: null,
+      convertedRegistrationId: null,
+      createdAt: "",
+      updatedAt: "",
+    },
+  };
 };
 
 // ─── Admin API ────────────────────────────────────────────────────────────────
@@ -338,11 +402,11 @@ type ApiReservationPriority = {
   verified_at: string | null;
   criteria?: {
     id: number;
-    code: string | null;
+    code?: string | null;
     name: string;
-    description: string | null;
-    priority_score: number;
-    tier: number | null;
+    description?: string | null;
+    priority_score?: number;
+    tier?: number | null;
   };
   evidences?: Array<{
     id: number;
@@ -367,11 +431,11 @@ function normalizePriority(r: ApiReservationPriority): ReservationPriority {
     criteria: r.criteria
       ? {
           id: r.criteria.id,
-          code: r.criteria.code,
+          code: r.criteria.code ?? null,
           name: r.criteria.name,
-          description: r.criteria.description,
-          priorityScore: r.criteria.priority_score,
-          tier: r.criteria.tier,
+          description: r.criteria.description ?? null,
+          priorityScore: r.criteria.priority_score ?? 0,
+          tier: r.criteria.tier ?? null,
         }
       : undefined,
     evidences: r.evidences?.map((e) => ({
@@ -417,7 +481,7 @@ export const uploadReservationDocument = async (
   reservationCode: string,
   type: "avatar" | "cccd_front" | "cccd_back",
   file: File,
-): Promise<{ message: string; url: string }> => {
+): Promise<{ message: string }> => {
   const form = new FormData();
   form.append("reservation_code", reservationCode);
   form.append("type", type);
@@ -425,35 +489,21 @@ export const uploadReservationDocument = async (
   const res = await API.post(`/dorm-reservations/${reservationId}/upload-document`, form, {
     headers: { "Content-Type": "multipart/form-data" },
   });
-  return res.data as { message: string; url: string };
+  return res.data as { message: string };
 };
 
 export const uploadReservationPriorityEvidence = async (
   priorityId: number,
   reservationCode: string,
   file: File,
-): Promise<{ message: string; evidence: ReservationPriorityEvidence }> => {
+): Promise<{ message: string }> => {
   const form = new FormData();
   form.append("reservation_code", reservationCode);
   form.append("file", file);
   const res = await API.post(`/reservation-priorities/${priorityId}/evidences`, form, {
     headers: { "Content-Type": "multipart/form-data" },
   });
-  const d = res.data as {
-    message: string;
-    evidence: { id: number; file_url: string; original_name: string | null; mime_type: string | null; file_size: number | null; created_at: string };
-  };
-  return {
-    message: d.message,
-    evidence: {
-      id: d.evidence.id,
-      fileUrl: d.evidence.file_url,
-      originalName: d.evidence.original_name,
-      mimeType: d.evidence.mime_type,
-      fileSize: d.evidence.file_size,
-      createdAt: d.evidence.created_at,
-    },
-  };
+  return res.data as { message: string };
 };
 
 // ─── Admin — Priority Verification ───────────────────────────────────────────
