@@ -5,6 +5,7 @@ import {
   CheckCircle,
   CheckCircle2,
   ClipboardList,
+  Copy,
   FileText,
   GraduationCap,
   IdCard,
@@ -14,7 +15,6 @@ import {
   Mail,
   Search,
   Upload,
-  User,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -95,6 +95,7 @@ export default function FreshmanReservationPage() {
 
   // success
   const [reservation, setReservation] = useState<DormReservation | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
 
   // document uploads (avatar, cccd)
   const initDocFiles = (): Record<DocumentField, File | null> => ({ portraitPhoto: null, cccdFrontPhoto: null, cccdBackPhoto: null });
@@ -332,8 +333,38 @@ export default function FreshmanReservationPage() {
     setSelectedPeriod(""); setEmail("");
     setCommitmentConfirm(false);
     setDocumentFiles(initDocFiles()); setDocumentErrors({}); setBlurStatus(initBlurStatus());
+    setCopyFeedback(null);
     setReservation(null); setCriteria([]); setSelectedCriteria(new Set());
     setEvidenceFiles(new Map()); setClaimedPriorities([]);
+  };
+
+  const copyReservationCode = async () => {
+    const code = reservation?.reservationCode?.trim();
+    if (!code) {
+      setCopyFeedback("Chưa có mã để sao chép");
+      return;
+    }
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(code);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = code;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setCopyFeedback("Đã sao chép");
+    } catch {
+      setCopyFeedback("Không thể sao chép mã");
+    }
+
+    window.setTimeout(() => setCopyFeedback(null), 1800);
   };
 
   // ── Helper: section icon (matches RegistrationPage gradient) ──────────────
@@ -375,41 +406,41 @@ export default function FreshmanReservationPage() {
           </p>
         </div>
 
-        {/* Step indicator */}
-        <div className="mb-5 flex items-center justify-center rounded-[1.25rem] border border-[#cfdcf0] bg-white/90 px-4 py-3 text-sm font-semibold shadow-[0_12px_28px_rgba(36,76,184,0.10)] backdrop-blur-xl">
-          {(["verify", "form", "success"] as const).map((s, i) => {
-            const labels = ["Xác minh", "Đăng ký", "Hoàn tất"];
-            const flowStep = step === "existing" ? "verify" : step;
-            const current = flowStep === s;
-            const done = ["verify", "form", "success"].indexOf(flowStep) > i;
-            return (
-              <div key={s} className="flex flex-1 items-center last:flex-none sm:flex-none">
-                <div className="flex min-w-0 flex-col items-center gap-2 sm:min-w-[6.5rem]">
-                  <motion.span
-                    layout
-                    className={`inline-flex h-10 w-10 items-center justify-center rounded-full border text-sm font-extrabold shadow-sm transition-all duration-300 ${
-                      current
-                        ? "border-[#244cb8] bg-[#244cb8] text-white shadow-[0_12px_24px_rgba(36,76,184,0.25)]"
-                        : done
-                          ? "border-emerald-500 bg-emerald-500 text-white shadow-[0_10px_20px_rgba(16,185,129,0.20)]"
-                          : "border-[#d8e3f3] bg-[#f2f6fb] text-[#8ba0bf]"
-                    }`}
-                  >
-                    {done ? <CheckCircle2 className="h-5 w-5" /> : i + 1}
-                  </motion.span>
-                  <span className={`truncate text-xs font-bold transition-colors duration-300 ${current ? "text-[#244cb8]" : done ? "text-emerald-600" : "text-[#8fa0b8]"}`}>
-                    {labels[i]}
-                  </span>
-                </div>
-                {i < 2 && (
-                  <div className="mx-2 h-px flex-1 rounded-full bg-[#c9d8ef] sm:w-20 sm:flex-none">
-                    <div className={`h-full rounded-full transition-all duration-300 ${done ? "w-full bg-emerald-500" : current ? "w-1/2 bg-[#244cb8]" : "w-0 bg-[#244cb8]"}`} />
+        {step !== "existing" && (
+          <div className="mb-5 flex items-center justify-center rounded-[1.25rem] border border-[#cfdcf0] bg-white/90 px-4 py-3 text-sm font-semibold shadow-[0_12px_28px_rgba(36,76,184,0.10)] backdrop-blur-xl">
+            {(["verify", "form", "success"] as const).map((s, i) => {
+              const labels = ["Xác minh", "Đăng ký", "Hoàn tất"];
+              const current = step === s;
+              const done = ["verify", "form", "success"].indexOf(step) > i;
+              return (
+                <div key={s} className="flex flex-1 items-center last:flex-none sm:flex-none">
+                  <div className="flex min-w-0 flex-col items-center gap-2 sm:min-w-[6.5rem]">
+                    <motion.span
+                      layout
+                      className={`inline-flex h-10 w-10 items-center justify-center rounded-full border text-sm font-extrabold shadow-sm transition-all duration-300 ${
+                        current
+                          ? "border-[#244cb8] bg-[#244cb8] text-white shadow-[0_12px_24px_rgba(36,76,184,0.25)]"
+                          : done
+                            ? "border-emerald-500 bg-emerald-500 text-white shadow-[0_10px_20px_rgba(16,185,129,0.20)]"
+                            : "border-[#d8e3f3] bg-[#f2f6fb] text-[#8ba0bf]"
+                      }`}
+                    >
+                      {done ? <CheckCircle2 className="h-5 w-5" /> : i + 1}
+                    </motion.span>
+                    <span className={`truncate text-xs font-bold transition-colors duration-300 ${current ? "text-[#244cb8]" : done ? "text-emerald-600" : "text-[#8fa0b8]"}`}>
+                      {labels[i]}
+                    </span>
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                  {i < 2 && (
+                    <div className="mx-2 h-px flex-1 rounded-full bg-[#c9d8ef] sm:w-20 sm:flex-none">
+                      <div className={`h-full rounded-full transition-all duration-300 ${done ? "w-full bg-emerald-500" : current ? "w-1/2 bg-[#244cb8]" : "w-0 bg-[#244cb8]"}`} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <AnimatePresence mode="wait">
           {/* ── Step 1: Verify ── */}
@@ -492,16 +523,11 @@ export default function FreshmanReservationPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.26, ease: "easeOut" }}
-              className="contents"
             >
               <ReservationProgressCard
                 reservation={verifyResult.existingReservation}
-                message={verifyResult.message}
-                onCheckAnother={resetAll}
-                onOpenLookup={() => navigate("/freshman-reservation/status", {
-                  state: { reservationCode: verifyResult.existingReservation?.reservationCode ?? "" },
-                })}
                 onLogin={() => navigate("/login")}
+                onLookupAnother={resetAll}
               />
             </motion.div>
           )}
@@ -840,14 +866,37 @@ export default function FreshmanReservationPage() {
                   <CheckCircle className="h-8 w-8" />
                 </span>
                 <h2 className="mb-2 text-xl font-bold text-[#1a2d52]">Hồ sơ đã được gửi thành công!</h2>
-                <p className="mb-4 text-sm text-[#5C7094]">BQL sẽ xem xét và phản hồi sớm nhất có thể.</p>
+                <p className="mb-5 text-sm text-[#5C7094]">Ban quản lý KTX sẽ tiếp nhận và xử lý hồ sơ của bạn.</p>
+
+                <div className="mb-4 rounded-2xl border border-emerald-200 bg-white/85 px-4 py-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]">
+                  <p className="text-sm font-semibold text-[#5A7094]">Mã hồ sơ giữ chỗ</p>
+                  <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="min-w-0 break-all rounded-xl border border-[#d8e6f6] bg-[#f6f9fd] px-4 py-3 font-mono text-base font-bold text-[#1F3152]">
+                      {reservation.reservationCode || "Chưa có mã hồ sơ"}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void copyReservationCode()}
+                      disabled={!reservation.reservationCode}
+                      className={`${secondaryBtn} justify-center disabled:cursor-not-allowed disabled:opacity-50`}
+                    >
+                      <Copy className="h-4 w-4" />
+                      Sao chép mã
+                    </button>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-[#5C7094]">Mã này chỉ xuất hiện 1 lần. Hãy lưu để tra cứu trạng thái hồ sơ.</p>
+                    {copyFeedback && <p className="text-sm font-semibold text-emerald-700">{copyFeedback}</p>}
+                  </div>
+                </div>
 
                 <div className="rounded-xl border border-[#cfdcf0] bg-[linear-gradient(180deg,#f8fbff_0%,#eef5ff_100%)] px-4 py-4 text-sm text-left">
-                  <p className="mb-2 font-semibold text-[#244cb8]">Bước tiếp theo sau khi nhập học:</p>
-                  <ol className="space-y-1 text-xs text-[#3d5a9e]">
-                    <li>1. Sau khi có MSSV, bạn sẽ nhận email thông báo xác nhận nhập học.</li>
-                    <li>2. Đăng ký tài khoản tại trang <strong>/register</strong> bằng MSSV.</li>
-                    <li>3. Đơn đăng ký lưu trú sẽ được tự động tạo — đăng nhập để kiểm tra trạng thái.</li>
+                  <p className="mb-2 font-semibold text-[#244cb8]">Các bước tiếp theo:</p>
+                  <ol className="space-y-1.5 text-xs leading-5 text-[#3d5a9e]">
+                    <li>1. Ban quản lý KTX sẽ tiếp nhận và xem xét hồ sơ giữ chỗ.</li>
+                    <li>2. Sử dụng mã hồ sơ giữ chỗ ở trên để tra cứu trạng thái xử lý trên website.</li>
+                    <li>3. Khi hồ sơ được duyệt, chuyển sang danh sách chờ hoặc có thay đổi, hệ thống sẽ gửi thông báo theo kênh hiện có.</li>
+                    <li>4. Sau khi nhà trường xác nhận nhập học và cấp MSSV, hồ sơ giữ chỗ đủ điều kiện sẽ được chuyển thành đơn đăng ký nội trú chính thức.</li>
                   </ol>
                 </div>
 
@@ -866,9 +915,20 @@ export default function FreshmanReservationPage() {
                   </div>
                 )}
 
-                <div className="mt-6 flex justify-center">
-                  <button type="button" onClick={resetAll} className={secondaryBtn}>
-                    <User className="h-4 w-4" /> Đăng ký hồ sơ khác
+                <div className="mt-6 flex flex-wrap justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => navigate("/freshman-reservation/status", {
+                      state: { reservationCode: reservation.reservationCode ?? "" },
+                    })}
+                    disabled={!reservation.reservationCode}
+                    className={`${primaryBtn} disabled:cursor-not-allowed disabled:opacity-50`}
+                  >
+                    <Search className="h-4 w-4" />
+                    Tra cứu trạng thái hồ sơ
+                  </button>
+                  <button type="button" onClick={() => navigate("/")} className={secondaryBtn}>
+                    Về trang chủ
                   </button>
                 </div>
               </div>

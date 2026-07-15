@@ -23,8 +23,17 @@ export type ReservationProgress = {
   reservationCode: string | null;
   status: ReservationStatus;
   submittedAt: string | null;
+  approvedAt?: string | null;
   periodName: string | null;
   rejectionReason?: string | null;
+  cancellationReason?: string | null;
+  candidate?: {
+    fullName: string | null;
+    majorName: string | null;
+    maskedCccd: string | null;
+    maskedEmail: string | null;
+    maskedPhone: string | null;
+  } | null;
 };
 
 export type CandidateVerifyResult = {
@@ -46,6 +55,7 @@ export type DormReservation = {
   status: ReservationStatus;
   priorityNote: string | null;
   rejectionReason: string | null;
+  cancellationReason: string | null;
   adminNote: string | null;
   avatarUrl: string | null;
   cccdFrontUrl: string | null;
@@ -90,6 +100,7 @@ type ApiReservation = {
   status: ReservationStatus;
   priority_note: string | null;
   rejection_reason: string | null;
+  cancellation_reason?: string | null;
   admin_note: string | null;
   avatar_url: string | null;
   cccd_front_url: string | null;
@@ -135,6 +146,7 @@ function normalizeReservation(r: ApiReservation): DormReservation {
     status: r.status,
     priorityNote: r.priority_note,
     rejectionReason: r.rejection_reason,
+    cancellationReason: r.cancellation_reason ?? null,
     adminNote: r.admin_note,
     avatarUrl: r.avatar_url,
     cccdFrontUrl: r.cccd_front_url,
@@ -231,8 +243,17 @@ export const lookupDormReservation = async (payload: {
       reservation_code: string | null;
       status: ReservationStatus;
       submitted_at: string | null;
+      approved_at?: string | null;
       period_name: string | null;
       rejection_reason?: string | null;
+      cancellation_reason?: string | null;
+      candidate?: {
+        full_name: string | null;
+        major_name: string | null;
+        masked_cccd: string | null;
+        masked_email: string | null;
+        masked_phone: string | null;
+      } | null;
     };
   };
 
@@ -242,8 +263,19 @@ export const lookupDormReservation = async (payload: {
       reservationCode: d.reservation.reservation_code,
       status: d.reservation.status,
       submittedAt: d.reservation.submitted_at,
+      approvedAt: d.reservation.approved_at ?? null,
       periodName: d.reservation.period_name,
       rejectionReason: d.reservation.rejection_reason ?? null,
+      cancellationReason: d.reservation.cancellation_reason ?? null,
+      candidate: d.reservation.candidate
+        ? {
+            fullName: d.reservation.candidate.full_name,
+            majorName: d.reservation.candidate.major_name,
+            maskedCccd: d.reservation.candidate.masked_cccd,
+            maskedEmail: d.reservation.candidate.masked_email,
+            maskedPhone: d.reservation.candidate.masked_phone,
+          }
+        : null,
     },
   };
 };
@@ -284,6 +316,7 @@ export const createDormReservation = async (payload: {
       status: d.reservation.status,
       priorityNote: null,
       rejectionReason: null,
+      cancellationReason: null,
       adminNote: null,
       avatarUrl: null,
       cccdFrontUrl: null,
@@ -337,8 +370,8 @@ export const waitlistReservation = async (id: number, adminNote?: string): Promi
   return { message: d.message, reservation: normalizeReservation(d.reservation) };
 };
 
-export const cancelReservation = async (id: number, adminNote?: string): Promise<{ message: string; reservation: DormReservation }> => {
-  const res = await apiClient.put(`/admin/dorm-reservations/${id}/cancel`, { admin_note: adminNote });
+export const cancelReservation = async (id: number, reason: string, adminNote?: string): Promise<{ message: string; reservation: DormReservation }> => {
+  const res = await apiClient.put(`/admin/dorm-reservations/${id}/cancel`, { reason, admin_note: adminNote });
   const d = res.data as { message: string; reservation: ApiReservation };
   return { message: d.message, reservation: normalizeReservation(d.reservation) };
 };

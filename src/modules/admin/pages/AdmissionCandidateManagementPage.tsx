@@ -17,12 +17,17 @@ import { useOutletContext } from "react-router-dom";
 import {
   bulkEnrollCandidates,
   deleteAdminCandidate,
+  downloadCandidatesImportTemplate,
   getAdminCandidate,
   getAdminCandidates,
+  importAdmissionCandidates,
   type AdmissionCandidate,
   type BulkEnrollResult,
+  type BulkEnrollRowStatus,
   type CandidatePayload,
   type CandidateStatus,
+  type ImportCandidatesResult,
+  type ImportCandidateRowStatus,
 } from "../../../api/admissionCandidateApi";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import { formatDate } from "../../../utils/dateFormat";
@@ -126,8 +131,19 @@ export default function AdmissionCandidateManagementPage() {
   const [bulkFile, setBulkFile] = useState<File | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkResult, setBulkResult] = useState<BulkEnrollResult | null>(null);
+  const [bulkResultFilter, setBulkResultFilter] = useState<"" | BulkEnrollRowStatus>("");
   const [bulkError, setBulkError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // candidate import
+  const [showCandidateImportModal, setShowCandidateImportModal] = useState(false);
+  const [candidateImportFile, setCandidateImportFile] = useState<File | null>(null);
+  const [candidateImportLoading, setCandidateImportLoading] = useState(false);
+  const [candidateImportTemplateLoading, setCandidateImportTemplateLoading] = useState(false);
+  const [candidateImportResult, setCandidateImportResult] = useState<ImportCandidatesResult | null>(null);
+  const [candidateImportResultFilter, setCandidateImportResultFilter] = useState<"" | ImportCandidateRowStatus>("");
+  const [candidateImportError, setCandidateImportError] = useState<string | null>(null);
+  const candidateImportFileInputRef = useRef<HTMLInputElement>(null);
 
   const showToast = (type: "success" | "error", msg: string) => {
     setToast({ type, msg });
@@ -205,6 +221,7 @@ export default function AdmissionCandidateManagementPage() {
   const openBulkModal = () => {
     setBulkFile(null);
     setBulkResult(null);
+    setBulkResultFilter("");
     setBulkError(null);
     setShowBulkModal(true);
   };
@@ -213,6 +230,7 @@ export default function AdmissionCandidateManagementPage() {
     const f = e.target.files?.[0] ?? null;
     setBulkFile(f);
     setBulkResult(null);
+    setBulkResultFilter("");
     setBulkError(null);
   };
 
@@ -221,20 +239,92 @@ export default function AdmissionCandidateManagementPage() {
     setBulkLoading(true);
     setBulkError(null);
     setBulkResult(null);
+    setBulkResultFilter("");
     try {
       const result = await bulkEnrollCandidates(bulkFile);
       setBulkResult(result);
       if (result.summary.success > 0) {
         void load(1);
-        showToast("success", `Import thành công ${result.summary.success} sinh viên.`);
+        showToast("success", `Nhập thành công ${result.summary.success} sinh viên.`);
       }
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-        "Import thất bại. Vui lòng kiểm tra lại file.";
+        "Nhập thất bại. Vui lòng kiểm tra lại file.";
       setBulkError(msg);
     } finally {
       setBulkLoading(false);
+    }
+  };
+
+  const resetBulkImport = () => {
+    setBulkFile(null);
+    setBulkResult(null);
+    setBulkResultFilter("");
+    setBulkError(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const openCandidateImportModal = () => {
+    setCandidateImportFile(null);
+    setCandidateImportResult(null);
+    setCandidateImportResultFilter("");
+    setCandidateImportError(null);
+    setShowCandidateImportModal(true);
+  };
+
+  const handleCandidateImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] ?? null;
+    setCandidateImportFile(f);
+    setCandidateImportResult(null);
+    setCandidateImportResultFilter("");
+    setCandidateImportError(null);
+  };
+
+  const handleDownloadCandidateImportTemplate = async () => {
+    setCandidateImportTemplateLoading(true);
+    setCandidateImportError(null);
+    try {
+      await downloadCandidatesImportTemplate();
+    } catch {
+      setCandidateImportError("Không thể tải file mẫu danh sách trúng tuyển.");
+    } finally {
+      setCandidateImportTemplateLoading(false);
+    }
+  };
+
+  const handleCandidateImportSubmit = async () => {
+    if (!candidateImportFile) return;
+    setCandidateImportLoading(true);
+    setCandidateImportError(null);
+    setCandidateImportResult(null);
+    setCandidateImportResultFilter("");
+    try {
+      const result = await importAdmissionCandidates(candidateImportFile);
+      setCandidateImportResult(result);
+      if (result.summary.success > 0) {
+        void load(1);
+        showToast("success", `Đã nhập thành công ${result.summary.success} hồ sơ trúng tuyển.`);
+      }
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        "Nhập danh sách trúng tuyển thất bại. Vui lòng kiểm tra lại file.";
+      setCandidateImportError(msg);
+    } finally {
+      setCandidateImportLoading(false);
+    }
+  };
+
+  const resetCandidateImport = () => {
+    setCandidateImportFile(null);
+    setCandidateImportResult(null);
+    setCandidateImportResultFilter("");
+    setCandidateImportError(null);
+    if (candidateImportFileInputRef.current) {
+      candidateImportFileInputRef.current.value = "";
     }
   };
 
@@ -292,6 +382,90 @@ export default function AdmissionCandidateManagementPage() {
       </div>
     );
   };
+  const filteredBulkRows = bulkResult
+    ? bulkResult.rows.filter((row) => !bulkResultFilter || row.status === bulkResultFilter)
+    : [];
+  const bulkFilterCards: Array<{
+    key: "" | BulkEnrollRowStatus;
+    label: string;
+    count: number;
+    className: string;
+    countClassName: string;
+    labelClassName: string;
+  }> = bulkResult
+    ? [
+        {
+          key: "",
+          label: "Tổng",
+          count: bulkResult.summary.total,
+          className: "border-[#c1d6f4] bg-[#f0f6ff]",
+          countClassName: "text-[#244cb8]",
+          labelClassName: "text-[#62789f]",
+        },
+        {
+          key: "success",
+          label: "Thành công",
+          count: bulkResult.summary.success,
+          className: "border-emerald-200 bg-emerald-50",
+          countClassName: "text-emerald-700",
+          labelClassName: "text-emerald-600",
+        },
+        {
+          key: "skipped",
+          label: "Bỏ qua",
+          count: bulkResult.summary.skipped,
+          className: "border-amber-200 bg-amber-50",
+          countClassName: "text-amber-700",
+          labelClassName: "text-amber-600",
+        },
+        {
+          key: "error",
+          label: "Lỗi",
+          count: bulkResult.summary.error,
+          className: "border-rose-200 bg-rose-50",
+          countClassName: "text-rose-700",
+          labelClassName: "text-rose-600",
+        },
+      ]
+    : [];
+  const filteredCandidateImportRows = candidateImportResult
+    ? candidateImportResult.rows.filter((row) => !candidateImportResultFilter || row.status === candidateImportResultFilter)
+    : [];
+  const candidateImportFilterCards: Array<{
+    key: "" | ImportCandidateRowStatus;
+    label: string;
+    count: number;
+    className: string;
+    countClassName: string;
+    labelClassName: string;
+  }> = candidateImportResult
+    ? [
+        {
+          key: "",
+          label: "Tổng",
+          count: candidateImportResult.summary.total,
+          className: "border-[#c1d6f4] bg-[#f0f6ff]",
+          countClassName: "text-[#244cb8]",
+          labelClassName: "text-[#62789f]",
+        },
+        {
+          key: "success",
+          label: "Thành công",
+          count: candidateImportResult.summary.success,
+          className: "border-emerald-200 bg-emerald-50",
+          countClassName: "text-emerald-700",
+          labelClassName: "text-emerald-600",
+        },
+        {
+          key: "error",
+          label: "Lỗi",
+          count: candidateImportResult.summary.error,
+          className: "border-rose-200 bg-rose-50",
+          countClassName: "text-rose-700",
+          labelClassName: "text-rose-600",
+        },
+      ]
+    : [];
 
   return (
     <motion.section
@@ -328,12 +502,15 @@ export default function AdmissionCandidateManagementPage() {
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
+            <button type="button" onClick={openCandidateImportModal} className={secondaryBtn}>
+              <FileSpreadsheet className="h-4 w-4" /> Nhập danh sách trúng tuyển
+            </button>
+            <button type="button" onClick={openBulkModal} className={primaryBtn}>
+              <FileSpreadsheet className="h-4 w-4" /> Nhập danh sách nhập học
+            </button>
             <button type="button" onClick={() => void load(1)} disabled={loading} className={secondaryBtn}>
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Làm mới
-            </button>
-            <button type="button" onClick={openBulkModal} className={primaryBtn}>
-              <FileSpreadsheet className="h-4 w-4" /> Import Excel
             </button>
           </div>
         </div>
@@ -471,6 +648,171 @@ export default function AdmissionCandidateManagementPage() {
         </div>
       )}
 
+      {/* ── Candidate Import Modal ── */}
+      {createPortal(
+        <AnimatePresence>
+          {showCandidateImportModal && (
+          <motion.div
+            key="candidate-import-overlay"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-3"
+            onClick={() => { if (!candidateImportLoading && !candidateImportTemplateLoading) setShowCandidateImportModal(false); }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 16 }}
+              className="flex max-h-[82dvh] w-full max-w-[760px] flex-col overflow-hidden rounded-[24px] border border-[#c1d6f4] bg-white shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex shrink-0 items-center justify-between border-b border-[#eef3fb] px-6 py-4">
+                <div>
+                  <h2 className="text-[26px] font-bold leading-tight text-[#1a2d52]">Nhập danh sách trúng tuyển</h2>
+                  <p className="mt-1 max-w-[560px] text-sm font-medium text-[#62789f]">
+                    Dùng file do Phòng Đào tạo cung cấp để tạo hồ sơ trúng tuyển mới.
+                  </p>
+                </div>
+                <button type="button" disabled={candidateImportLoading || candidateImportTemplateLoading} onClick={() => setShowCandidateImportModal(false)} className="text-[#7c8fb5] hover:text-[#1a2d52]">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5 [scrollbar-gutter:stable] space-y-4">
+                {!candidateImportResult && (
+                  <>
+                    <button
+                      type="button"
+                      disabled={candidateImportTemplateLoading}
+                      onClick={() => void handleDownloadCandidateImportTemplate()}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#c1d6f4] bg-[#f7faff] px-4 text-sm font-semibold text-[#244cb8] hover:bg-[#eaf3ff] disabled:opacity-50"
+                    >
+                      {candidateImportTemplateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+                      Tải file mẫu
+                    </button>
+
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-[#324B76]">Chọn file Excel</label>
+                      <div
+                        className="flex h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#c1d6f4] bg-[#f7faff] px-4 text-sm text-[#62789f] transition hover:border-[#244cb8] hover:bg-[#eaf3ff]"
+                        onClick={() => candidateImportFileInputRef.current?.click()}
+                      >
+                        <Upload className="h-6 w-6 text-[#244cb8]" />
+                        {candidateImportFile ? (
+                          <span className="font-semibold text-[#244cb8]">{candidateImportFile.name}</span>
+                        ) : (
+                          <span>Nhấn để chọn file <strong>.xlsx</strong> hoặc <strong>.xls</strong></span>
+                        )}
+                      </div>
+                      <input
+                        ref={candidateImportFileInputRef}
+                        type="file"
+                        accept=".xlsx,.xls"
+                        className="hidden"
+                        onChange={handleCandidateImportFileChange}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {candidateImportError && (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    {candidateImportError}
+                  </div>
+                )}
+
+                {candidateImportResult && (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-3 gap-2 text-center text-xs font-semibold">
+                      {candidateImportFilterCards.map((item) => {
+                        const active = item.key !== "" && candidateImportResultFilter === item.key;
+                        return (
+                          <button
+                            key={item.key || "all"}
+                            type="button"
+                            onClick={() => setCandidateImportResultFilter((current) => (current === item.key ? "" : item.key))}
+                            className={`rounded-xl border py-2 transition hover:-translate-y-0.5 hover:shadow-sm ${item.className} ${
+                              active ? "ring-2 ring-[#244cb8] ring-offset-2" : ""
+                            }`}
+                          >
+                            <p className={`text-lg font-bold ${item.countClassName}`}>{item.count}</p>
+                            <p className={item.labelClassName}>{item.label}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {candidateImportResult.rows.length > 0 && (
+                      <div className="overflow-hidden rounded-xl border border-[#d6e2f1]">
+                        <div className="bg-[#f0f6ff] px-3 py-2 text-xs font-semibold text-[#324B76]">
+                          Chi tiết dòng nhập
+                        </div>
+                        <div className="max-h-80 divide-y divide-[#eef3fb] overflow-y-auto">
+                          {filteredCandidateImportRows.length > 0 ? (
+                            filteredCandidateImportRows.map((r) => (
+                              <div key={r.row} className="grid gap-1.5 px-3 py-2.5 text-xs sm:grid-cols-[auto,1fr] sm:gap-x-3">
+                                <div className="flex shrink-0 items-center gap-2">
+                                  <span className="font-mono text-[#7c8fb5]">Dòng {r.row}</span>
+                                  <span className={`rounded px-1.5 py-0.5 font-semibold ${
+                                    r.status === "success"
+                                      ? "bg-emerald-100 text-emerald-700"
+                                      : r.status === "skipped"
+                                        ? "bg-amber-100 text-amber-700"
+                                        : "bg-rose-100 text-rose-700"
+                                  }`}>
+                                    {r.status === "success" ? "Thành công" : r.status === "skipped" ? "Bỏ qua" : "Lỗi"}
+                                  </span>
+                                </div>
+                                <div className="min-w-0 space-y-1">
+                                  {r.full_name && (
+                                    <p className="text-sm font-bold text-[#1a2d52]">{r.full_name}</p>
+                                  )}
+                                  {r.admission_code && (
+                                    <p className="text-[#62789f]">
+                                      Mã trúng tuyển: <span className="font-mono font-semibold text-[#244cb8]">{r.admission_code}</span>
+                                    </p>
+                                  )}
+                                  <p className="text-[#1f3152]">{r.message}</p>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="px-3 py-6 text-center text-xs font-semibold text-[#7c8fb5]">
+                              Không có dòng nào trong bộ lọc này.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex shrink-0 justify-end gap-3 border-t border-[#eef3fb] px-6 py-4">
+                {candidateImportResult && (
+                  <button type="button" disabled={candidateImportLoading} onClick={resetCandidateImport} className="inline-flex h-10 min-w-[110px] items-center justify-center rounded-xl border border-[#c1d6f4] bg-[#f7faff] px-4 text-sm font-semibold text-[#244cb8] hover:bg-[#eaf3ff]">
+                    Nhập lại
+                  </button>
+                )}
+                <button type="button" disabled={candidateImportLoading || candidateImportTemplateLoading} onClick={() => setShowCandidateImportModal(false)} className="inline-flex h-10 min-w-[120px] items-center justify-center rounded-xl border border-[#d6e2f1] bg-white px-4 text-sm font-semibold text-[#5d7299] hover:bg-[#f5f9ff]">
+                  {candidateImportResult ? "Đóng" : "Hủy"}
+                </button>
+                {!candidateImportResult && (
+                  <button
+                    type="button"
+                    disabled={!candidateImportFile || candidateImportLoading || candidateImportTemplateLoading}
+                    onClick={() => void handleCandidateImportSubmit()}
+                    className={`${primaryBtn} h-10 min-w-[150px]`}
+                  >
+                    {candidateImportLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                    <Upload className="h-4 w-4" /> Bắt đầu nhập
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
+
       {/* ── Bulk Import Modal ── */}
       {createPortal(
         <AnimatePresence>
@@ -483,23 +825,29 @@ export default function AdmissionCandidateManagementPage() {
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.96, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 16 }}
-              className="flex max-h-[82dvh] w-[min(96vw,92rem)] flex-col overflow-hidden rounded-[24px] border border-[#c1d6f4] bg-white shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
+              className="flex max-h-[82dvh] w-full max-w-[760px] flex-col overflow-hidden rounded-[24px] border border-[#c1d6f4] bg-white shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="flex shrink-0 items-center justify-between border-b border-[#eef3fb] px-5 py-3">
-                <h2 className="text-lg font-bold text-[#1a2d52]">Import danh sách sinh viên</h2>
+              <div className="flex shrink-0 items-center justify-between border-b border-[#eef3fb] px-6 py-4">
+                <div>
+                  <h2 className="text-[26px] font-bold leading-tight text-[#1a2d52]">Nhập danh sách sinh viên đã nhập học</h2>
+                  <p className="mt-1 max-w-[560px] text-sm font-medium text-[#62789f]">
+                    File phải chứa Mã trúng tuyển và MSSV để hệ thống đối chiếu hồ sơ trúng tuyển đã có.
+                  </p>
+                </div>
                 <button type="button" disabled={bulkLoading} onClick={() => setShowBulkModal(false)} className="text-[#7c8fb5] hover:text-[#1a2d52]">
                   <X className="h-5 w-5" />
                 </button>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 [scrollbar-gutter:stable] space-y-4">
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5 [scrollbar-gutter:stable] space-y-4">
                 {/* File input */}
+                {!bulkResult && (
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-[#324B76]">Chọn file Excel</label>
                   <div
-                    className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#c1d6f4] bg-[#f7faff] py-6 text-sm text-[#62789f] transition hover:border-[#244cb8] hover:bg-[#eaf3ff]"
+                    className="flex h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#c1d6f4] bg-[#f7faff] px-4 text-sm text-[#62789f] transition hover:border-[#244cb8] hover:bg-[#eaf3ff]"
                     onClick={() => fileInputRef.current?.click()}
                   >
                     <Upload className="h-6 w-6 text-[#244cb8]" />
@@ -517,6 +865,7 @@ export default function AdmissionCandidateManagementPage() {
                     onChange={handleBulkFileChange}
                   />
                 </div>
+                )}
 
                 {/* Error */}
                 {bulkError && (
@@ -528,51 +877,73 @@ export default function AdmissionCandidateManagementPage() {
                 {/* Result */}
                 {bulkResult && (
                   <div className="space-y-3">
-                    {/* Summary chips */}
+                    {/* Summary filters */}
                     <div className="grid grid-cols-4 gap-2 text-center text-xs font-semibold">
-                      <div className="rounded-xl border border-[#c1d6f4] bg-[#f0f6ff] py-2">
-                        <p className="text-lg font-bold text-[#244cb8]">{bulkResult.summary.total}</p>
-                        <p className="text-[#62789f]">Tổng</p>
-                      </div>
-                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 py-2">
-                        <p className="text-lg font-bold text-emerald-700">{bulkResult.summary.success}</p>
-                        <p className="text-emerald-600">Thành công</p>
-                      </div>
-                      <div className="rounded-xl border border-amber-200 bg-amber-50 py-2">
-                        <p className="text-lg font-bold text-amber-700">{bulkResult.summary.skipped}</p>
-                        <p className="text-amber-600">Bỏ qua</p>
-                      </div>
-                      <div className="rounded-xl border border-rose-200 bg-rose-50 py-2">
-                        <p className="text-lg font-bold text-rose-700">{bulkResult.summary.error}</p>
-                        <p className="text-rose-600">Lỗi</p>
-                      </div>
+                      {bulkFilterCards.map((item) => {
+                        const active = item.key !== "" && bulkResultFilter === item.key;
+                        return (
+                          <button
+                            key={item.key || "all"}
+                            type="button"
+                            onClick={() => setBulkResultFilter((current) => (current === item.key ? "" : item.key))}
+                            className={`rounded-xl border py-2 transition hover:-translate-y-0.5 hover:shadow-sm ${item.className} ${
+                              active ? "ring-2 ring-[#244cb8] ring-offset-2" : ""
+                            }`}
+                          >
+                            <p className={`text-lg font-bold ${item.countClassName}`}>{item.count}</p>
+                            <p className={item.labelClassName}>{item.label}</p>
+                          </button>
+                        );
+                      })}
                     </div>
 
-                    {/* Row details (only non-success) */}
-                    {bulkResult.rows.filter((r) => r.status !== "success").length > 0 && (
+                    {/* Row details */}
+                    {bulkResult.rows.length > 0 && (
                       <div className="rounded-xl border border-[#d6e2f1] overflow-hidden">
                         <div className="bg-[#f0f6ff] px-3 py-2 text-xs font-semibold text-[#324B76]">
-                          Chi tiết dòng bỏ qua / lỗi
+                          Chi tiết dòng nhập
                         </div>
-                        <div className="divide-y divide-[#eef3fb] max-h-48 overflow-y-auto">
-                          {bulkResult.rows
-                            .filter((r) => r.status !== "success")
-                            .map((r) => (
-                              <div key={r.row} className="flex items-start gap-2 px-3 py-2 text-xs">
-                                <span className="shrink-0 font-mono text-[#7c8fb5]">Dòng {r.row}</span>
-                                <span className={`shrink-0 rounded px-1.5 py-0.5 font-semibold ${
-                                  r.status === "skipped"
-                                    ? "bg-amber-100 text-amber-700"
-                                    : "bg-rose-100 text-rose-700"
-                                }`}>
-                                  {r.status === "skipped" ? "Bỏ qua" : "Lỗi"}
-                                </span>
-                                {r.student_code && (
-                                  <span className="font-mono text-[#62789f]">{r.student_code}</span>
-                                )}
-                                <span className="text-[#1f3152]">{r.message}</span>
+                        <div className="divide-y divide-[#eef3fb] max-h-80 overflow-y-auto">
+                          {filteredBulkRows.length > 0 ? (
+                            filteredBulkRows.map((r) => (
+                              <div key={r.row} className="grid gap-1.5 px-3 py-2.5 text-xs sm:grid-cols-[auto,1fr] sm:gap-x-3">
+                                <div className="flex shrink-0 items-center gap-2">
+                                  <span className="font-mono text-[#7c8fb5]">Dòng {r.row}</span>
+                                  <span className={`rounded px-1.5 py-0.5 font-semibold ${
+                                    r.status === "success"
+                                      ? "bg-emerald-100 text-emerald-700"
+                                      : r.status === "skipped"
+                                        ? "bg-amber-100 text-amber-700"
+                                        : "bg-rose-100 text-rose-700"
+                                  }`}>
+                                    {r.status === "success" ? "Thành công" : r.status === "skipped" ? "Bỏ qua" : "Lỗi"}
+                                  </span>
+                                </div>
+                                <div className="min-w-0 space-y-1">
+                                  {r.full_name && (
+                                    <p className="text-sm font-bold text-[#1a2d52]">{r.full_name}</p>
+                                  )}
+                                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[#62789f]">
+                                    {r.admission_code && (
+                                      <span>
+                                        Mã trúng tuyển: <span className="font-mono font-semibold text-[#244cb8]">{r.admission_code}</span>
+                                      </span>
+                                    )}
+                                    {r.student_code && (
+                                      <span>
+                                        MSSV: <span className="font-mono font-semibold text-[#62789f]">{r.student_code}</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[#1f3152]">{r.message}</p>
+                                </div>
                               </div>
-                            ))}
+                            ))
+                          ) : (
+                            <div className="px-3 py-6 text-center text-xs font-semibold text-[#7c8fb5]">
+                              Không có dòng nào trong bộ lọc này.
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -581,8 +952,13 @@ export default function AdmissionCandidateManagementPage() {
               </div>
 
               {/* Footer */}
-              <div className="flex shrink-0 justify-end gap-2 border-t border-[#eef3fb] px-5 py-3">
-                <button type="button" disabled={bulkLoading} onClick={() => setShowBulkModal(false)} className="rounded-xl border border-[#d6e2f1] bg-white px-4 py-1.5 text-sm font-semibold text-[#5d7299] hover:bg-[#f5f9ff]">
+              <div className="flex shrink-0 justify-end gap-3 border-t border-[#eef3fb] px-6 py-4">
+                {bulkResult && (
+                  <button type="button" disabled={bulkLoading} onClick={resetBulkImport} className="inline-flex h-10 min-w-[110px] items-center justify-center rounded-xl border border-[#c1d6f4] bg-[#f7faff] px-4 text-sm font-semibold text-[#244cb8] hover:bg-[#eaf3ff]">
+                    Nhập lại
+                  </button>
+                )}
+                <button type="button" disabled={bulkLoading} onClick={() => setShowBulkModal(false)} className="inline-flex h-10 min-w-[120px] items-center justify-center rounded-xl border border-[#d6e2f1] bg-white px-4 text-sm font-semibold text-[#5d7299] hover:bg-[#f5f9ff]">
                   {bulkResult ? "Đóng" : "Hủy"}
                 </button>
                 {!bulkResult && (
@@ -590,10 +966,10 @@ export default function AdmissionCandidateManagementPage() {
                     type="button"
                     disabled={!bulkFile || bulkLoading}
                     onClick={() => void handleBulkSubmit()}
-                    className={`${primaryBtn} h-9`}
+                    className={`${primaryBtn} h-10 min-w-[150px]`}
                   >
                     {bulkLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-                    <Upload className="h-4 w-4" /> Bắt đầu import
+                    <Upload className="h-4 w-4" /> Bắt đầu nhập
                   </button>
                 )}
               </div>

@@ -259,7 +259,9 @@ export type BulkEnrollRowStatus = "success" | "skipped" | "error";
 
 export type BulkEnrollRow = {
   row: number;
+  admission_code: string | null;
   student_code: string | null;
+  full_name: string | null;
   status: BulkEnrollRowStatus;
   message: string;
 };
@@ -290,4 +292,44 @@ export const bulkEnrollCandidates = async (file: File): Promise<BulkEnrollResult
     headers: { "Content-Type": "multipart/form-data" },
   });
   return res.data as BulkEnrollResult;
+};
+
+// ─── Import admitted candidates ──────────────────────────────────────────────
+
+export type ImportCandidateRowStatus = "success" | "skipped" | "error";
+
+export type ImportCandidateRow = {
+  row: number;
+  admission_code: string | null;
+  full_name: string | null;
+  status: ImportCandidateRowStatus;
+  message: string;
+};
+
+export type ImportCandidatesResult = {
+  summary: { total: number; success: number; skipped: number; error: number };
+  rows: ImportCandidateRow[];
+};
+
+export const downloadCandidatesImportTemplate = async (): Promise<void> => {
+  const res = await apiClient.get("/admin/admission-candidates/import-candidates-template", {
+    responseType: "blob",
+  });
+  const url = URL.createObjectURL(res.data as Blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "danh_sach_trung_tuyen_mau.xlsx";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+export const importAdmissionCandidates = async (file: File): Promise<ImportCandidatesResult> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await apiClient.post("/admin/admission-candidates/import-candidates", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return res.data as ImportCandidatesResult;
 };
