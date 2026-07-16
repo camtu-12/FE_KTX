@@ -1826,21 +1826,13 @@ export default function RegistrationPage() {
             >
               {/* Thông tin đợt */}
               {stayInfo && (
-                <div className={`auth-reveal is-visible rounded-[20px] border px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)] ${
-                  stayInfo.channel === 'main'
-                    ? 'border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)]'
-                    : 'border-emerald-200 bg-[linear-gradient(180deg,#f0fdf8_0%,#e6faf3_100%)]'
-                }`}>
+                <div className="auth-reveal is-visible rounded-[20px] border border-emerald-200 bg-[linear-gradient(180deg,#f0fdf8_0%,#e6faf3_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
                   <div className="mb-4 flex flex-wrap items-center gap-2">
-                    <CalendarDays className={`h-5 w-5 shrink-0 ${stayInfo.channel === 'main' ? 'text-[#244CB8]' : 'text-emerald-600'}`} />
-                    <h2 className={`text-lg font-bold ${stayInfo.channel === 'main' ? 'text-[#1A2D52]' : 'text-emerald-900'}`}>
+                    <CalendarDays className="h-5 w-5 shrink-0 text-emerald-600" />
+                    <h2 className="text-lg font-bold text-emerald-900">
                       {stayInfo.period_name}
                     </h2>
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                      stayInfo.channel === 'main'
-                        ? 'bg-[#eef5ff] text-[#244cb8] ring-1 ring-inset ring-[#c6d8f4]'
-                        : 'bg-emerald-100 text-emerald-700 ring-1 ring-inset ring-emerald-200'
-                    }`}>
+                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
                       {stayInfo.channel === 'main' ? 'Đợt chính' : 'Quanh năm'}
                     </span>
                     {stayInfo.status === 'pending' && (
@@ -1851,33 +1843,31 @@ export default function RegistrationPage() {
                   </div>
                   <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {stayInfo.school_year && (
-                      <div className="rounded-xl border border-[#ddeaf8] bg-white/70 px-4 py-3">
-                        <dt className="text-xs font-medium uppercase tracking-wide text-[#8095B4]">Năm học / Học kỳ</dt>
+                      <div className="rounded-xl border border-emerald-100 bg-white/70 px-4 py-3">
+                        <dt className="text-xs font-medium uppercase tracking-wide text-emerald-600">Năm học / Học kỳ</dt>
                         <dd className="mt-1 text-sm font-semibold text-[#1F3152]">
                           {stayInfo.school_year} — Học kỳ {stayInfo.semester}
                         </dd>
                       </div>
                     )}
-                    <div className="rounded-xl border border-[#ddeaf8] bg-white/70 px-4 py-3">
-                      <dt className="text-xs font-medium uppercase tracking-wide text-[#8095B4]">Thời gian nhận đơn</dt>
+                    <div className="rounded-xl border border-emerald-100 bg-white/70 px-4 py-3">
+                      <dt className="text-xs font-medium uppercase tracking-wide text-emerald-600">Thời gian nhận đơn</dt>
                       <dd className="mt-1 text-sm font-semibold text-[#1F3152]">
                         {formatDate(stayInfo.start_date)} → {formatDate(stayInfo.end_date)}
                       </dd>
                     </div>
                     {(stayInfo.stay_start_date || stayInfo.stay_end_date) && (
-                      <div className="rounded-xl border border-[#ddeaf8] bg-white/70 px-4 py-3">
-                        <dt className="text-xs font-medium uppercase tracking-wide text-[#8095B4]">Thời gian lưu trú</dt>
+                      <div className="rounded-xl border border-emerald-100 bg-white/70 px-4 py-3">
+                        <dt className="text-xs font-medium uppercase tracking-wide text-emerald-600">Thời gian lưu trú</dt>
                         <dd className="mt-1 text-sm font-semibold text-[#1F3152]">
                           {stayInfo.stay_start_date ? formatDate(stayInfo.stay_start_date) : '—'}{' '}
                           → {stayInfo.stay_end_date ? formatDate(stayInfo.stay_end_date) : '—'}
                         </dd>
                       </div>
                     )}
-                    <div className={`rounded-xl border bg-white/70 px-4 py-3 ${
-                      stayInfo.channel === 'main' ? 'border-[#ddeaf8] sm:col-span-2' : 'border-emerald-100 sm:col-span-2'
-                    }`}>
-                      <dt className={`text-xs font-medium uppercase tracking-wide ${stayInfo.channel === 'main' ? 'text-[#8095B4]' : 'text-emerald-600'}`}>Xét duyệt</dt>
-                      <dd className={`mt-1 text-sm ${stayInfo.channel === 'main' ? 'text-[#5C7094]' : 'text-emerald-700'}`}>
+                    <div className="rounded-xl border border-emerald-100 bg-white/70 px-4 py-3 sm:col-span-2">
+                      <dt className="text-xs font-medium uppercase tracking-wide text-emerald-600">Xét duyệt</dt>
+                      <dd className="mt-1 text-sm text-emerald-700">
                         {stayInfo.channel === 'main'
                           ? 'Đơn sẽ được xét duyệt sau khi hết hạn đợt nhận đơn'
                           : 'Đơn được xét duyệt ngay sau khi nộp (khi còn giường trống)'}

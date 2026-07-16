@@ -2,6 +2,7 @@ import { myRoom, type LeaveRequest, type MyRoom, type MyRoomBed, type MyRoomStat
 import { requestCheckoutByStudentCode } from "../../../mocks/occupancyStore";
 import { getMyRegistration, getRegistrations, getRooms } from "../../../api/registrationService";
 import { listViolationsByOccupancy } from "../../../api/violationApi";
+import { getLocalDateValue } from "../../../utils/dateFormat";
 
 export type SubmitLeaveRequestPayload = {
   reason: string;
@@ -220,7 +221,7 @@ export function getOccupancyStatus() {
 export function submitLeaveRequest(payload: SubmitLeaveRequestPayload) {
   const studentCode = myOccupancy.beds.find((bed) => bed.bedNumber === myOccupancy.bedNumber)?.studentCode;
   const leaveRequest: LeaveRequest = {
-    requestedAt: new Date().toISOString().slice(0, 10),
+    requestedAt: getLocalDateValue(),
     expectedLeaveDate: payload.expectedLeaveDate,
     reason: payload.reason,
     note: payload.note,

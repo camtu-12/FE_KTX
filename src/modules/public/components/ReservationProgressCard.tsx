@@ -1,5 +1,6 @@
-import { CheckCircle2, Clock3, LogIn, XCircle } from "lucide-react";
-import type { ReservationProgress, ReservationStatus } from "../../../api/dormReservationApi";
+import { AlertCircle, CheckCircle2, Clock3, LoaderCircle, LogIn, RotateCcw, XCircle } from "lucide-react";
+import { useState } from "react";
+import { cancelDormReservationSelf, type ReservationProgress, type ReservationStatus } from "../../../api/dormReservationApi";
 
 const primaryBtn =
   "inline-flex items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-6 py-2.5 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition-all duration-300 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_22px_40px_rgba(36,76,184,0.34)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0";
@@ -14,6 +15,13 @@ export const reservationStatusLabel: Record<ReservationStatus, string> = {
   cancelled: "Đã hủy",
 };
 
+type EffectiveReservationStatus = ReservationStatus | "registration_cancelled";
+
+const effectiveReservationStatusLabel: Record<EffectiveReservationStatus, string> = {
+  ...reservationStatusLabel,
+  registration_cancelled: "Đơn nội trú đã hủy",
+};
+
 const reservationStatusClass: Record<ReservationStatus, string> = {
   submitted: "border-blue-200 bg-blue-50 text-blue-700",
   approved: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -24,15 +32,53 @@ const reservationStatusClass: Record<ReservationStatus, string> = {
   cancelled: "border-slate-200 bg-slate-100 text-slate-500",
 };
 
+const effectiveReservationStatusClass: Record<EffectiveReservationStatus, string> = {
+  ...reservationStatusClass,
+  registration_cancelled: "border-rose-200 bg-rose-50 text-rose-700",
+};
+
+export function getReservationEffectiveStatus(reservation: ReservationProgress): EffectiveReservationStatus {
+  return reservation.status === "converted" && reservation.registrationStatus === "cancelled"
+    ? "registration_cancelled"
+    : reservation.status;
+}
+
+export function getReservationEffectiveStatusLabel(reservation: ReservationProgress): string {
+  return effectiveReservationStatusLabel[getReservationEffectiveStatus(reservation)];
+}
+
 const statusMessage: Record<ReservationStatus, string> = {
   submitted: "Hồ sơ giữ chỗ của bạn đã được gửi và đang chờ xét duyệt.",
   approved: "Hồ sơ giữ chỗ của bạn đã được duyệt. Hồ sơ này chưa phải là đơn đăng ký nội trú chính thức. Sau khi nhà trường xác nhận nhập học và cấp MSSV, hệ thống sẽ thực hiện bước chuyển đổi tiếp theo.",
   waitlisted: "Hồ sơ của bạn đang trong danh sách chờ. Hệ thống sẽ cập nhật khi có kết quả mới.",
   rejected: "Hồ sơ giữ chỗ của bạn không được duyệt.",
   cancelled: "Hồ sơ giữ chỗ của bạn đã bị hủy.",
-  expired: "Hồ sơ giữ chỗ của bạn đã hết hiệu lực.",
+  expired: "Hồ sơ giữ chỗ đã hết hiệu lực do quá hạn xác nhận nhập học.",
   converted: "Hồ sơ giữ chỗ đã được chuyển thành đơn đăng ký nội trú chính thức.",
 };
+
+/** Message riêng theo lý do hết hiệu lực (Việc 5) — null/không nhận diện được thì dùng message chung. */
+function expiredStatusMessage(expirationReason: string | null | undefined): string {
+  switch (expirationReason) {
+    case "approved_not_converted":
+      return "Hồ sơ giữ chỗ đã được duyệt nhưng không thể hoàn tất chuyển thành đơn đăng ký nội trú trước khi đợt kết thúc.";
+    case "period_closed_while_waitlisted":
+      return "Hồ sơ đã hết hiệu lực khi đợt đăng ký kết thúc trong lúc đang ở danh sách chờ.";
+    case "period_closed_while_submitted":
+      return "Hồ sơ đã hết hiệu lực khi đợt đăng ký kết thúc trước khi hoàn tất xét duyệt.";
+    default:
+      return statusMessage.expired;
+  }
+}
+
+/** Hạn cuối THẬT (không phải dự kiến) LUÔN là 17:00 của period_end_date — không dùng 23:59:59/00:00. */
+export function formatAdmissionDeadline(periodEndDate: string | null | undefined): string | null {
+  if (!periodEndDate) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(periodEndDate);
+  if (!match) return null;
+  const [, year, month, day] = match;
+  return `17:00 ngày ${day}/${month}/${year}`;
+}
 
 type TimelineState = "done" | "active" | "pending" | "stopped";
 type TimelineStep = {
@@ -55,7 +101,16 @@ export function formatReservationDate(value: string | null): string {
   return `${day}/${month}/${year} ${hours}:${minutes}`;
 }
 
-function buildTimeline(status: ReservationStatus): TimelineStep[] {
+function buildTimeline(status: ReservationStatus, registrationCancelled = false): TimelineStep[] {
+  if (registrationCancelled) {
+    return [
+      { label: "Đã nộp hồ sơ", description: "Hồ sơ giữ chỗ đã được ghi nhận.", state: "done" },
+      { label: "Đang xét duyệt", description: "Ban quản lý KTX đã xem xét hồ sơ.", state: "done" },
+      { label: "Đã duyệt giữ chỗ", description: "Hồ sơ giữ chỗ đã được duyệt.", state: "done" },
+      { label: "Đơn nội trú đã hủy", description: "Đơn nội trú đã được tạo nhưng sau đó đã bị hủy.", state: "stopped" },
+    ];
+  }
+
   if (status === "converted") {
     return [
       { label: "Đã nộp hồ sơ", description: "Hồ sơ giữ chỗ đã được ghi nhận.", state: "done" },
@@ -77,7 +132,7 @@ function buildTimeline(status: ReservationStatus): TimelineStep[] {
   if (status === "expired") {
     return [
       { label: "Đã nộp hồ sơ", description: "Hồ sơ giữ chỗ đã được ghi nhận.", state: "done" },
-      { label: "Đã hết hạn", description: "Hồ sơ giữ chỗ đã hết hiệu lực.", state: "stopped" },
+      { label: "Đã hết hiệu lực", description: "Hồ sơ giữ chỗ đã hết hiệu lực do quá hạn xác nhận nhập học.", state: "stopped" },
       { label: "Kết quả giữ chỗ", description: "Không tiếp tục xử lý.", state: "pending" },
       { label: "Đăng ký nội trú chính thức", description: "Chưa chuyển thành đơn chính thức.", state: "pending" },
     ];
@@ -158,11 +213,59 @@ function stepClasses(state: TimelineState) {
 type Props = {
   reservation: ReservationProgress;
   onLogin?: () => void;
-  onLookupAnother?: () => void;
+  onCancelled?: (updated: ReservationProgress) => void;
+  onResubmit?: () => void;
 };
 
-export default function ReservationProgressCard({ reservation, onLogin, onLookupAnother }: Props) {
-  const timeline = buildTimeline(reservation.status);
+export default function ReservationProgressCard({ reservation, onLogin, onCancelled, onResubmit }: Props) {
+  const effectiveStatus = getReservationEffectiveStatus(reservation);
+  const registrationCancelled = effectiveStatus === "registration_cancelled";
+  const timeline = buildTimeline(reservation.status, registrationCancelled);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelEmail, setCancelEmail] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+
+  const displayMessage = registrationCancelled
+    ? "Đơn đăng ký nội trú được tạo từ hồ sơ giữ chỗ này đã được hủy trước thời hạn."
+    : reservation.status === "expired"
+      ? expiredStatusMessage(reservation.expirationReason)
+      : statusMessage[reservation.status];
+
+  const handleConfirmCancel = async () => {
+    if (!reservation.reservationCode || cancelling) return;
+    const email = cancelEmail.trim();
+    if (!email) {
+      setCancelError("Vui lòng nhập email đã đăng ký với hồ sơ để xác minh.");
+      return;
+    }
+    const reason = cancelReason.trim();
+    if (!reason) {
+      setCancelError("Vui lòng nhập lý do hủy.");
+      return;
+    }
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      const result = await cancelDormReservationSelf({
+        reservation_code: reservation.reservationCode,
+        email,
+        reason,
+      });
+      setShowCancelModal(false);
+      setCancelReason("");
+      setCancelEmail("");
+      onCancelled?.(result.reservation);
+    } catch (err: unknown) {
+      setCancelError(
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        "Không thể hủy lúc này. Vui lòng thử lại sau.",
+      );
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   return (
     <div className="rounded-[22px] border border-sky-200 bg-[linear-gradient(180deg,#f0f9ff_0%,#ffffff_100%)] p-5 shadow-[0_14px_30px_rgba(36,76,184,0.10)] sm:p-6">
@@ -170,16 +273,11 @@ export default function ReservationProgressCard({ reservation, onLogin, onLookup
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-lg font-semibold text-[#1F3152]">Tiến trình hồ sơ hiện tại</h2>
-            <span className={`rounded-lg border px-2 py-0.5 text-xs font-semibold ${reservationStatusClass[reservation.status]}`}>
-              {reservationStatusLabel[reservation.status]}
+            <span className={`rounded-lg border px-2 py-0.5 text-xs font-semibold ${effectiveReservationStatusClass[effectiveStatus]}`}>
+              {effectiveReservationStatusLabel[effectiveStatus]}
             </span>
           </div>
-          <p className="mt-1 text-sm font-medium text-[#5C7094]">{statusMessage[reservation.status]}</p>
-          {reservation.status === "rejected" && reservation.rejectionReason && (
-            <p className="mt-2 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
-              Lý do không được duyệt: {reservation.rejectionReason}
-            </p>
-          )}
+          <p className="mt-1 text-sm font-medium text-[#5C7094]">{displayMessage}</p>
         </div>
       </div>
 
@@ -205,6 +303,12 @@ export default function ReservationProgressCard({ reservation, onLogin, onLookup
         })}
       </ol>
 
+      {registrationCancelled && (
+        <div className="mt-5 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">
+          <p className="font-semibold text-rose-700">Bạn hiện không còn đăng ký lưu trú KTX có hiệu lực.</p>
+        </div>
+      )}
+
       <dl className="mt-6 grid grid-cols-1 gap-x-8 gap-y-4 border-t border-[#d8e6f6] pt-5 text-sm sm:grid-cols-2">
         <div className="min-w-0 rounded-2xl border border-[#d8e6f6] bg-white/75 px-4 py-3">
           <dt className="font-medium text-[#6F84A7]">Mã hồ sơ giữ chỗ</dt>
@@ -212,7 +316,7 @@ export default function ReservationProgressCard({ reservation, onLogin, onLookup
         </div>
         <div className="min-w-0 rounded-2xl border border-[#d8e6f6] bg-white/75 px-4 py-3">
           <dt className="font-medium text-[#6F84A7]">Trạng thái</dt>
-          <dd className="mt-1 font-semibold text-[#1F3152]">{reservationStatusLabel[reservation.status]}</dd>
+          <dd className="mt-1 font-semibold text-[#1F3152]">{effectiveReservationStatusLabel[effectiveStatus]}</dd>
         </div>
         <div className="min-w-0 rounded-2xl border border-[#d8e6f6] bg-white/75 px-4 py-3">
           <dt className="font-medium text-[#6F84A7]">Ngày nộp</dt>
@@ -228,10 +332,57 @@ export default function ReservationProgressCard({ reservation, onLogin, onLookup
           <dt className="font-medium text-[#6F84A7]">Đợt đăng ký</dt>
           <dd className="mt-1 font-semibold text-[#1F3152]">{reservation.periodName || "Chưa có dữ liệu"}</dd>
         </div>
+        {registrationCancelled && reservation.registrationCancelledAt && (
+          <div className="min-w-0 rounded-2xl border border-[#d8e6f6] bg-white/75 px-4 py-3">
+            <dt className="font-medium text-[#6F84A7]">Ngày hủy đơn nội trú</dt>
+            <dd className="mt-1 font-semibold text-[#1F3152]">{formatReservationDate(reservation.registrationCancelledAt)}</dd>
+          </div>
+        )}
       </dl>
 
+      {reservation.status === "approved" && formatAdmissionDeadline(reservation.periodEndDate) && (
+        <div className="mt-4 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-900">
+          <p className="text-[#0C5A8A]">
+            Hạn cuối xác nhận nhập học: {formatAdmissionDeadline(reservation.periodEndDate)}.
+          </p>
+          <p className="mt-1 text-xs leading-5 text-[#356388]">
+            Vui lòng hoàn tất thủ tục nhập học trước thời hạn này để tiếp tục giữ chỗ KTX.
+          </p>
+        </div>
+      )}
+
+      {(reservation.canCancel || (reservation.status === "converted" && !registrationCancelled && onLogin)) && (
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[#d8e6f6] pt-5">
+          <div className="flex flex-wrap items-center gap-3">
+            {reservation.canCancel && (
+              <button
+                type="button"
+                onClick={() => setShowCancelModal(true)}
+                className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-2.5 text-sm font-semibold text-rose-700 transition-all duration-300 hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-100"
+              >
+                <XCircle className="h-4 w-4" />
+                Hủy nhu cầu ở KTX
+              </button>
+            )}
+          </div>
+          {reservation.status === "converted" && !registrationCancelled && onLogin && (
+            <button type="button" onClick={onLogin} className={primaryBtn}>
+              <LogIn className="h-4 w-4" />
+              Đăng nhập bằng MSSV
+            </button>
+          )}
+        </div>
+      )}
+
+      {reservation.status === "rejected" && reservation.rejectionReason?.trim() && (
+        <div className="mt-5 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+          <p className="text-rose-700">Lý do không được duyệt</p>
+          <p className="mt-1 text-base font-semibold text-rose-800">{reservation.rejectionReason.trim()}</p>
+        </div>
+      )}
+
       {reservation.status === "cancelled" && (
-        <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+        <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
           <p className="text-[#9A4B00]">Lý do hủy</p>
           <p className="mt-1 text-base font-semibold text-[#7A3B00]">
             {reservation.cancellationReason?.trim() || "Vui lòng liên hệ Ban quản lý KTX để biết thêm chi tiết."}
@@ -239,23 +390,92 @@ export default function ReservationProgressCard({ reservation, onLogin, onLookup
         </div>
       )}
 
-      {(onLookupAnother || (reservation.status === "converted" && onLogin)) && (
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[#d8e6f6] pt-5">
-          {onLookupAnother && (
-            <button
-              type="button"
-              onClick={onLookupAnother}
-              className="inline-flex items-center gap-2 rounded-2xl border border-[#c5d4f0] bg-[linear-gradient(135deg,#ffffff_0%,#f1f6ff_48%,#e8f0ff_100%)] px-5 py-2.5 text-sm font-semibold text-[#244CB8] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_22px_rgba(36,76,184,0.10)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#a9c0ea] hover:text-[#173D97]"
-            >
-              Tra cứu mã khác
+      {registrationCancelled && reservation.registrationCancellationReason?.trim() && (
+        <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+          <p className="text-[#9A4B00]">Lý do hủy đơn đăng ký nội trú</p>
+          <p className="mt-1 text-base font-semibold text-[#7A3B00]">{reservation.registrationCancellationReason.trim()}</p>
+        </div>
+      )}
+
+      {(reservation.status === "rejected" || reservation.status === "cancelled") && onResubmit && (
+        <div className="mt-5 border-t border-[#d8e6f6] pt-5">
+          <p className="text-sm font-medium text-[#5C7094]">
+            Nếu đợt đăng ký vẫn còn mở, bạn có thể nộp hồ sơ giữ chỗ mới.
+          </p>
+          <div className="mt-3 flex justify-end">
+            <button type="button" onClick={onResubmit} className={primaryBtn}>
+              <RotateCcw className="h-4 w-4" />
+              Gửi hồ sơ giữ chỗ mới
             </button>
-          )}
-          {reservation.status === "converted" && onLogin && (
-            <button type="button" onClick={onLogin} className={primaryBtn}>
-              <LogIn className="h-4 w-4" />
-              Đăng nhập bằng MSSV
-            </button>
-          )}
+          </div>
+        </div>
+      )}
+
+      {showCancelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-[22px] bg-white p-5 shadow-2xl sm:p-6">
+            <h3 className="text-lg font-semibold text-[#1F3152]">Xác nhận hủy nhu cầu ở KTX</h3>
+            <label className="mt-4 block text-sm font-medium text-[#5A7094]">
+              Email đã đăng ký với hồ sơ <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="email"
+              value={cancelEmail}
+              onChange={(e) => {
+                setCancelEmail(e.target.value);
+                setCancelError(null);
+              }}
+              disabled={cancelling}
+              placeholder="email@example.com"
+              className="mt-1 w-full rounded-xl border border-[#D6E2F1] bg-[#F6F9FD] px-4 py-2.5 text-sm text-[#1F3152] placeholder:text-[#90A2BF] focus:border-[#244CB8] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#244CB8]/14"
+            />
+            <p className="mt-1 text-xs leading-5 text-[#6F84A7]">
+              Dùng để xác minh bạn là chủ hồ sơ — nhập đúng email đã dùng khi nộp hồ sơ giữ chỗ.
+            </p>
+
+            <label className="mt-4 block text-sm font-medium text-[#5A7094]">
+              Lý do hủy <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              value={cancelReason}
+              onChange={(e) => {
+                setCancelReason(e.target.value);
+                setCancelError(null);
+              }}
+              maxLength={1000}
+              rows={3}
+              disabled={cancelling}
+              className="mt-1 w-full rounded-xl border border-[#D6E2F1] bg-[#F6F9FD] px-4 py-2.5 text-sm text-[#1F3152] placeholder:text-[#90A2BF] focus:border-[#244CB8] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#244CB8]/14"
+            />
+            {cancelError && (
+              <div className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-700">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {cancelError}
+              </div>
+            )}
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                disabled={cancelling}
+                onClick={() => {
+                  setShowCancelModal(false);
+                  setCancelError(null);
+                  setCancelEmail("");
+                }}
+                className="inline-flex items-center gap-2 rounded-2xl border border-[#c5d4f0] bg-white px-5 py-2.5 text-sm font-semibold text-[#244CB8] transition-all duration-300 hover:border-[#a9c0ea] disabled:opacity-50"
+              >
+                Đóng
+              </button>
+              <button
+                type="button"
+                disabled={cancelling || !cancelEmail.trim() || !cancelReason.trim()}
+                onClick={() => void handleConfirmCancel()}
+                className="inline-flex items-center gap-2 rounded-2xl bg-rose-600 px-5 py-2.5 text-sm font-semibold text-white shadow transition-all duration-300 hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {cancelling && <LoaderCircle className="h-4 w-4 animate-spin" />}
+                Xác nhận hủy
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -181,6 +181,8 @@ export default function FreshmanReservationPage() {
         setVerifyError("Hồ sơ trúng tuyển đã bị hủy hoặc không còn hiệu lực. Vui lòng liên hệ nhà trường để được hỗ trợ.");
       } else if (result.verificationStatus === "not_found") {
         setVerifyError("Không tìm thấy hồ sơ trúng tuyển phù hợp.");
+      } else if (result.verificationStatus === "period_closed") {
+        setVerifyError("Đợt đăng ký giữ chỗ KTX đã kết thúc.");
       }
     } catch (err: unknown) {
       setVerifyError(
@@ -324,18 +326,6 @@ export default function FreshmanReservationPage() {
     } finally {
       setSubmitLoading(false);
     }
-  };
-
-  const resetAll = () => {
-    setStep("verify"); setCandidate(null);
-    setVerifyResult(null);
-    setAdmissionCode("");
-    setSelectedPeriod(""); setEmail("");
-    setCommitmentConfirm(false);
-    setDocumentFiles(initDocFiles()); setDocumentErrors({}); setBlurStatus(initBlurStatus());
-    setCopyFeedback(null);
-    setReservation(null); setCriteria([]); setSelectedCriteria(new Set());
-    setEvidenceFiles(new Map()); setClaimedPriorities([]);
   };
 
   const copyReservationCode = async () => {
@@ -527,7 +517,6 @@ export default function FreshmanReservationPage() {
               <ReservationProgressCard
                 reservation={verifyResult.existingReservation}
                 onLogin={() => navigate("/login")}
-                onLookupAnother={resetAll}
               />
             </motion.div>
           )}

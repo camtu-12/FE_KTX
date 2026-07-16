@@ -24,6 +24,7 @@ import {
   type AdmissionCandidate,
   type BulkEnrollResult,
   type BulkEnrollRowStatus,
+  type BulkEnrollmentResult,
   type CandidatePayload,
   type CandidateStatus,
   type ImportCandidatesResult,
@@ -53,6 +54,14 @@ const STATUS_BADGE_CLASSES: Record<CandidateStatus, string> = {
   admitted: "border-sky-200 bg-sky-50 text-sky-700",
   enrolled: "border-emerald-200 bg-emerald-50 text-emerald-700",
   cancelled: "border-rose-200 bg-rose-50 text-rose-700",
+};
+
+// Việc 6 (chuẩn bị) — bulkEnroll() giờ tạo Student cho cả submitted/waitlisted, không chỉ
+// approved, nên "Thành công" cần phân biệt rõ đã tạo đơn nội trú hay chỉ mới xác nhận nhập học.
+const BULK_ENROLLMENT_RESULT_LABEL: Partial<Record<BulkEnrollmentResult | "", string>> = {
+  converted: "Đã tạo đơn nội trú",
+  awaiting_review: "Nhập học — chờ duyệt",
+  waitlisted: "Nhập học — danh sách chờ",
 };
 type FormErrors = Partial<Record<string, string>>;
 
@@ -498,7 +507,7 @@ export default function AdmissionCandidateManagementPage() {
           <div>
             <h1 className="text-2xl font-bold text-[#1a2d52]">Hồ sơ trúng tuyển</h1>
             <p className="mt-1 text-sm text-[#62789f]">
-              Danh sách thí sinh trúng tuyển — {total} hồ sơ.
+              Danh sách {statusFilter === "" ? "tất cả thí sinh" : `thí sinh ${STATUS_LABELS[statusFilter].toLowerCase()}`} — {total} hồ sơ.
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
@@ -916,7 +925,9 @@ export default function AdmissionCandidateManagementPage() {
                                         ? "bg-amber-100 text-amber-700"
                                         : "bg-rose-100 text-rose-700"
                                   }`}>
-                                    {r.status === "success" ? "Thành công" : r.status === "skipped" ? "Bỏ qua" : "Lỗi"}
+                                    {r.status === "success"
+                                      ? (BULK_ENROLLMENT_RESULT_LABEL[r.enrollment_result ?? ""] ?? "Thành công")
+                                      : r.status === "skipped" ? "Bỏ qua" : "Lỗi"}
                                   </span>
                                 </div>
                                 <div className="min-w-0 space-y-1">

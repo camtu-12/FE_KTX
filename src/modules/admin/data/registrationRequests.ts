@@ -1,4 +1,4 @@
-export type RegistrationStatus = "submitted" | "approved" | "rejected";
+export type RegistrationStatus = "submitted" | "approved" | "rejected" | "cancelled";
 export type RegistrationFilterStatus = "all" | RegistrationStatus;
 export type AutoDecision = "approve" | "reject" | "review" | null;
 export type RegistrationDocumentField = "portraitPhoto" | "cccdFrontPhoto" | "cccdBackPhoto";
@@ -85,6 +85,7 @@ export type RegistrationRequest = {
   }>;
   auto_decision?: AutoDecision;
   auto_decision_reason?: string | null;
+  source_dorm_reservation_id?: number | null;
   registration_period_id?: number | null;
   bed_selection_days?: number | null;
   bed_selection_deadline?: string | null;
@@ -98,6 +99,9 @@ export type RegistrationRequest = {
   total_priority_score?: number | null;
   approved_at?: string | null;
   current_year?: number | null;
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
+  cancelled_by?: string | null;
 };
 
 const createPreviewSvg = (title: string, subtitle: string, accent: string) =>
@@ -170,6 +174,10 @@ export const statusMap: Record<
   rejected: {
     label: "Bị từ chối",
     className: "border border-rose-200 bg-rose-50 text-rose-700",
+  },
+  cancelled: {
+    label: "Đã hủy",
+    className: "border border-slate-200 bg-slate-50 text-slate-500",
   },
 };
 

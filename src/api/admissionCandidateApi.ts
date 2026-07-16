@@ -256,6 +256,7 @@ export const deleteAdminCandidate = async (id: number): Promise<{ message: strin
 // ─── Bulk enroll ──────────────────────────────────────────────────────────────
 
 export type BulkEnrollRowStatus = "success" | "skipped" | "error";
+export type BulkEnrollmentResult = "converted" | "awaiting_review" | "waitlisted";
 
 export type BulkEnrollRow = {
   row: number;
@@ -263,6 +264,7 @@ export type BulkEnrollRow = {
   student_code: string | null;
   full_name: string | null;
   status: BulkEnrollRowStatus;
+  enrollment_result?: BulkEnrollmentResult;
   message: string;
 };
 

@@ -31,11 +31,11 @@ import {
   type OccupancyRoomChangeHistory,
 } from "../../../api/roomChangeHistoryApi";
 
-import { formatDate, formatDateTime } from "../../../utils/dateFormat";
+import { formatDate, formatDateTime, getLocalDateValue } from "../../../utils/dateFormat";
 
 const getBedLevelLong = (bedNumber: number) => (bedNumber % 2 === 1 ? "Tầng trên" : "Tầng dưới");
 
-const getTodayValue = () => new Date().toISOString().slice(0, 10);
+const getTodayValue = () => getLocalDateValue();
 
 const registrationChannelLabel: Record<"main" | "rolling", string> = {
   main: "Đợt chính",

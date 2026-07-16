@@ -22,7 +22,7 @@ import { formatDate, formatDateTime } from "../../../utils/dateFormat";
 type AdminTab = "main" | "rolling";
 type SubFilter = "pending" | "review" | "done";
 type PendingFilter = "all" | "approve" | "reject";
-type ProcessedFilter = "all" | "approved" | "rejected";
+type ProcessedFilter = "all" | "approved" | "rejected" | "cancelled";
 
 const proposalBadge = (ad: RegistrationRequest["auto_decision"]) => {
   if (ad === "approve") return { label: "Duyệt", cls: "border border-emerald-200 bg-emerald-50 text-emerald-700" };
@@ -179,10 +179,12 @@ export default function AdminRegistrationsPage() {
   );
   const hasPendingPriority = (r: RegistrationRequest) =>
     (r.priority_criteria ?? []).some((p) => p.status === "pending");
+  const hasRejectedPriority = (r: RegistrationRequest) =>
+    (r.priority_criteria ?? []).some((p) => p.status === "rejected");
 
-  const mainPendingItems = useMemo(() => allMainItems.filter((r) => r.status === "submitted" && r.auto_decision !== "review" && !hasPendingPriority(r)), [allMainItems]); // eslint-disable-line react-hooks/exhaustive-deps
-  const mainReviewItems  = useMemo(() => allMainItems.filter((r) => r.status === "submitted" && (r.auto_decision === "review" || hasPendingPriority(r))), [allMainItems]); // eslint-disable-line react-hooks/exhaustive-deps
-  const mainDoneItems    = useMemo(() => allMainItems.filter((r) => r.status === "approved" || r.status === "rejected"), [allMainItems]);
+  const mainPendingItems = useMemo(() => allMainItems.filter((r) => r.status === "submitted" && r.auto_decision !== "review" && !hasPendingPriority(r) && !hasRejectedPriority(r)), [allMainItems]); // eslint-disable-line react-hooks/exhaustive-deps
+  const mainReviewItems  = useMemo(() => allMainItems.filter((r) => r.status === "submitted" && (r.auto_decision === "review" || hasPendingPriority(r) || hasRejectedPriority(r))), [allMainItems]); // eslint-disable-line react-hooks/exhaustive-deps
+  const mainDoneItems    = useMemo(() => allMainItems.filter((r) => r.status === "approved" || r.status === "rejected" || r.status === "cancelled"), [allMainItems]);
   const filteredMainPendingItems = useMemo(
     () => mainPendingItems.filter((r) => pendingFilter === "all" || r.auto_decision === pendingFilter),
     [mainPendingItems, pendingFilter],
@@ -197,9 +199,9 @@ export default function AdminRegistrationsPage() {
     requests.filter((r) => r.channel === "rolling" && matchSearch(r)),
     [requests, search], // eslint-disable-line react-hooks/exhaustive-deps
   );
-  const rollingPendingItems = useMemo(() => allRollingItems.filter((r) => r.status === "submitted" && r.auto_decision !== "review" && !hasPendingPriority(r)), [allRollingItems]); // eslint-disable-line react-hooks/exhaustive-deps
-  const rollingReviewItems  = useMemo(() => allRollingItems.filter((r) => r.status === "submitted" && (r.auto_decision === "review" || hasPendingPriority(r))), [allRollingItems]); // eslint-disable-line react-hooks/exhaustive-deps
-  const rollingDoneItems    = useMemo(() => allRollingItems.filter((r) => r.status === "approved" || r.status === "rejected"), [allRollingItems]);
+  const rollingPendingItems = useMemo(() => allRollingItems.filter((r) => r.status === "submitted" && r.auto_decision !== "review" && !hasPendingPriority(r) && !hasRejectedPriority(r)), [allRollingItems]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rollingReviewItems  = useMemo(() => allRollingItems.filter((r) => r.status === "submitted" && (r.auto_decision === "review" || hasPendingPriority(r) || hasRejectedPriority(r))), [allRollingItems]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rollingDoneItems    = useMemo(() => allRollingItems.filter((r) => r.status === "approved" || r.status === "rejected" || r.status === "cancelled"), [allRollingItems]);
   const filteredRollingPendingItems = useMemo(
     () => rollingPendingItems.filter((r) => pendingFilter === "all" || r.auto_decision === pendingFilter),
     [rollingPendingItems, pendingFilter],
@@ -381,6 +383,7 @@ export default function AdminRegistrationsPage() {
       { value: "all", label: "Tất cả" },
       { value: "approved", label: "Đã duyệt" },
       { value: "rejected", label: "Đã từ chối" },
+      { value: "cancelled", label: "Đã hủy" },
     ];
     return (
       <div ref={subFilterMenuRef} className="inline-flex flex-wrap gap-1 rounded-2xl border border-[#c6d8f0] bg-[#f2f7ff] p-1">
@@ -480,34 +483,59 @@ export default function AdminRegistrationsPage() {
     );
   };
 
-  const renderDropdown = (r: RegistrationRequest) => (
-    <div className="relative" ref={openDropdownId === r.id ? dropdownRef : null}>
-      <button
-        type="button"
-        disabled={isSubmitting}
-        onClick={() => setOpenDropdownId(openDropdownId === r.id ? null : r.id)}
-        className="inline-flex h-10 min-w-[132px] items-center justify-center gap-2 rounded-xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-4 text-[13px] font-semibold text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.09)] transition hover:-translate-y-0.5 hover:border-[#9eb9e6] hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {r.auto_decision ? "Đổi đề xuất" : "Xử lý đơn"} <ChevronDown className="h-3.5 w-3.5" />
-      </button>
-      {openDropdownId === r.id ? (
-        <div className="absolute right-0 top-full z-50 mt-1 w-36 overflow-hidden rounded-xl border border-[#d7e2f2] bg-white shadow-[0_12px_28px_rgba(15,23,42,0.16)]">
-          {(["approve", "reject", "review"] as const).map((opt) => (
-            <button
-              key={opt}
-              type="button"
-              onClick={() => void handlePatchAutoDecision(r.id, opt)}
-              className={`flex w-full items-center px-3 py-2 text-left text-xs font-medium transition hover:bg-[#f5f9ff] ${
-                opt === "approve" ? "text-emerald-700" : opt === "reject" ? "text-rose-700" : "text-amber-700"
-              }`}
-            >
-              {opt === "approve" ? "Duyệt" : opt === "reject" ? "Từ chối" : "Cần xem lại"}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
+  const hasDormReservationSource = (r: RegistrationRequest) => Boolean(r.source_dorm_reservation_id);
+
+  const renderDormReservationSourceBadge = (r: RegistrationRequest) =>
+    hasDormReservationSource(r) ? (
+      <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-bold text-sky-700">
+        Đã có suất giữ chỗ
+      </span>
+    ) : null;
+
+  const renderDropdown = (r: RegistrationRequest) => {
+    // Registration nguồn giữ chỗ tân sinh viên đã có suất được DormReservation approved giữ
+    // sẵn — backend chặn đổi đề xuất rời khỏi 'approve' (xem patchAutoDecision()), nên không
+    // hiện dropdown đổi đề xuất, tránh admin bấm rồi gặp lỗi.
+    if (hasDormReservationSource(r)) {
+      return (
+        <span
+          className="inline-flex h-10 min-w-[132px] cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-[#e2e8f5] bg-[#f5f7fb] px-4 text-[13px] font-semibold text-[#9aa7c2]"
+          title="Đã có suất giữ chỗ từ hồ sơ giữ chỗ tân sinh viên — chỉ có thể Xác nhận, không đổi đề xuất."
+        >
+          Đã khóa đề xuất
+        </span>
+      );
+    }
+
+    return (
+      <div className="relative" ref={openDropdownId === r.id ? dropdownRef : null}>
+        <button
+          type="button"
+          disabled={isSubmitting}
+          onClick={() => setOpenDropdownId(openDropdownId === r.id ? null : r.id)}
+          className="inline-flex h-10 min-w-[132px] items-center justify-center gap-2 rounded-xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-4 text-[13px] font-semibold text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.09)] transition hover:-translate-y-0.5 hover:border-[#9eb9e6] hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {r.auto_decision ? "Đổi đề xuất" : "Xử lý đơn"} <ChevronDown className="h-3.5 w-3.5" />
+        </button>
+        {openDropdownId === r.id ? (
+          <div className="absolute right-0 top-full z-50 mt-1 w-36 overflow-hidden rounded-xl border border-[#d7e2f2] bg-white shadow-[0_12px_28px_rgba(15,23,42,0.16)]">
+            {(["approve", "reject", "review"] as const).map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => void handlePatchAutoDecision(r.id, opt)}
+                className={`flex w-full items-center px-3 py-2 text-left text-xs font-medium transition hover:bg-[#f5f9ff] ${
+                  opt === "approve" ? "text-emerald-700" : opt === "reject" ? "text-rose-700" : "text-amber-700"
+                }`}
+              >
+                {opt === "approve" ? "Duyệt" : opt === "reject" ? "Từ chối" : "Cần xem lại"}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
 
   const renderViewButton = (r: RegistrationRequest) => (
     <button
@@ -581,18 +609,49 @@ export default function AdminRegistrationsPage() {
       {r.status === "rejected" && r.rejectionReason ? (
         <span className="text-rose-600">Lý do: {r.rejectionReason}</span>
       ) : null}
+      {r.status === "cancelled" && r.cancelled_at ? (
+        <span className="text-slate-500">Hủy: {formatDate(r.cancelled_at)}</span>
+      ) : null}
+      {r.status === "cancelled" && r.cancellation_reason ? (
+        <span className="text-slate-500">Lý do hủy: {r.cancellation_reason}</span>
+      ) : null}
     </div>
   );
 
   // ─── Shared sub-sections ─────────────────────────────────
   const renderReviewSection = (items: RegistrationRequest[]) => {
     const priorityGroup = items.filter((r) => hasPendingPriority(r));
-    const manualGroup   = items.filter((r) => r.auto_decision === "review" && !hasPendingPriority(r));
+    const rejectedGroup = items.filter((r) => !hasPendingPriority(r) && hasRejectedPriority(r));
+    const manualGroup   = items.filter((r) => r.auto_decision === "review" && !hasPendingPriority(r) && !hasRejectedPriority(r));
 
     if (items.length === 0) return renderEmptyState("Không có đơn nào cần xem lại");
 
     return (
       <div className="space-y-6">
+        {/* Nhóm 0: Minh chứng ưu tiên không hợp lệ — chỉ xem chi tiết, không còn hành động
+            duyệt/xác nhận nào (hồ sơ lẽ ra đã tự chuyển rejected; nhóm này chỉ còn xuất
+            hiện với dữ liệu cũ chưa cascade). */}
+        {rejectedGroup.length > 0 && (
+          <div className="space-y-3">
+            <p className="text-[13px] font-bold uppercase tracking-[0.12em] text-rose-600">
+              Minh chứng không hợp lệ ({rejectedGroup.length})
+            </p>
+            {rejectedGroup.map((r) =>
+              renderRegistrationCard(
+                r,
+                <>
+                  {renderPeriodBadge(r)}
+                  <span className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[13px] font-semibold text-rose-700">
+                    Minh chứng không hợp lệ
+                  </span>
+                </>,
+                renderViewButton(r),
+                renderDateNote(r),
+              ),
+            )}
+          </div>
+        )}
+
         {/* Nhóm 1: Chờ xác minh ưu tiên */}
         {priorityGroup.length > 0 && (
           <div className="space-y-3">
@@ -600,14 +659,10 @@ export default function AdminRegistrationsPage() {
               Chờ xác minh ưu tiên ({priorityGroup.length})
             </p>
             {priorityGroup.map((r) => {
-              const pendingCriteria = (r.priority_criteria ?? []).filter((p) => p.status === "pending");
               return renderRegistrationCard(
                 r,
                 <>
                   {renderPeriodBadge(r)}
-                  <span className="inline-flex rounded-full border border-[#c8d8ef] bg-[#f2f7ff] px-2.5 py-1 text-[13px] font-semibold text-[#315b9e]">
-                    Chờ xác minh ưu tiên
-                  </span>
                 </>,
                 <>
                   {renderViewButton(r)}
@@ -619,16 +674,7 @@ export default function AdminRegistrationsPage() {
                     Xác minh minh chứng
                   </button>
                 </>,
-                <div className="space-y-0.5">
-                  <div className="flex flex-wrap gap-1.5">
-                    {pendingCriteria.map((p) => (
-                      <span key={p.id} className="rounded-full border border-[#d6e2f1] bg-[#f7fbff] px-2 py-0.5 text-[12px] font-medium text-[#315b9e]">
-                        [{p.code}] {p.name}
-                      </span>
-                    ))}
-                  </div>
-                  {renderDateNote(r)}
-                </div>,
+                renderDateNote(r),
               );
             })}
           </div>
@@ -733,6 +779,7 @@ export default function AdminRegistrationsPage() {
               <>
                 {renderPeriodBadge(r)}
                 {renderProposalBadge(r)}
+                {renderDormReservationSourceBadge(r)}
               </>,
               <>
                 {renderViewButton(r)}
@@ -958,6 +1005,14 @@ export default function AdminRegistrationsPage() {
                   </div>
                   {selectedRequest.rejectionReason ? (
                     <p className="text-sm text-[#bf3e53]">Lý do từ chối: {selectedRequest.rejectionReason}</p>
+                  ) : null}
+                  {selectedRequest.status === "cancelled" ? (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                      <p className="font-semibold text-slate-700">Thông tin hủy</p>
+                      {selectedRequest.cancelled_at ? <p>Thời điểm: {formatDateTime(selectedRequest.cancelled_at)}</p> : null}
+                      {selectedRequest.cancellation_reason ? <p>Lý do: {selectedRequest.cancellation_reason}</p> : null}
+                      {selectedRequest.cancelled_by ? <p>Người hủy: {selectedRequest.cancelled_by === "candidate" ? "Sinh viên tự hủy" : selectedRequest.cancelled_by}</p> : null}
+                    </div>
                   ) : null}
                   <Link to={`/admin/registrations/${selectedRequest.id}`} state={{ request: selectedRequest, returnToModal: true }}
                     className="inline-flex rounded-xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-4 py-2 text-sm font-semibold text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.12)] transition hover:-translate-y-0.5">

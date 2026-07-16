@@ -95,7 +95,7 @@ const toPublicAssetUrl = (value?: string | null) => {
 };
 
 const normalizeStatus = (value: unknown): RegistrationStatus => {
-  if (value === "approved" || value === "rejected" || value === "submitted") {
+  if (value === "approved" || value === "rejected" || value === "submitted" || value === "cancelled") {
     return value;
   }
 
@@ -342,6 +342,7 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
       : [],
     auto_decision: (registration.auto_decision ?? null) as RegistrationRequest["auto_decision"],
     auto_decision_reason: firstDefinedString(registration.auto_decision_reason) || null,
+    source_dorm_reservation_id: toNumberOrNull(registration.source_dorm_reservation_id) ?? null,
     registration_period_id: toNumberOrNull(registration.registration_period_id) ?? null,
     bed_selection_days: toNumberOrNull(registration.bed_selection_days ?? registrationPeriod.bed_selection_days) ?? null,
     bed_selection_deadline: firstDefinedString(registration.bed_selection_deadline) || null,
@@ -361,6 +362,9 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
     total_priority_score: toNumberOrNull(registration.total_priority_score) ?? null,
     approved_at: firstDefinedString(registration.approved_at) || null,
     current_year: toNumberOrNull(student.current_year) ?? null,
+    cancelled_at: firstDefinedString(registration.cancelled_at) || null,
+    cancellation_reason: firstDefinedString(registration.cancellation_reason) || null,
+    cancelled_by: firstDefinedString(registration.cancelled_by) || null,
   };
 };
 

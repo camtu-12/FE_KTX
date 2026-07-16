@@ -19,7 +19,7 @@ import {
 } from "../../../api/paymentApi";
 import { getRooms } from "../../../api/registrationService";
 import type { DormRoom } from "../../../types/dormRoom";
-import { formatDate } from "../../../utils/dateFormat";
+import { formatDate, getLocalDateValue } from "../../../utils/dateFormat";
 
 type TabKey = "room" | "electricity";
 type ConfirmTarget =
@@ -52,7 +52,7 @@ const statusMeta: Record<PaymentStatus, { label: string; className: string }> = 
   },
 };
 
-const getTodayValue = () => new Date().toISOString().slice(0, 10);
+const getTodayValue = () => getLocalDateValue();
 
 const QUARTER_MONTHS: Record<string, number[]> = {
   "1": [1, 2, 3],

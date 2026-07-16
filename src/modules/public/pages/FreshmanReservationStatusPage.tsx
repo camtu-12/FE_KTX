@@ -2,7 +2,7 @@ import { AlertCircle, ArrowLeft, LoaderCircle, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { lookupDormReservation, type ReservationProgress, type ReservationStatus } from "../../../api/dormReservationApi";
-import ReservationProgressCard, { reservationStatusLabel } from "../components/ReservationProgressCard";
+import ReservationProgressCard, { getReservationEffectiveStatusLabel } from "../components/ReservationProgressCard";
 
 const primaryBtn =
   "inline-flex items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-6 py-2.5 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition-all duration-300 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_22px_40px_rgba(36,76,184,0.34)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0";
@@ -15,7 +15,15 @@ type LookupState = {
   reservationCode?: string;
 } | null;
 
-const getNextSteps = (status: ReservationStatus): string[] => {
+const getNextSteps = (status: ReservationStatus, registrationCancelled = false): string[] => {
+  if (registrationCancelled) {
+    return [
+      "Đơn đăng ký nội trú được tạo từ hồ sơ giữ chỗ này đã bị hủy.",
+      "Bạn hiện không còn đăng ký lưu trú KTX có hiệu lực.",
+      "Vui lòng liên hệ Ban quản lý KTX nếu cần hỗ trợ thêm.",
+    ];
+  }
+
   if (status === "approved") {
     return [
       "Chờ trường xác nhận nhập học.",
@@ -51,7 +59,8 @@ const getNextSteps = (status: ReservationStatus): string[] => {
   if (status === "rejected") {
     return [
       "Hồ sơ giữ chỗ không được duyệt.",
-      "Vui lòng xem thông tin trạng thái và liên hệ Ban quản lý KTX nếu cần hỗ trợ.",
+      "Nếu đợt đăng ký vẫn còn mở và đủ điều kiện, bạn có thể nộp hồ sơ giữ chỗ mới.",
+      "Liên hệ Ban quản lý KTX nếu cần hỗ trợ thêm.",
     ];
   }
 
@@ -123,6 +132,8 @@ export default function FreshmanReservationStatusPage() {
     setError(null);
     window.setTimeout(() => inputRef.current?.focus(), 0);
   };
+
+  const registrationCancelled = reservation?.status === "converted" && reservation.registrationStatus === "cancelled";
 
   return (
     <div className="relative min-h-[calc(100vh-110px)] overflow-hidden bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] px-4 py-6 sm:py-8">
@@ -210,7 +221,7 @@ export default function FreshmanReservationStatusPage() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h2 className="text-lg font-semibold text-[#1F3152]">Thông tin thí sinh</h2>
                   <span className="rounded-lg border border-[#c8d8ef] bg-[#f5f9ff] px-2.5 py-1 text-xs font-semibold text-[#244CB8]">
-                    {reservationStatusLabel[reservation.status]}
+                    {getReservationEffectiveStatusLabel(reservation)}
                   </span>
                 </div>
                 <dl className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
@@ -233,13 +244,14 @@ export default function FreshmanReservationStatusPage() {
             <ReservationProgressCard
               reservation={reservation}
               onLogin={() => navigate("/login")}
-              onLookupAnother={resetLookup}
+              onCancelled={(updated) => setReservation(updated)}
+              onResubmit={() => navigate("/freshman-reservation")}
             />
 
             <div className="rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f6faff_100%)] p-5 shadow-[0_14px_30px_rgba(36,76,184,0.08)] sm:p-6">
               <h2 className="text-lg font-semibold text-[#1F3152]">Bước tiếp theo</h2>
               <ul className="mt-3 space-y-2 text-sm font-medium leading-6 text-[#5C7094]">
-                {getNextSteps(reservation.status).map((step) => (
+                {getNextSteps(reservation.status, registrationCancelled).map((step) => (
                   <li key={step} className="flex gap-2">
                     <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#244CB8]" />
                     <span>{step}</span>

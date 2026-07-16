@@ -309,6 +309,7 @@ export default function Header({
     }
     if (
       item.type === "registration_rejected" ||
+      item.type === "registration_pending_confirmation" ||
       item.type === "bed_selection_expired" ||
       item.type === "initial_payment_expired"
     ) {

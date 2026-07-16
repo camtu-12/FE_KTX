@@ -578,9 +578,9 @@ export default function AdminDashboardPage() {
           }
         />
         <StatCard
-          label="Giường trống"
+          label="Giường khả dụng"
           primary={<span>{availableBedCount}</span>}
-          secondary="giường còn khả dụng"
+          secondary="giường hiện có thể sử dụng"
         />
         <StatCard
           label="Giường bảo trì"

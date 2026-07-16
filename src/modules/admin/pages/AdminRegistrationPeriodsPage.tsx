@@ -26,9 +26,13 @@ import {
   deleteRegistrationPeriod,
   processRegistrationPeriod,
   confirmBatch,
+  getRegistrationPeriodCapacity,
+  type DormCapacitySummary,
   type RegistrationPeriodData,
   type RegistrationPeriodPayload,
 } from "../../../api/registrationApi";
+import CapacityDetailsModal from "../components/CapacityDetailsModal";
+import CapacitySummaryCard from "../components/CapacitySummaryCard";
 import { formatDate } from "../../../utils/dateFormat";
 
 type PeriodStatus = "pending" | "active" | "closed" | "processing";
@@ -423,12 +427,18 @@ export default function AdminRegistrationPeriodsPage() {
     free_beds: number;
     approved: number;
     waitlist: number;
+    capacity?: DormCapacitySummary;
   } | null>(null);
+  const [periodCapacity, setPeriodCapacity] = useState<Record<number, DormCapacitySummary | null>>({});
+  const [periodCapacityLoading, setPeriodCapacityLoading] = useState<Record<number, boolean>>({});
+  const [periodCapacityError, setPeriodCapacityError] = useState<Record<number, string | null>>({});
+  const [capacityDetailsPeriodId, setCapacityDetailsPeriodId] = useState<number | null>(null);
   const [confirmBatchId, setConfirmBatchId] = useState<number | null>(null);
   const [confirmingBatchId, setConfirmingBatchId] = useState<number | null>(null);
   const [confirmRankId, setConfirmRankId] = useState<number | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
   const [highlightedPeriodId, setHighlightedPeriodId] = useState<number | null>(null);
+  const [now, setNow] = useState(() => new Date());
 
   const { headerSearchValue, setPeriodAutocomplete } = useOutletContext<AdminLayoutOutletContext>();
   const periodCardRefs = useRef<Record<number, HTMLDivElement | null>>({});
@@ -510,6 +520,25 @@ export default function AdminRegistrationPeriodsPage() {
     return () => setPeriodAutocomplete(null);
   }, [setPeriodAutocomplete]);
 
+  const loadCapacityForPeriod = async (period: RegistrationPeriodData) => {
+    const proposedApprovedCount = period.approve_proposal_count ?? 0;
+    setPeriodCapacityLoading((prev) => ({ ...prev, [period.id]: true }));
+    setPeriodCapacityError((prev) => ({ ...prev, [period.id]: null }));
+
+    try {
+      const capacity = await getRegistrationPeriodCapacity(period.id, proposedApprovedCount);
+      setPeriodCapacity((prev) => ({ ...prev, [period.id]: capacity }));
+    } catch {
+      setPeriodCapacity((prev) => ({ ...prev, [period.id]: null }));
+      setPeriodCapacityError((prev) => ({
+        ...prev,
+        [period.id]: "Không thể tải thông tin sức chứa. Vui lòng làm mới và thử lại.",
+      }));
+    } finally {
+      setPeriodCapacityLoading((prev) => ({ ...prev, [period.id]: false }));
+    }
+  };
+
   const handleConfirmBatch = async (id: number) => {
     setConfirmingBatchId(id);
     setApiError(null);
@@ -517,6 +546,8 @@ export default function AdminRegistrationPeriodsPage() {
       const result = await confirmBatch(id);
       setPeriods((prev) => prev.map((p) => (p.id === id ? { ...p, status: "closed" } : p)));
       setProcessResult({ message: `Đã xác nhận ${result.confirmed} đơn.`, free_beds: 0, approved: result.confirmed, waitlist: result.skipped_review + result.skipped_null });
+      const period = periods.find((p) => p.id === id);
+      if (period) void loadCapacityForPeriod({ ...period, status: "closed", approve_proposal_count: 0 });
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Xác nhận không thành công.";
       setApiError(msg);
@@ -531,6 +562,9 @@ export default function AdminRegistrationPeriodsPage() {
     try {
       const data = await getRegistrationPeriods();
       setPeriods(data);
+      data
+        .filter((period) => period.status === "processing")
+        .forEach((period) => void loadCapacityForPeriod(period));
     } catch {
       setApiError("Không thể tải danh sách đợt đăng ký.");
     } finally {
@@ -541,6 +575,33 @@ export default function AdminRegistrationPeriodsPage() {
   useEffect(() => {
     void load();
   }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  /** Hạn cuối THẬT (không phải dự kiến) — LUÔN là 17:00 của end_date, dùng chung công thức FE/BE. */
+  function admissionDeadline(endDate: string | null | undefined): Date | null {
+    if (!endDate) return null;
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(endDate);
+    if (!match) return null;
+    const [, y, m, d] = match;
+    return new Date(Number(y), Number(m) - 1, Number(d), 17, 0, 0);
+  }
+
+  /** Chỉ gọi khi chưa qua deadline. */
+  function formatCountdown(deadline: Date, reference: Date): string {
+    const diffMinutesTotal = Math.floor((deadline.getTime() - reference.getTime()) / 60000);
+    const days = Math.floor(diffMinutesTotal / (24 * 60));
+    const hours = Math.floor((diffMinutesTotal % (24 * 60)) / 60);
+    const minutes = diffMinutesTotal % 60;
+
+    if (days === 0) {
+      return `Còn ${hours} giờ ${minutes} phút đến hạn xác nhận nhập học.`;
+    }
+    return `Còn ${days} ngày ${hours} giờ đến hạn xác nhận nhập học lúc 17:00 ngày ${formatDate(deadline)}.`;
+  }
 
   // Đợt "quanh năm" luôn theo đúng mốc kết thúc lưu trú của đợt "chính" cùng năm học
   // (chu kỳ lưu trú theo năm học, không tự chọn riêng) — tự điền và khoá field này.
@@ -684,6 +745,10 @@ export default function AdminRegistrationPeriodsPage() {
     try {
       const result = await processRegistrationPeriod(id);
       setProcessResult(result);
+      if (result.capacity) {
+        setPeriodCapacity((prev) => ({ ...prev, [id]: result.capacity ?? null }));
+        setPeriodCapacityError((prev) => ({ ...prev, [id]: null }));
+      }
       setPeriods((prev) =>
         prev.map((p) => (p.id === id ? { ...p, status: "processing" } : p)),
       );
@@ -898,6 +963,10 @@ export default function AdminRegistrationPeriodsPage() {
     );
   };
 
+  const capacityDetailsPeriod = capacityDetailsPeriodId == null
+    ? null
+    : periods.find((period) => period.id === capacityDetailsPeriodId) ?? null;
+
   return (
     <motion.section
       initial={{ opacity: 0, y: 18 }}
@@ -946,11 +1015,22 @@ export default function AdminRegistrationPeriodsPage() {
         </div>
       )}
 
+      <CapacityDetailsModal
+        open={capacityDetailsPeriodId !== null}
+        onClose={() => setCapacityDetailsPeriodId(null)}
+        capacity={capacityDetailsPeriod ? periodCapacity[capacityDetailsPeriod.id] ?? null : null}
+        loading={capacityDetailsPeriod ? periodCapacityLoading[capacityDetailsPeriod.id] ?? false : false}
+        error={capacityDetailsPeriod ? periodCapacityError[capacityDetailsPeriod.id] ?? null : null}
+      />
+
       {/* Process result toast */}
       {processResult && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          <strong>Xếp hạng xong.</strong> Giường trống: {processResult.free_beds} — Gợi ý duyệt:{" "}
-          {processResult.approved} — Danh sách chờ: {processResult.waitlist}
+          <strong>Xếp hạng xong.</strong> Giường khả dụng:{" "}
+          {processResult.capacity?.available_physical_beds ?? processResult.free_beds} — Có thể duyệt thêm:{" "}
+          {processResult.capacity?.available_approval_slots ?? processResult.free_beds} — Gợi ý duyệt:{" "}
+          {processResult.approved} — Danh sách chờ: {processResult.waitlist} — Còn lại sau xác nhận:{" "}
+          {processResult.capacity?.remaining_after_proposals ?? Math.max(0, processResult.free_beds - processResult.approved)}
           <button
             type="button"
             onClick={() => setProcessResult(null)}
@@ -1103,6 +1183,22 @@ export default function AdminRegistrationPeriodsPage() {
                   <span className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700">
                     Cần xem lại: <strong className="text-base">{period.review_count ?? 0}</strong>
                   </span>
+                  {((period.approved_count ?? 0) + (period.rejected_count ?? 0)) > 0 && (
+                    <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600">
+                      Đã xử lý xong: <strong className="text-base">{(period.approved_count ?? 0) + (period.rejected_count ?? 0)}</strong>
+                    </span>
+                  )}
+                </div>
+              )}
+              {period.status === "processing" && (
+                <div className="mt-3">
+                  <CapacitySummaryCard
+                    capacity={periodCapacity[period.id] ?? null}
+                    loading={periodCapacityLoading[period.id] ?? false}
+                    error={periodCapacityError[period.id] ?? null}
+                    compact
+                    onOpenDetails={() => setCapacityDetailsPeriodId(period.id)}
+                  />
                 </div>
               )}
               {period.status === "closed" && period.channel === "main" && (
@@ -1136,6 +1232,31 @@ export default function AdminRegistrationPeriodsPage() {
                   </span>
                 </div>
               )}
+
+              {period.allow_admission_candidates && period.status !== "closed" && (() => {
+                const deadline = admissionDeadline(period.end_date);
+                if (!deadline) return null;
+                const isOverdue = now.getTime() > deadline.getTime();
+                return (
+                  <div className={`mt-4 rounded-xl border px-4 py-3 text-sm font-semibold ${
+                    isOverdue
+                      ? "border-rose-200 bg-rose-50 text-rose-700"
+                      : "border-sky-200 bg-sky-50 text-sky-700"
+                  }`}>
+                    {isOverdue ? (
+                      <>
+                        <p>Đợt đã kết thúc lúc 17:00 ngày {formatDate(deadline)}.</p>
+                        <p className="mt-1 text-xs font-medium">Hệ thống đang xử lý đóng đợt.</p>
+                        <p className="mt-1 text-xs font-medium">
+                          Approved chưa nhập học: {period.admission_approved_count ?? 0} · Submitted: {period.admission_submitted_count ?? 0} · Waitlisted: {period.admission_waitlisted_count ?? 0}
+                        </p>
+                      </>
+                    ) : (
+                      <p>{formatCountdown(deadline, now)}</p>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Nút hành động theo trạng thái */}
               <div className="mt-4 flex flex-wrap items-center justify-end gap-2.5 border-t border-[#eef3fb] pt-3.5">
@@ -1209,7 +1330,17 @@ export default function AdminRegistrationPeriodsPage() {
                         </span>
                       );
                     })()}
-                    <button type="button" disabled={confirmingBatchId === period.id} onClick={() => setConfirmBatchId(period.id)}
+                    <button type="button"
+                      disabled={
+                        confirmingBatchId === period.id ||
+                        (periodCapacityLoading[period.id] ?? false) ||
+                        Boolean(periodCapacityError[period.id]) ||
+                        Boolean(periodCapacity[period.id]?.capacity_exceeded)
+                      }
+                      title={periodCapacity[period.id]?.capacity_exceeded
+                        ? "Không thể xác nhận vì số hồ sơ đang chọn duyệt vượt quá sức chứa hiện tại."
+                        : undefined}
+                      onClick={() => setConfirmBatchId(period.id)}
                       className={primaryActionClass}>
                       {confirmingBatchId === period.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Xác nhận tất cả
                     </button>

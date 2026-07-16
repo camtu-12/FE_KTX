@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import {
   ArrowLeft,
   ArrowUp,
+  Ban,
   CheckCircle,
   CheckCircle2,
   ChevronLeft,
@@ -36,6 +37,7 @@ const statusIconMap: Record<RegistrationStatus, typeof Clock3> = {
   submitted: Clock3,
   approved: CheckCircle2,
   rejected: CircleAlert,
+  cancelled: Ban,
 };
 
 const readOnlyFieldClassName =
@@ -569,6 +571,17 @@ export default function AdminRegistrationDetailPage() {
               </span>
             </div>
           </div>
+
+          {request.status === "cancelled" && (request.cancelled_at || request.cancellation_reason || request.cancelled_by) ? (
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              <p className="font-semibold text-slate-700">Thông tin hủy</p>
+              {request.cancelled_at ? <p className="mt-1">Thời điểm: {formatDate(request.cancelled_at)}</p> : null}
+              {request.cancellation_reason ? <p className="mt-1">Lý do: {request.cancellation_reason}</p> : null}
+              {request.cancelled_by ? (
+                <p className="mt-1">Người hủy: {request.cancelled_by === "candidate" ? "Sinh viên tự hủy" : request.cancelled_by}</p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </motion.div>
 

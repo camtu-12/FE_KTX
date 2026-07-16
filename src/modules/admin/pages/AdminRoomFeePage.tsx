@@ -16,7 +16,7 @@ import {
   type RoomFeeBill as ApiRoomFeeBill,
   updatePaymentSettings,
 } from "../../../api/paymentApi";
-import { formatDate } from "../../../utils/dateFormat";
+import { formatDate, getLocalDateValue } from "../../../utils/dateFormat";
 import StudentPaymentPlanModal from "../components/StudentPaymentPlanModal";
 
 type StatusFilter = PaymentStatus | "all";
@@ -78,7 +78,7 @@ const moneyFormatter = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0
 const currentYear = new Date().getFullYear();
 const currentMonth = new Date().getMonth() + 1;
 const currentQuarter = getQuarterFromMonth(currentMonth);
-const getTodayValue = () => new Date().toISOString().slice(0, 10);
+const getTodayValue = () => getLocalDateValue();
 const formatMoney = (value: number) => `${moneyFormatter.format(value)}đ`;
 
 const statusOptions: Array<{ value: StatusFilter; label: string }> = [
@@ -505,7 +505,7 @@ export default function AdminRoomFeePage() {
                   isActive ? "border-[#244cb8] bg-[#244cb8]/5" : "border-[#d8e4f5] bg-white"
                 }`}
               >
-                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7c8fb5]">{card.label}</p>
+                <p className="whitespace-nowrap text-sm font-semibold uppercase tracking-[0.16em] text-[#7c8fb5]">{card.label}</p>
                 <p className={`mt-3 text-[2rem] font-extrabold leading-none ${card.valueClassName}`}>{card.value}</p>
               </motion.article>
             );

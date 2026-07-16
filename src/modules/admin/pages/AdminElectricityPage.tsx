@@ -18,7 +18,7 @@ import {
 } from "../../../api/paymentApi";
 import { getRooms } from "../../../api/registrationService";
 import type { DormRoom } from "../../../types/dormRoom";
-import { formatDate } from "../../../utils/dateFormat";
+import { formatDate, getLocalDateValue } from "../../../utils/dateFormat";
 
 type TabKey = "records" | "bills";
 
@@ -104,7 +104,7 @@ const statusMeta: Record<PaymentStatus, { label: string; className: string }> = 
 };
 
 const getCurrentMonthValue = () => new Date().toISOString().slice(0, 7);
-const getTodayValue = () => new Date().toISOString().slice(0, 10);
+const getTodayValue = () => getLocalDateValue();
 
 const formatMonth = (value: string) => {
   const [year, month] = value.split("-");

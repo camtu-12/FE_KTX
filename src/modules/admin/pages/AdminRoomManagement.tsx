@@ -31,7 +31,7 @@ import BunkBedCard, { type BunkBedGroup } from "../components/BunkBedCard";
 import BedStudentDetailModal from "../components/BedStudentDetailModal";
 import OccupancyDetailModal, { type OccupancyDetailModalStatus } from "../components/OccupancyDetailModal";
 import MaintenanceWizardModal, { type MaintenanceWizardState } from "../components/MaintenanceWizardModal";
-import { formatDate as formatPreviewDate } from "../../../utils/dateFormat";
+import { formatDate as formatPreviewDate, getLocalDateValue } from "../../../utils/dateFormat";
 
 type RoomStatus = "AVAILABLE" | "FULL" | "MAINTENANCE";
 type BedStatus = "ACTIVE" | "MAINTENANCE";
@@ -746,7 +746,7 @@ export default function AdminRoomManagement() {
       capacity: String(room.capacity),
       status: room.status,
       maintenance_reason: "",
-      maintenance_start_date: new Date().toISOString().slice(0, 10),
+      maintenance_start_date: getLocalDateValue(),
       maintenance_expected_end_date: "",
       maintenance_note: "",
     });
@@ -1112,7 +1112,7 @@ export default function AdminRoomManagement() {
       plan,
       assignments,
       reason: meta?.reason ?? "",
-      startedAt: meta?.startedAt ?? new Date().toISOString().slice(0, 10),
+      startedAt: meta?.startedAt ?? getLocalDateValue(),
       expectedEndAt: meta?.expectedEndAt ?? "",
       note: meta?.note ?? "",
     });
@@ -2231,6 +2231,7 @@ export default function AdminRoomManagement() {
                       <input
                         type="date"
                         value={transferExpectedReturnDate}
+                        min={getLocalDateValue()}
                         onChange={(event) => {
                           setTransferExpectedReturnDate(event.target.value);
                           setTransferBedError("");
@@ -2478,6 +2479,7 @@ export default function AdminRoomManagement() {
                             <InputField
                               type="date"
                               value={roomForm.maintenance_start_date}
+                              min={getLocalDateValue()}
                               onChange={(event) => {
                                 setRoomForm((prev) => ({ ...prev, maintenance_start_date: event.target.value }));
                                 setRoomFormError("");
@@ -2489,6 +2491,7 @@ export default function AdminRoomManagement() {
                             <InputField
                               type="date"
                               value={roomForm.maintenance_expected_end_date}
+                              min={roomForm.maintenance_start_date || getLocalDateValue()}
                               onChange={(event) => {
                                 setRoomForm((prev) => ({ ...prev, maintenance_expected_end_date: event.target.value }));
                                 setRoomFormError("");

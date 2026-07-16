@@ -26,7 +26,7 @@ import {
   type OccupancyPeriodPayload,
   type OccupancyPeriodSuggestion,
 } from "../../../api/occupancyPeriodApi";
-import { formatDate } from "../../../utils/dateFormat";
+import { formatDate, getLocalDateValue } from "../../../utils/dateFormat";
 
 type StatusLabel = Record<OccupancyPeriod["status"], string>;
 type StatusClass = Record<OccupancyPeriod["status"], string>;
@@ -211,7 +211,7 @@ export default function AdminOccupancyPeriodsPage() {
 
   const requestOpen = (period: OccupancyPeriod) => {
     if (period.suggested_open_date) {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = getLocalDateValue();
       const diffDays = daysBetween(period.suggested_open_date, today);
       if (Math.abs(diffDays) > OPEN_DATE_WARNING_THRESHOLD_DAYS) {
         setOpenWarning({ period, diffDays });
@@ -283,10 +283,32 @@ export default function AdminOccupancyPeriodsPage() {
           rows={3}
           className="w-full rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-3 py-1.5 text-sm text-[#1f3152] focus:border-[#244cb8] focus:outline-none resize-none"
         />
+      ) : type === "date" ? (
+        // Input type="date" của trình duyệt hiển thị theo locale HỆ ĐIỀU HÀNH (thuộc tính
+        // lang không có tác dụng trên Chrome/Edge) — che text gốc (color: transparent), đè
+        // 1 lớp text tự định dạng dd/mm/yyyy lên trên, click vẫn xuyên xuống input/lịch gốc.
+        <div className="relative">
+          <input
+            type="date"
+            value={form[key]}
+            disabled={disabled}
+            onChange={(e) => {
+              setForm((prev) => ({ ...prev, [key]: e.target.value }));
+              setFormErrors((prev) => ({ ...prev, [key]: undefined }));
+            }}
+            className="w-full rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-3 py-1.5 text-sm text-transparent caret-transparent focus:border-[#244cb8] focus:outline-none disabled:cursor-not-allowed disabled:bg-[#eef2f8]"
+          />
+          <span
+            className={`pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm ${
+              disabled ? "text-[#7c8fb5]" : form[key] ? "text-[#1f3152]" : "text-[#90a2bf]"
+            }`}
+          >
+            {form[key] ? formatDate(form[key]) : "dd/mm/yyyy"}
+          </span>
+        </div>
       ) : (
         <input
           type={type}
-          lang={type === "date" ? "vi" : undefined}
           value={form[key]}
           disabled={disabled}
           onChange={(e) => {

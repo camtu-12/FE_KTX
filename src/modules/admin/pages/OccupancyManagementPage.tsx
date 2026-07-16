@@ -14,6 +14,7 @@ import {
 } from "../../../api/registrationService";
 import type { RegistrationRequest } from "../data/registrationRequests";
 import type { DormRoom } from "../../../types/dormRoom";
+import { getLocalDateValue } from "../../../utils/dateFormat";
 import { listViolationTypes, type ActivityCategory, type ViolationType } from "../../../api/violationTypeApi";
 import { createViolation } from "../../../api/violationApi";
 import OccupancyDetailModal, { type OccupancyDetailModalStatus } from "../components/OccupancyDetailModal";
@@ -105,7 +106,7 @@ const actionLabels = {
 
 type ActivityAction = keyof typeof actionLabels;
 
-const getTodayValue = () => new Date().toISOString().slice(0, 10);
+const getTodayValue = () => getLocalDateValue();
 
 const normalizeGender = (gender: string): StudentGender => {
   const normalized = gender.trim().toLowerCase();

@@ -1,5 +1,7 @@
 import axios from "axios";
 import apiClient from "../lib/apiClient";
+import type { DormCapacitySummary } from "../types/dormCapacity";
+export type { DormCapacitySummary } from "../types/dormCapacity";
 
 const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
 const API_ROOT = API_BASE.endsWith("/api") ? API_BASE : `${API_BASE}/api`;
@@ -25,8 +27,15 @@ export type ReservationProgress = {
   submittedAt: string | null;
   approvedAt?: string | null;
   periodName: string | null;
+  periodEndDate?: string | null;
   rejectionReason?: string | null;
   cancellationReason?: string | null;
+  cancelledAt?: string | null;
+  expirationReason?: string | null;
+  canCancel?: boolean;
+  registrationStatus?: string | null;
+  registrationCancelledAt?: string | null;
+  registrationCancellationReason?: string | null;
   candidate?: {
     fullName: string | null;
     majorName: string | null;
@@ -36,8 +45,60 @@ export type ReservationProgress = {
   } | null;
 };
 
+type ApiReservationProgress = {
+  reservation_code: string | null;
+  status: ReservationStatus;
+  submitted_at: string | null;
+  approved_at?: string | null;
+  period_name: string | null;
+  period_end_date?: string | null;
+  rejection_reason?: string | null;
+  cancellation_reason?: string | null;
+  cancelled_at?: string | null;
+  expiration_reason?: string | null;
+  can_cancel?: boolean;
+  registration_status?: string | null;
+  registration_cancelled_at?: string | null;
+  registration_cancellation_reason?: string | null;
+  candidate?: {
+    full_name: string | null;
+    major_name: string | null;
+    masked_cccd: string | null;
+    masked_email: string | null;
+    masked_phone: string | null;
+  } | null;
+};
+
+function normalizeReservationProgress(d: ApiReservationProgress): ReservationProgress {
+  return {
+    reservationCode: d.reservation_code,
+    status: d.status,
+    submittedAt: d.submitted_at,
+    approvedAt: d.approved_at ?? null,
+    periodName: d.period_name,
+    periodEndDate: d.period_end_date ?? null,
+    rejectionReason: d.rejection_reason ?? null,
+    cancellationReason: d.cancellation_reason ?? null,
+    cancelledAt: d.cancelled_at ?? null,
+    expirationReason: d.expiration_reason ?? null,
+    canCancel: d.can_cancel ?? false,
+    registrationStatus: d.registration_status ?? null,
+    registrationCancelledAt: d.registration_cancelled_at ?? null,
+    registrationCancellationReason: d.registration_cancellation_reason ?? null,
+    candidate: d.candidate
+      ? {
+          fullName: d.candidate.full_name,
+          majorName: d.candidate.major_name,
+          maskedCccd: d.candidate.masked_cccd,
+          maskedEmail: d.candidate.masked_email,
+          maskedPhone: d.candidate.masked_phone,
+        }
+      : null,
+  };
+}
+
 export type CandidateVerifyResult = {
-  verificationStatus: "admitted" | "enrolled" | "cancelled" | "not_found";
+  verificationStatus: "admitted" | "enrolled" | "cancelled" | "not_found" | "period_closed";
   message: string | null;
   fullName: string | null;
   majorName: string | null;
@@ -56,6 +117,9 @@ export type DormReservation = {
   priorityNote: string | null;
   rejectionReason: string | null;
   cancellationReason: string | null;
+  cancelledAt: string | null;
+  cancelledBy: string | null;
+  expirationReason: string | null;
   adminNote: string | null;
   avatarUrl: string | null;
   cccdFrontUrl: string | null;
@@ -64,6 +128,12 @@ export type DormReservation = {
   approvedAt: string | null;
   expiresAt: string | null;
   convertedRegistrationId: number | null;
+  convertedRegistration?: {
+    status: string;
+    cancelledAt: string | null;
+    cancellationReason: string | null;
+    cancelledBy: string | null;
+  } | null;
   candidate?: {
     id: number;
     admissionCode: string;
@@ -85,8 +155,11 @@ export type DormReservation = {
     schoolYear: string | null;
     semester: string | null;
     status: string;
+    endDate: string | null;
   } | null;
   reservationPriorities?: ReservationPriority[];
+  hasPriorityEvidence: boolean;
+  priorityEvidenceStatus: "pending" | "verified" | "rejected" | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -101,6 +174,9 @@ type ApiReservation = {
   priority_note: string | null;
   rejection_reason: string | null;
   cancellation_reason?: string | null;
+  cancelled_at?: string | null;
+  cancelled_by?: string | null;
+  expiration_reason?: string | null;
   admin_note: string | null;
   avatar_url: string | null;
   cccd_front_url: string | null;
@@ -109,6 +185,12 @@ type ApiReservation = {
   approved_at: string | null;
   expires_at: string | null;
   converted_registration_id: number | null;
+  converted_registration?: {
+    status: string;
+    cancelled_at: string | null;
+    cancellation_reason: string | null;
+    cancelled_by: string | null;
+  } | null;
   candidate?: {
     id: number;
     admission_code: string;
@@ -130,8 +212,11 @@ type ApiReservation = {
     school_year: string | null;
     semester: string | null;
     status: string;
+    end_date: string | null;
   } | null;
   reservation_priorities?: ApiReservationPriority[];
+  has_priority_evidence?: boolean;
+  priority_evidence_status?: "pending" | "verified" | "rejected" | null;
   created_at: string;
   updated_at: string;
 };
@@ -147,6 +232,9 @@ function normalizeReservation(r: ApiReservation): DormReservation {
     priorityNote: r.priority_note,
     rejectionReason: r.rejection_reason,
     cancellationReason: r.cancellation_reason ?? null,
+    cancelledAt: r.cancelled_at ?? null,
+    cancelledBy: r.cancelled_by ?? null,
+    expirationReason: r.expiration_reason ?? null,
     adminNote: r.admin_note,
     avatarUrl: r.avatar_url,
     cccdFrontUrl: r.cccd_front_url,
@@ -155,6 +243,14 @@ function normalizeReservation(r: ApiReservation): DormReservation {
     approvedAt: r.approved_at,
     expiresAt: r.expires_at,
     convertedRegistrationId: r.converted_registration_id,
+    convertedRegistration: r.converted_registration
+      ? {
+          status: r.converted_registration.status,
+          cancelledAt: r.converted_registration.cancelled_at ?? null,
+          cancellationReason: r.converted_registration.cancellation_reason ?? null,
+          cancelledBy: r.converted_registration.cancelled_by ?? null,
+        }
+      : null,
     candidate: r.candidate
       ? {
           id: r.candidate.id,
@@ -179,9 +275,12 @@ function normalizeReservation(r: ApiReservation): DormReservation {
           schoolYear: r.period.school_year,
           semester: r.period.semester,
           status: r.period.status,
+          endDate: r.period.end_date ?? null,
         }
       : undefined,
     reservationPriorities: r.reservation_priorities?.map(normalizePriority),
+    hasPriorityEvidence: r.has_priority_evidence ?? false,
+    priorityEvidenceStatus: r.priority_evidence_status ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -202,7 +301,7 @@ export const verifyAdmissionCandidate = async (payload: {
 }): Promise<CandidateVerifyResult> => {
   const res = await API.post("/admission-candidates/verify", payload);
   const d = res.data as {
-    verification_status: "admitted" | "enrolled" | "cancelled" | "not_found";
+    verification_status: "admitted" | "enrolled" | "cancelled" | "not_found" | "period_closed";
     message?: string | null;
     full_name?: string | null;
     major_name?: string | null;
@@ -213,6 +312,7 @@ export const verifyAdmissionCandidate = async (payload: {
       status: ReservationStatus;
       submitted_at: string | null;
       period_name: string | null;
+      period_end_date?: string | null;
     } | null;
   };
   return {
@@ -228,6 +328,7 @@ export const verifyAdmissionCandidate = async (payload: {
           status: d.existing_reservation.status,
           submittedAt: d.existing_reservation.submitted_at,
           periodName: d.existing_reservation.period_name,
+          periodEndDate: d.existing_reservation.period_end_date ?? null,
         }
       : null,
   };
@@ -237,46 +338,28 @@ export const lookupDormReservation = async (payload: {
   reservation_code: string;
 }): Promise<{ message: string; reservation: ReservationProgress }> => {
   const res = await API.post("/dorm-reservations/lookup", payload);
-  const d = res.data as {
-    message: string;
-    reservation: {
-      reservation_code: string | null;
-      status: ReservationStatus;
-      submitted_at: string | null;
-      approved_at?: string | null;
-      period_name: string | null;
-      rejection_reason?: string | null;
-      cancellation_reason?: string | null;
-      candidate?: {
-        full_name: string | null;
-        major_name: string | null;
-        masked_cccd: string | null;
-        masked_email: string | null;
-        masked_phone: string | null;
-      } | null;
-    };
-  };
+  const d = res.data as { message: string; reservation: ApiReservationProgress };
 
   return {
     message: d.message,
-    reservation: {
-      reservationCode: d.reservation.reservation_code,
-      status: d.reservation.status,
-      submittedAt: d.reservation.submitted_at,
-      approvedAt: d.reservation.approved_at ?? null,
-      periodName: d.reservation.period_name,
-      rejectionReason: d.reservation.rejection_reason ?? null,
-      cancellationReason: d.reservation.cancellation_reason ?? null,
-      candidate: d.reservation.candidate
-        ? {
-            fullName: d.reservation.candidate.full_name,
-            majorName: d.reservation.candidate.major_name,
-            maskedCccd: d.reservation.candidate.masked_cccd,
-            maskedEmail: d.reservation.candidate.masked_email,
-            maskedPhone: d.reservation.candidate.masked_phone,
-          }
-        : null,
-    },
+    reservation: normalizeReservationProgress(d.reservation),
+  };
+};
+
+/** Tự hủy nhu cầu ở KTX trước deadline — reservation_code là bằng chứng sở hữu, cùng quy
+ * ước bảo mật với lookupDormReservation() (throttle riêng theo IP + mã ở backend). */
+export const cancelDormReservationSelf = async (payload: {
+  reservation_code: string;
+  email: string;
+  reason?: string;
+}): Promise<{ message: string; reservation: ReservationProgress; promotedWaitlist: boolean }> => {
+  const res = await API.post("/dorm-reservations/cancel", payload);
+  const d = res.data as { message: string; reservation: ApiReservationProgress; promoted_waitlist: boolean };
+
+  return {
+    message: d.message,
+    reservation: normalizeReservationProgress(d.reservation),
+    promotedWaitlist: d.promoted_waitlist,
   };
 };
 
@@ -317,6 +400,9 @@ export const createDormReservation = async (payload: {
       priorityNote: null,
       rejectionReason: null,
       cancellationReason: null,
+      cancelledAt: null,
+      cancelledBy: null,
+      expirationReason: null,
       adminNote: null,
       avatarUrl: null,
       cccdFrontUrl: null,
@@ -325,6 +411,9 @@ export const createDormReservation = async (payload: {
       approvedAt: null,
       expiresAt: null,
       convertedRegistrationId: null,
+      convertedRegistration: null,
+      hasPriorityEvidence: false,
+      priorityEvidenceStatus: null,
       createdAt: "",
       updatedAt: "",
     },
@@ -336,10 +425,18 @@ export const createDormReservation = async (payload: {
 export const getAdminDormReservations = async (params?: {
   search?: string;
   status?: ReservationStatus | "";
+  statuses?: ReservationStatus[];
+  registration_status?: "cancelled" | "not_cancelled";
   registration_period_id?: number | "";
+  expiration_reason?: string | "";
   page?: number;
 }): Promise<PaginatedResponse<DormReservation>> => {
-  const res = await apiClient.get("/admin/dorm-reservations", { params });
+  const res = await apiClient.get("/admin/dorm-reservations", {
+    params: {
+      ...params,
+      statuses: params?.statuses?.join(","),
+    },
+  });
   const raw = res.data as PaginatedResponse<ApiReservation>;
   return { ...raw, data: raw.data.map(normalizeReservation) };
 };
@@ -576,6 +673,7 @@ export const rankDormReservations = async (
   free_beds: number;
   approved: number;
   waitlist: number;
+  capacity?: DormCapacitySummary;
 }> => {
   const res = await apiClient.post("/admin/dorm-reservations/rank", {
     registration_period_id: registrationPeriodId,
@@ -585,6 +683,7 @@ export const rankDormReservations = async (
     free_beds: number;
     approved: number;
     waitlist: number;
+    capacity?: DormCapacitySummary;
   };
 };
 

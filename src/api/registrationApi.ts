@@ -1,5 +1,7 @@
 import axios from "axios";
 import apiClient from "../lib/apiClient";
+import type { DormCapacitySummary } from "../types/dormCapacity";
+export type { DormCapacitySummary } from "../types/dormCapacity";
 
 const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
 
@@ -153,6 +155,9 @@ export type RegistrationPeriodData = RegistrationPeriodPayload & {
   reject_proposal_count?: number;
   review_count?: number;
   pending_criteria_count?: number;
+  admission_submitted_count?: number;
+  admission_waitlisted_count?: number;
+  admission_approved_count?: number;
   allow_admission_candidates?: boolean;
   requires_student_code?: boolean;
   round_number?: number | null;
@@ -163,6 +168,16 @@ export type RegistrationPeriodData = RegistrationPeriodPayload & {
 export const getRegistrationPeriods = (): Promise<RegistrationPeriodData[]> =>
   API.get("/registration-periods").then((res) => res.data as RegistrationPeriodData[]);
 
+export const getRegistrationPeriodCapacity = (
+  id: number,
+  proposedApprovedCount = 0,
+): Promise<DormCapacitySummary> =>
+  apiClient
+    .get(`/registration-periods/${id}/capacity`, {
+      params: { proposed_approved_count: Math.max(0, proposedApprovedCount) },
+    })
+    .then((res) => (res.data as { capacity: DormCapacitySummary }).capacity);
+
 export const createRegistrationPeriod = (payload: RegistrationPeriodPayload): Promise<RegistrationPeriodData> =>
   apiClient.post("/registration-periods", payload).then((res) => res.data as RegistrationPeriodData);
 
@@ -172,7 +187,7 @@ export const updateRegistrationPeriod = (id: number, payload: Partial<Registrati
 export const deleteRegistrationPeriod = (id: number): Promise<void> =>
   apiClient.delete(`/registration-periods/${id}`).then(() => undefined);
 
-export const processRegistrationPeriod = (id: number): Promise<{ message: string; free_beds: number; approved: number; waitlist: number }> =>
+export const processRegistrationPeriod = (id: number): Promise<{ message: string; free_beds: number; approved: number; waitlist: number; capacity?: DormCapacitySummary }> =>
   apiClient.post(`/registration-periods/${id}/process`).then((res) => res.data);
 
 export const patchAutoDecision = (id: number, decision: 'approve' | 'reject' | 'review', reason?: string) =>

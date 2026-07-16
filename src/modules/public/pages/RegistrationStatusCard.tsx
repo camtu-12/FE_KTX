@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { AlertCircle, ArrowRight, CalendarDays, Clock } from "lucide-react";
+import { AlertCircle, ArrowRight, CalendarDays, Clock, Search } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { RegistrationPeriodData } from "../../../api/registrationApi";
 
@@ -167,20 +167,32 @@ export default function RegistrationStatusCard({ period }: Props) {
         ) : null}
       </div>
 
-      {/* Action — only when active */}
-      {status === "active" && actions.length > 0 ? (
+      {/* Action — nút đăng ký chỉ hiện khi đang mở; nút tra cứu luôn hiện để thí sinh đã
+          nộp hồ sơ vẫn theo dõi được kể cả khi đợt đã chuyển sang xử lý/đóng. */}
+      {(status === "active" && actions.length > 0) || period.allow_admission_candidates ? (
         <div className="mt-5 flex flex-wrap justify-end gap-3">
-          {actions.map((action) => (
+          {status === "active" &&
+            actions.map((action) => (
+              <Link
+                key={action.to}
+                to={action.to}
+                className="inline-flex min-w-[150px] flex-1 items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-extrabold text-white shadow-[0_10px_24px_rgba(0,0,0,0.12)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_16px_32px_rgba(0,0,0,0.18)] sm:flex-none"
+                style={{ backgroundColor: cfg.accent }}
+              >
+                {action.label}
+                <ArrowRight size={15} />
+              </Link>
+            ))}
+          {period.allow_admission_candidates ? (
             <Link
-              key={action.to}
-              to={action.to}
-              className="inline-flex min-w-[150px] flex-1 items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-extrabold text-white shadow-[0_10px_24px_rgba(0,0,0,0.12)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_16px_32px_rgba(0,0,0,0.18)] sm:flex-none"
-              style={{ backgroundColor: cfg.accent }}
+              to="/freshman-reservation/status"
+              className="inline-flex min-w-[150px] flex-1 items-center justify-center gap-2 rounded-full border px-5 py-2.5 text-sm font-extrabold shadow-[0_6px_16px_rgba(0,0,0,0.06)] transition-all duration-300 ease-out hover:-translate-y-0.5 sm:flex-none"
+              style={{ borderColor: cfg.accentBorder, color: cfg.accent, backgroundColor: "#fff" }}
             >
-              {action.label}
-              <ArrowRight size={15} />
+              <Search size={15} />
+              Tra cứu tình trạng đơn
             </Link>
-          ))}
+          ) : null}
         </div>
       ) : null}
     </article>
