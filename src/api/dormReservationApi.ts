@@ -429,6 +429,7 @@ export const getAdminDormReservations = async (params?: {
   registration_status?: "cancelled" | "not_cancelled";
   registration_period_id?: number | "";
   expiration_reason?: string | "";
+  priority_evidence_status?: "pending" | "verified" | "rejected" | "";
   page?: number;
 }): Promise<PaginatedResponse<DormReservation>> => {
   const res = await apiClient.get("/admin/dorm-reservations", {
@@ -444,6 +445,12 @@ export const getAdminDormReservations = async (params?: {
 export const getAdminDormReservation = async (id: number): Promise<DormReservation> => {
   const res = await apiClient.get(`/admin/dorm-reservations/${id}`);
   return normalizeReservation(res.data as ApiReservation);
+};
+
+export const getAdminDormReservationHistory = async (id: number): Promise<DormReservation[]> => {
+  const res = await apiClient.get(`/admin/dorm-reservations/${id}/history`);
+  const raw = res.data as { data: ApiReservation[] };
+  return raw.data.map(normalizeReservation);
 };
 
 export const approveReservation = async (id: number, adminNote?: string): Promise<{ message: string; reservation: DormReservation }> => {

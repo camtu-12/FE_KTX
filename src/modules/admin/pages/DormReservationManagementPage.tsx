@@ -22,6 +22,7 @@ import {
   approveReservation,
   cancelReservation,
   getAdminDormReservation,
+  getAdminDormReservationHistory,
   getAdminDormReservations,
   rankDormReservations,
   rejectReservation,
@@ -224,12 +225,17 @@ export default function DormReservationManagementPage() {
   const [loading, setLoading] = useState(true);
   const [periodFilter, setPeriodFilter] = useState<number | "">("");
   const [statusFilter, setStatusFilter] = useState<ReservationStatusFilter>("all");
+  const [priorityEvidenceFilter, setPriorityEvidenceFilter] = useState<"" | "pending" | "verified" | "rejected">("");
   const [periods, setPeriods] = useState<Period[]>([]);
   const [apiError, setApiError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
 
   // detail modal
   const [detail, setDetail] = useState<DormReservation | null>(null);
+  const [detailTab, setDetailTab] = useState<"info" | "history">("info");
+  const [detailHistory, setDetailHistory] = useState<DormReservation[]>([]);
+  const [detailHistoryLoading, setDetailHistoryLoading] = useState(false);
+  const [detailFromHistory, setDetailFromHistory] = useState(false);
 
   // reject dialog
   const [rejectTarget, setRejectTarget] = useState<DormReservation | null>(null);
@@ -362,6 +368,7 @@ export default function DormReservationManagementPage() {
         ...buildReservationFilterParams(),
         search: search || undefined,
         registration_period_id: periodFilter || undefined,
+        priority_evidence_status: priorityEvidenceFilter || undefined,
         page,
       });
       setReservations(res.data);
@@ -373,7 +380,7 @@ export default function DormReservationManagementPage() {
     } finally {
       setLoading(false);
     }
-  }, [buildReservationFilterParams, search, periodFilter]);
+  }, [buildReservationFilterParams, search, periodFilter, priorityEvidenceFilter]);
 
   useEffect(() => { void load(1); }, [load]);
 
@@ -476,6 +483,9 @@ export default function DormReservationManagementPage() {
 
   const handleOpenDetail = async (r: DormReservation) => {
     setDetail(r);
+    setDetailTab("info");
+    setDetailHistory([]);
+    setDetailFromHistory(false);
     setDetailLoading(true);
     try {
       const full = await getAdminDormReservation(r.id);
@@ -484,6 +494,47 @@ export default function DormReservationManagementPage() {
       // keep the list version
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  // Xem chi tiết 1 lần nộp cũ ngay từ tab Lịch sử — giữ nguyên danh sách lịch sử đã tải
+  // (cùng 1 thí sinh) và đánh dấu detailFromHistory để nút Đóng/X quay lại tab Lịch sử
+  // thay vì đóng hẳn modal.
+  const handleViewHistoryItem = async (h: DormReservation) => {
+    setDetailFromHistory(true);
+    setDetail(h);
+    setDetailTab("info");
+    setDetailLoading(true);
+    try {
+      const full = await getAdminDormReservation(h.id);
+      setDetail(full);
+    } catch {
+      // keep the list version
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const handleCloseDetail = () => {
+    if (detailFromHistory) {
+      setDetailTab("history");
+      setDetailFromHistory(false);
+      return;
+    }
+    setDetail(null);
+  };
+
+  const handleOpenDetailTab = async (tab: "info" | "history") => {
+    setDetailTab(tab);
+    if (tab !== "history" || !detail || detailHistory.length > 0) return;
+    setDetailHistoryLoading(true);
+    try {
+      const items = await getAdminDormReservationHistory(detail.id);
+      setDetailHistory(items);
+    } catch {
+      showToast("error", "Không thể tải lịch sử hồ sơ.");
+    } finally {
+      setDetailHistoryLoading(false);
     }
   };
 
@@ -601,11 +652,12 @@ export default function DormReservationManagementPage() {
     return (current + 1) % previewImages.length;
   });
 
-  const hasActiveFilters = statusFilter !== "all" || periodFilter !== "";
+  const hasActiveFilters = statusFilter !== "all" || periodFilter !== "" || priorityEvidenceFilter !== "";
 
   const resetFilters = () => {
     setStatusFilter("all");
     setPeriodFilter("");
+    setPriorityEvidenceFilter("");
   };
 
   const rankPanelCapacity = rankResult?.capacity ?? rankCapacity;
@@ -652,9 +704,9 @@ export default function DormReservationManagementPage() {
         </div>
 
         {/* Filters */}
-        <div className="mt-4 flex flex-wrap items-end gap-3">
+        <div className="mt-4 flex flex-nowrap items-end gap-3 overflow-x-auto">
           {periods.length > 0 && (
-            <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-[11px] font-semibold text-[#62789f]">
+            <label className="flex w-[190px] shrink-0 flex-col gap-1 text-[11px] font-semibold text-[#62789f]">
               Đợt đăng ký
               <select
                 value={periodFilter}
@@ -666,7 +718,7 @@ export default function DormReservationManagementPage() {
               </select>
             </label>
           )}
-          <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-[11px] font-semibold text-[#62789f]">
+          <label className="flex w-[190px] shrink-0 flex-col gap-1 text-[11px] font-semibold text-[#62789f]">
             Trạng thái
             <select
               value={statusFilter}
@@ -679,7 +731,21 @@ export default function DormReservationManagementPage() {
               ))}
             </select>
           </label>
-          <div className="flex flex-wrap items-center gap-2">
+          <label className="flex w-[190px] shrink-0 flex-col gap-1 text-[11px] font-semibold text-[#62789f]">
+            Minh chứng ưu tiên
+            <select
+              value={priorityEvidenceFilter}
+              aria-label="Minh chứng ưu tiên"
+              onChange={(e) => setPriorityEvidenceFilter(e.target.value as typeof priorityEvidenceFilter)}
+              className="rounded-xl border border-[#cfdcf0] bg-white px-3 py-2 text-xs font-semibold text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
+            >
+              <option value="">Tất cả</option>
+              <option value="pending">Chờ xác minh</option>
+              <option value="verified">Đã xác minh</option>
+              <option value="rejected">Không hợp lệ</option>
+            </select>
+          </label>
+          <div className="flex shrink-0 flex-nowrap items-center gap-2">
             <button
               type="button"
               disabled={!periodFilter || !selectedPeriodAllowsAdmission || rankLoading || rankCapacityLoading || Boolean(rankCapacityError)}
@@ -706,16 +772,16 @@ export default function DormReservationManagementPage() {
               <Info className="h-3.5 w-3.5" />
               Sức chứa
             </button>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="inline-flex h-[38px] shrink-0 items-center justify-center rounded-xl border border-[#cfdcf0] bg-white px-3 py-2 text-xs font-semibold text-[#244cb8] transition hover:border-[#244cb8] hover:bg-[#f7faff]"
+              >
+                Xóa bộ lọc
+              </button>
+            )}
           </div>
-          {hasActiveFilters && (
-            <button
-              type="button"
-              onClick={resetFilters}
-              className="inline-flex min-h-[38px] items-center justify-center rounded-xl border border-[#cfdcf0] bg-white px-3 py-2 text-xs font-semibold text-[#244cb8] transition hover:border-[#244cb8] hover:bg-[#f7faff]"
-            >
-              Xóa bộ lọc
-            </button>
-          )}
         </div>
 
         {periodFilter && !rankCapacityLoading && !rankCapacityError && rankPanelCapacity && (
@@ -832,15 +898,62 @@ export default function DormReservationManagementPage() {
           {detail && (
             <motion.div key="detail" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-3"
-              onClick={() => setDetail(null)}>
+              onClick={handleCloseDetail}>
               <motion.div initial={{ opacity: 0, scale: 0.96, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 16 }}
                 className="flex max-h-[90vh] w-full max-w-[1060px] flex-col overflow-hidden rounded-[28px] border border-[#c1d6f4] bg-white shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
                 onClick={(e) => e.stopPropagation()}>
               <div className="flex shrink-0 items-center justify-between gap-4 border-b border-[#eef3fb] px-8 py-6">
                 <h2 className="text-[30px] font-bold leading-tight text-[#1a2d52]">Chi tiết hồ sơ giữ chỗ</h2>
-                <button type="button" onClick={() => setDetail(null)} className="rounded-full p-2 text-[#7c8fb5] transition hover:bg-[#f0f5ff] hover:text-[#1a2d52]"><X className="h-6 w-6" /></button>
+                <button type="button" onClick={handleCloseDetail} className="rounded-full p-2 text-[#7c8fb5] transition hover:bg-[#f0f5ff] hover:text-[#1a2d52]"><X className="h-6 w-6" /></button>
+              </div>
+              <div className="flex shrink-0 items-center gap-1 border-b border-[#eef3fb] px-8 pt-4">
+                {(["info", "history"] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => void handleOpenDetailTab(t)}
+                    className={`rounded-t-xl px-4 py-2.5 text-sm font-semibold transition ${
+                      detailTab === t
+                        ? "border border-b-0 border-[#dce7f6] bg-white text-[#244cb8]"
+                        : "text-[#7c8fb5] hover:text-[#244cb8]"
+                    }`}
+                  >
+                    {t === "info" ? "Thông tin đơn" : "Lịch sử"}
+                  </button>
+                ))}
               </div>
               <div className="min-h-0 flex-1 space-y-8 overflow-y-auto px-8 py-7 [scrollbar-gutter:stable]">
+                {detailTab === "history" ? (
+                  detailHistoryLoading ? (
+                    <div className="flex items-center justify-center gap-2 py-10 text-sm text-[#62789f]">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Đang tải lịch sử...
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {detailHistory.map((h, idx) => (
+                        <div key={h.id} className="rounded-2xl border border-[#dce7f6] bg-[#f8fafd] px-5 py-4">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <p className="text-sm font-semibold text-[#1a2d52]">Lần nộp {idx + 1}{h.period?.name ? ` — ${h.period.name}` : ""}</p>
+                            <span className={`rounded-lg border px-2.5 py-1 text-xs font-semibold ${effectiveStatusClass(h)}`}>
+                              {effectiveStatusLabel(h)}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-xs text-[#62789f]">Mã giữ chỗ: <span className="font-mono font-semibold text-[#244cb8]">{h.reservationCode}</span></p>
+                          {h.submittedAt && <p className="mt-1 text-xs text-[#62789f]">Nộp lúc: {formatListDate(h.submittedAt)}</p>}
+                          {h.rejectionReason && <p className="mt-1 text-xs text-rose-600">Lý do từ chối: {h.rejectionReason}</p>}
+                          <button
+                            type="button"
+                            onClick={() => (h.id === detail.id ? setDetailTab("info") : void handleViewHistoryItem(h))}
+                            className="mt-3 inline-flex rounded-xl border border-[#c8d8ef] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#244cb8] transition hover:-translate-y-0.5"
+                          >
+                            Xem chi tiết
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                <>
                 <section>
                   <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
                     <p className={detailSectionTitle}>Thông tin thí sinh</p>
@@ -1139,11 +1252,16 @@ export default function DormReservationManagementPage() {
                     </div>
                   </section>
                 )}
+                </>
+                )}
               </div>
 
-              {/* Footer actions — ẩn hoàn toàn nếu minh chứng ưu tiên không hợp lệ, chỉ
-                  còn "Chi tiết" (xem nội dung), không còn hành động đổi trạng thái nào. */}
-              {(detail.status === "submitted" || detail.status === "waitlisted" || detail.status === "approved") && (
+              {/* Footer actions — chỉ hiện ở tab "Thông tin đơn"; tab "Lịch sử" chỉ để xem,
+                  không có hành động đổi trạng thái nào. Ẩn hoàn toàn nếu minh chứng ưu tiên
+                  không hợp lệ, chỉ còn "Chi tiết" (xem nội dung). Hồ sơ đã duyệt ("approved")
+                  là trạng thái cuối — không cho từ chối lại, và badge "Đã duyệt giữ chỗ" ở
+                  đầu modal đã đủ thông tin nên không cần thêm footer nhắc lại. */}
+              {detailTab === "info" && (detail.status === "submitted" || detail.status === "waitlisted") && (
                 hasRejectedReservationPriority(detail) ? (
                   <div className="shrink-0 border-t border-[#eef3fb] bg-[#fbfdff] px-8 py-5">
                     <div className="flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-medium text-rose-800">
@@ -1166,16 +1284,14 @@ export default function DormReservationManagementPage() {
                       className={`${dangerBtn} h-11 min-w-[132px] px-5 text-sm`}>
                       Từ chối
                     </button>
-                    {(detail.status === "submitted" || detail.status === "waitlisted") && (
-                      <button
-                        type="button"
-                        disabled={actionId === detail.id || hasPendingReservationPriority(detail)}
-                        title={hasPendingReservationPriority(detail) ? "Cần xác minh hoặc từ chối tất cả minh chứng trước khi duyệt." : undefined}
-                        onClick={() => void handleApprove(detail)}
-                        className="inline-flex h-11 min-w-[132px] items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-5 text-sm font-semibold text-emerald-700 transition hover:-translate-y-0.5 disabled:opacity-50">
-                        {actionId === detail.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Duyệt
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      disabled={actionId === detail.id || hasPendingReservationPriority(detail)}
+                      title={hasPendingReservationPriority(detail) ? "Cần xác minh hoặc từ chối tất cả minh chứng trước khi duyệt." : undefined}
+                      onClick={() => void handleApprove(detail)}
+                      className="inline-flex h-11 min-w-[132px] items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-5 text-sm font-semibold text-emerald-700 transition hover:-translate-y-0.5 disabled:opacity-50">
+                      {actionId === detail.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Duyệt
+                    </button>
                   </div>
                   </div>
                 </div>
@@ -1224,13 +1340,24 @@ export default function DormReservationManagementPage() {
                     <p className="mt-2 text-sm font-medium leading-6 text-[#5d7299]">{priorityNotice.message}</p>
                   </div>
                 </div>
-                <div className="mt-5 flex justify-end">
+                <div className="mt-5 flex justify-end gap-2">
                   <button
                     type="button"
                     onClick={() => setPriorityNotice(null)}
-                    className={`${secondaryBtn} h-10 min-w-[110px]`}
+                    className={`${secondaryBtn} h-10 min-w-[90px]`}
                   >
-                    Đã hiểu
+                    Đóng
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPriorityNotice(null);
+                      setStatusFilter("all");
+                      setPriorityEvidenceFilter("pending");
+                    }}
+                    className={`${primaryBtn} h-10 min-w-[190px]`}
+                  >
+                    Xem danh sách chờ xác minh
                   </button>
                 </div>
               </motion.div>

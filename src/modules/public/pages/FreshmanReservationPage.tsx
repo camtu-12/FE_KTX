@@ -105,6 +105,9 @@ export default function FreshmanReservationPage() {
   const [blurStatus, setBlurStatus] = useState<Record<DocumentField, BlurLevel>>(initBlurStatus());
   const [draggingDocField, setDraggingDocField] = useState<DocumentField | null>(null);
   const documentRefs = useRef<Partial<Record<DocumentField, HTMLInputElement | null>>>({});
+  const periodRef = useRef<HTMLDivElement | null>(null);
+  const emailRef = useRef<HTMLInputElement | null>(null);
+  const commitmentRef = useRef<HTMLDivElement | null>(null);
 
   // priority
   type PriorityCriteriaItem = { id: number; code: string | null; name: string; description: string | null; priority_score: number; tier: number | null };
@@ -112,7 +115,9 @@ export default function FreshmanReservationPage() {
   const [criteriaLoading, setCriteriaLoading] = useState(false);
   const [selectedCriteria, setSelectedCriteria] = useState<Set<number>>(new Set());
   const [evidenceFiles, setEvidenceFiles] = useState<Map<number, File>>(new Map());
+  const [evidenceErrors, setEvidenceErrors] = useState<Record<number, string>>({});
   const [claimedPriorities, setClaimedPriorities] = useState<ReservationPriority[]>([]);
+  const criteriaRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   const documentPreviewUrls = useMemo(() => {
     const urls: Record<DocumentField, string> = { portraitPhoto: "", cccdFrontPhoto: "", cccdBackPhoto: "" };
@@ -271,20 +276,95 @@ export default function FreshmanReservationPage() {
   };
   const openDocPicker = (field: DocumentField) => documentRefs.current[field]?.click();
 
+  /**
+   * Cuộn tới field/ảnh lỗi đầu tiên theo đúng thứ tự hiển thị trên form (giống
+   * scrollToFirstInvalid ở RegistrationPage.tsx). Trả về true nếu đã cuộn tới được.
+   */
+  const scrollToFirstInvalid = (
+    errorsObj: Record<string, string>,
+    documentErrorsObj: Partial<Record<DocumentField, string>>,
+    evidenceErrorsObj: Record<number, string>,
+  ): boolean => {
+    if (errorsObj.period) {
+      periodRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return true;
+    }
+    if (errorsObj.email) {
+      emailRef.current?.focus();
+      emailRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return true;
+    }
+
+    const firstInvalidDocument = DOC_FIELDS.find((field) => documentErrorsObj[field]);
+    if (firstInvalidDocument) {
+      documentRefs.current[firstInvalidDocument]?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return true;
+    }
+
+    const firstMissingEvidenceId = Array.from(selectedCriteria).find((id) => evidenceErrorsObj[id]);
+    if (firstMissingEvidenceId != null) {
+      criteriaRefs.current[firstMissingEvidenceId]?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return true;
+    }
+
+    if (errorsObj.commitment_confirm) {
+      commitmentRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return true;
+    }
+
+    return false;
+  };
+
   const handleSubmit = async () => {
     setSubmitError(null);
     const errors: Record<string, string> = {};
-    if (!selectedPeriod)         errors.period          = "Vui lòng chọn đợt đăng ký.";
-    if (!commitmentConfirm)      errors.commitment_confirm = "Vui lòng xác nhận cam kết trước khi gửi hồ sơ.";
+    const nextDocumentErrors: Partial<Record<DocumentField, string>> = {};
+    const nextEvidenceErrors: Record<number, string> = {};
+
+    if (!selectedPeriod) errors.period = "Vui lòng chọn đợt đăng ký.";
+
+    const emailTrimmed = email.trim();
+    if (!emailTrimmed) {
+      errors.email = "Vui lòng nhập email cá nhân.";
+    } else if (!/^[^\s@]+@gmail\.com$/i.test(emailTrimmed)) {
+      errors.email = "Vui lòng nhập đúng định dạng email @gmail.com.";
+    }
+
+    for (const field of DOC_FIELDS) {
+      if (!documentFiles[field]) {
+        nextDocumentErrors[field] = `Vui lòng tải lên ${documentLabels[field]}.`;
+      }
+    }
+
+    // Đã chọn tiêu chí ưu tiên thì bắt buộc phải đính kèm ảnh minh chứng, tránh tạo
+    // ReservationPriority "trắng" (pending, không evidence) mà admin không biết xử lý gì.
+    for (const criteriaId of selectedCriteria) {
+      if (!evidenceFiles.get(criteriaId)) {
+        nextEvidenceErrors[criteriaId] = "Vui lòng đính kèm ảnh minh chứng cho tiêu chí đã chọn.";
+      }
+    }
+
+    if (!commitmentConfirm) errors.commitment_confirm = "Vui lòng xác nhận cam kết trước khi gửi hồ sơ.";
+
     setFormErrors(errors);
-    if (Object.keys(errors).length > 0) return;
+    setDocumentErrors((prev) => ({ ...prev, ...nextDocumentErrors }));
+    setEvidenceErrors(nextEvidenceErrors);
+
+    const hasMissingEvidence = Object.keys(nextEvidenceErrors).length > 0;
+    if (Object.keys(errors).length > 0 || Object.keys(nextDocumentErrors).length > 0 || hasMissingEvidence) {
+      if (hasMissingEvidence && !errors.period && !errors.email && Object.keys(nextDocumentErrors).length === 0) {
+        setSubmitError("Vui lòng đính kèm ảnh minh chứng cho các tiêu chí ưu tiên đã chọn.");
+      }
+      scrollToFirstInvalid(errors, nextDocumentErrors, nextEvidenceErrors);
+      return;
+    }
 
     setSubmitLoading(true);
     try {
       const payload: Parameters<typeof createDormReservation>[0] = {
         admission_code: admissionCode.trim(),
         registration_period_id: selectedPeriod as number,
-        ...(email.trim() ? { email: email.trim() } : {}),
+        email: emailTrimmed,
         commitment_confirm: true,
       };
       const res = await createDormReservation(payload);
@@ -576,7 +656,7 @@ export default function FreshmanReservationPage() {
                 </div>
 
                 <div className="mt-6 space-y-4">
-                  <div>
+                  <div ref={periodRef}>
                     <label className={regLabelCls}>Đợt đăng ký <span className="text-red-500">*</span></label>
                     {(formErrors.period || formErrors.registration_period_id) && (
                       <p className="mt-0.5 text-xs text-rose-600">{formErrors.period ?? formErrors.registration_period_id}</p>
@@ -607,11 +687,21 @@ export default function FreshmanReservationPage() {
                   </div>
 
                   <div>
-                    <label className={regLabelCls}>Email cá nhân</label>
+                    <label className={regLabelCls}>Email cá nhân <span className="text-red-500">*</span></label>
                     <div className="relative">
                       <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#90A2BF]" />
-                      <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="a@gmail.com" className={regIconInput()} />
+                      <input
+                        ref={emailRef}
+                        type="email"
+                        value={email}
+                        onChange={(e) => { setEmail(e.target.value); setFormErrors((p) => ({ ...p, email: "" })); }}
+                        placeholder="a@gmail.com"
+                        className={regIconInput()}
+                      />
                     </div>
+                    {formErrors.email && (
+                      <p className="mt-1 text-xs text-rose-600">{formErrors.email}</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -622,8 +712,8 @@ export default function FreshmanReservationPage() {
                   <SectionIcon icon={<IdCard className="h-5 w-5 stroke-[2.2]" />} variant="teal" />
                   <div>
                     <span className="text-xs font-semibold uppercase tracking-wide text-[#2F83C9]">Bước 2</span>
-                    <h2 className="text-lg font-semibold text-[#1F3152]">Hình ảnh & giấy tờ</h2>
-                    <p className="mt-0.5 text-sm text-[#5C7094]">Ảnh đại diện và CCCD để BQL xác minh — kéo thả hoặc nhấn để chọn</p>
+                    <h2 className="text-lg font-semibold text-[#1F3152]">Hình ảnh & giấy tờ <span className="text-red-500">*</span></h2>
+                    <p className="mt-0.5 text-sm text-[#5C7094]">Bắt buộc — ảnh đại diện và CCCD để BQL xác minh, kéo thả hoặc nhấn để chọn</p>
                   </div>
                 </div>
 
@@ -752,8 +842,15 @@ export default function FreshmanReservationPage() {
                         {criteria.map((c) => {
                           const isSelected = selectedCriteria.has(c.id);
                           const file = evidenceFiles.get(c.id);
+                          const evidenceError = evidenceErrors[c.id];
                           return (
-                            <div key={c.id} className={`rounded-xl border bg-[#f7fbff] p-3 transition hover:border-[#a8c5ea] hover:bg-white ${isSelected ? "border-[#244cb8]" : "border-[#dce9f7]"}`}>
+                            <div
+                              key={c.id}
+                              ref={(node) => { criteriaRefs.current[c.id] = node; }}
+                              className={`rounded-xl border bg-[#f7fbff] p-3 transition hover:border-[#a8c5ea] hover:bg-white ${
+                                evidenceError ? "border-red-400/70 bg-red-50" : isSelected ? "border-[#244cb8]" : "border-[#dce9f7]"
+                              }`}
+                            >
                               <label className="flex cursor-pointer items-start gap-3">
                                 <input
                                   type="checkbox"
@@ -762,7 +859,11 @@ export default function FreshmanReservationPage() {
                                     setSelectedCriteria((prev) => {
                                       const next = new Set(prev);
                                       if (e.target.checked) next.add(c.id);
-                                      else { next.delete(c.id); setEvidenceFiles((m) => { const n = new Map(m); n.delete(c.id); return n; }); }
+                                      else {
+                                        next.delete(c.id);
+                                        setEvidenceFiles((m) => { const n = new Map(m); n.delete(c.id); return n; });
+                                        setEvidenceErrors((prev) => { const n = { ...prev }; delete n[c.id]; return n; });
+                                      }
                                       return next;
                                     });
                                   }}
@@ -776,12 +877,20 @@ export default function FreshmanReservationPage() {
                               </label>
                               {isSelected && (
                                 <div className="mt-2.5 pl-7">
-                                  <label className="mb-1 block text-xs font-semibold text-[#324B76]">Upload minh chứng (tuỳ chọn)</label>
+                                  <label className="mb-1 block text-xs font-semibold text-[#324B76]">
+                                    Upload minh chứng <span className="text-red-500">*</span>
+                                  </label>
                                   <div className="flex items-center gap-2">
                                     <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-[#cfdcf0] bg-white px-3 py-1.5 text-xs font-semibold text-[#244cb8] hover:border-[#244cb8] hover:bg-[#f0f5ff]">
                                       <Upload className="h-3.5 w-3.5" />
                                       {file ? "Đổi file" : "Chọn file"}
-                                      <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) setEvidenceFiles((m) => { const n = new Map(m); n.set(c.id, f); return n; }); }} />
+                                      <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => {
+                                        const f = e.target.files?.[0];
+                                        if (f) {
+                                          setEvidenceFiles((m) => { const n = new Map(m); n.set(c.id, f); return n; });
+                                          setEvidenceErrors((prev) => { const n = { ...prev }; delete n[c.id]; return n; });
+                                        }
+                                      }} />
                                     </label>
                                     {file && (
                                       <div className="flex min-w-0 items-center gap-1">
@@ -790,6 +899,9 @@ export default function FreshmanReservationPage() {
                                       </div>
                                     )}
                                   </div>
+                                  {evidenceError && (
+                                    <p className="mt-1.5 text-xs text-rose-600">{evidenceError}</p>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -802,7 +914,7 @@ export default function FreshmanReservationPage() {
               )}
 
               {/* Commitment + submit */}
-              <div className={regCard}>
+              <div className={regCard} ref={commitmentRef}>
                 <div className="flex items-start gap-4">
                   <input
                     type="checkbox"
