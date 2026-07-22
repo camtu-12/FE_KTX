@@ -126,6 +126,7 @@ export type DormReservation = {
   cccdBackUrl: string | null;
   submittedAt: string | null;
   approvedAt: string | null;
+  approveProposedAt: string | null;
   expiresAt: string | null;
   convertedRegistrationId: number | null;
   convertedRegistration?: {
@@ -183,6 +184,7 @@ type ApiReservation = {
   cccd_back_url: string | null;
   submitted_at: string | null;
   approved_at: string | null;
+  approve_proposed_at: string | null;
   expires_at: string | null;
   converted_registration_id: number | null;
   converted_registration?: {
@@ -241,6 +243,7 @@ function normalizeReservation(r: ApiReservation): DormReservation {
     cccdBackUrl: r.cccd_back_url,
     submittedAt: r.submitted_at,
     approvedAt: r.approved_at,
+    approveProposedAt: r.approve_proposed_at,
     expiresAt: r.expires_at,
     convertedRegistrationId: r.converted_registration_id,
     convertedRegistration: r.converted_registration

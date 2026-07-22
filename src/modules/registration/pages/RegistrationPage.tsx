@@ -603,7 +603,21 @@ export default function RegistrationPage() {
         // Resubmit flow: rejected + ?resubmit=true → show form prefilled with old data
         if (isResubmit && data.status === "rejected") {
           setStatus("unregistered");
-          setFormData({ ...initialFormData, ...(data.formData ?? {}) });
+          // Hồ sơ cũ lưu birthDate/cccdIssueDate dạng YYYY-MM-DD (từ cột DATE) — phải đổi
+          // sang dd/mm/yyyy trước khi đổ vào form, nếu không dính lỗi validate ngay khi
+          // resubmit dù người dùng chưa động vào field nào (xem dateRegex/dateFieldNames).
+          const toDdMmYyyy = (val?: string) => {
+            if (!val) return val;
+            const parts = val.split("-");
+            return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : val;
+          };
+          const oldFormData = data.formData ?? {};
+          setFormData({
+            ...initialFormData,
+            ...oldFormData,
+            ...(oldFormData.birthDate ? { birthDate: toDdMmYyyy(oldFormData.birthDate) } : {}),
+            ...(oldFormData.cccdIssueDate ? { cccdIssueDate: toDdMmYyyy(oldFormData.cccdIssueDate) } : {}),
+          });
           setDocumentFiles({ ...initialDocumentFiles });
           setReviewDocumentUrls({
             portraitPhoto: buildImageUrl(data.avatarUrl || data.documents?.portraitPhoto),

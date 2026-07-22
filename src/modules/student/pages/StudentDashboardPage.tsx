@@ -251,7 +251,7 @@ function getRegistrationHeroState(registration: LatestRegistration | null) {
 
   if (registration.status === "rejected") {
     return {
-      title: "Hồ sơ chưa được duyệt",
+      title: "Hồ sơ bị từ chối",
       description: registration.rejection_reason || "Chưa có lý do từ chối cụ thể.",
       buttonLabel: "Xem chi tiết",
       to: "/student/room-status",

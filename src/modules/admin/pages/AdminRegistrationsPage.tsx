@@ -36,12 +36,19 @@ export default function AdminRegistrationsPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const routeState = location.state as { openRequestId?: number; requestModalTab?: "info" | "history" } | null;
+  const routeState = location.state as {
+    openRequestId?: number;
+    requestModalTab?: "info" | "history";
+    mainSubFilter?: SubFilter;
+    rollingSubFilter?: SubFilter;
+    activeTab?: AdminTab;
+  } | null;
   const [shouldSkipAnim] = useState(() => Boolean(routeState?.openRequestId));
 
   const [requests, setRequests] = useState<RegistrationRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<AdminTab>(() => {
+    if (routeState?.activeTab) return routeState.activeTab;
     const ch = searchParams.get("channel");
     return ch === "rolling" ? "rolling" : "main";
   });
@@ -49,8 +56,11 @@ export default function AdminRegistrationsPage() {
     const f = searchParams.get("filter");
     return f === "review" || f === "done" ? f : "pending";
   };
-  const [mainSubFilter, setMainSubFilter] = useState<SubFilter>(initialSubFilter);
-  const [rollingSubFilter, setRollingSubFilter] = useState<SubFilter>(initialSubFilter);
+  // Quay lại từ trang "Mở trang chi tiết" (route riêng, làm unmount hẳn trang này) phải
+  // khôi phục đúng tab đang xem ("Cần xem lại"/"Đã xử lý"...) — nếu không, mainSubFilter
+  // reset về mặc định "pending" vì đây chỉ là state thường, không có gì giữ lại khi remount.
+  const [mainSubFilter, setMainSubFilter] = useState<SubFilter>(() => routeState?.mainSubFilter ?? initialSubFilter());
+  const [rollingSubFilter, setRollingSubFilter] = useState<SubFilter>(() => routeState?.rollingSubFilter ?? initialSubFilter());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isScrollToTopVisible, setIsScrollToTopVisible] = useState(false);
 
@@ -139,15 +149,25 @@ export default function AdminRegistrationsPage() {
     return () => document.removeEventListener("mousedown", handler);
   }, [openSubFilterMenu]);
 
-  // Sync modal state to route
+  // Sync modal + sub-filter state vào route (location.state) của chính trang này — không
+  // chỉ để phục hồi modal, mà còn để mainSubFilter/rollingSubFilter/activeTab không bị mất
+  // khi điều hướng sang "Mở trang chi tiết" (route riêng, unmount hẳn trang này) rồi quay
+  // lại bằng navigate(-1): lúc đó trang remount và đọc lại đúng state đã lưu ở đây thay vì
+  // rơi về mặc định "Chờ xác nhận".
   useEffect(() => {
-    const nextState = viewingRequestId ? { openRequestId: viewingRequestId, requestModalTab } : null;
-    const cur = routeState?.openRequestId ?? null;
-    const curTab = routeState?.requestModalTab ?? "info";
-    if (nextState?.openRequestId === cur && nextState?.requestModalTab === curTab) return;
-    if (!nextState && !routeState) return;
+    const nextState = { openRequestId: viewingRequestId, requestModalTab, mainSubFilter, rollingSubFilter, activeTab };
+    const cur = {
+      openRequestId: routeState?.openRequestId ?? null,
+      requestModalTab: routeState?.requestModalTab ?? "info",
+      mainSubFilter: routeState?.mainSubFilter ?? "pending",
+      rollingSubFilter: routeState?.rollingSubFilter ?? "pending",
+      activeTab: routeState?.activeTab ?? "main",
+    };
+    const unchanged = (Object.keys(nextState) as Array<keyof typeof nextState>)
+      .every((k) => nextState[k] === cur[k]);
+    if (unchanged) return;
     navigate(location.pathname, { replace: true, state: nextState });
-  }, [location.pathname, navigate, requestModalTab, routeState, viewingRequestId]);
+  }, [location.pathname, navigate, requestModalTab, routeState, viewingRequestId, mainSubFilter, rollingSubFilter, activeTab]);
 
   // Scroll-to-top visibility
   useEffect(() => {
@@ -168,14 +188,29 @@ export default function AdminRegistrationsPage() {
     !search ||
     [r.formData?.mssv ?? "", r.formData?.fullName ?? "", r.email ?? ""].join(" ").toLowerCase().includes(search);
 
+  // Chỉ hiện lần nộp MỚI NHẤT của mỗi sinh viên trong cùng 1 đợt ở danh sách chính — tránh
+  // liệt kê trùng khi bị từ chối rồi nộp lại. Dedupe ở FE (không phải backend) để giữ
+  // nguyên toàn bộ `requests` cho tab "Lịch sử" (selectedRequestHistory group theo email
+  // từ chính mảng requests này — dedupe ở backend sẽ làm mất lần nộp cũ khỏi lịch sử).
+  const latestOnlyIds = useMemo(() => {
+    const byGroup = new Map<string, RegistrationRequest>();
+    for (const r of requests) {
+      const key = `${r.email?.trim().toLowerCase() ?? r.id}|${r.registration_period_id ?? ""}`;
+      const existing = byGroup.get(key);
+      if (!existing || r.id > existing.id) byGroup.set(key, r);
+    }
+    return new Set(Array.from(byGroup.values(), (r) => r.id));
+  }, [requests]);
+
   // Main channel
   const allMainItems = useMemo(() =>
     requests.filter((r) =>
       r.channel === "main" &&
+      latestOnlyIds.has(r.id) &&
       matchSearch(r) &&
       (filterPeriodId === "all" || r.registration_period_id === filterPeriodId),
     ),
-    [requests, search, filterPeriodId], // eslint-disable-line react-hooks/exhaustive-deps
+    [requests, latestOnlyIds, search, filterPeriodId], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const hasPendingPriority = (r: RegistrationRequest) =>
     (r.priority_criteria ?? []).some((p) => p.status === "pending");
@@ -196,8 +231,8 @@ export default function AdminRegistrationsPage() {
 
   // Rolling channel
   const allRollingItems = useMemo(() =>
-    requests.filter((r) => r.channel === "rolling" && matchSearch(r)),
-    [requests, search], // eslint-disable-line react-hooks/exhaustive-deps
+    requests.filter((r) => r.channel === "rolling" && latestOnlyIds.has(r.id) && matchSearch(r)),
+    [requests, latestOnlyIds, search], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const rollingPendingItems = useMemo(() => allRollingItems.filter((r) => r.status === "submitted" && r.auto_decision !== "review" && !hasPendingPriority(r) && !hasRejectedPriority(r)), [allRollingItems]); // eslint-disable-line react-hooks/exhaustive-deps
   const rollingReviewItems  = useMemo(() => allRollingItems.filter((r) => r.status === "submitted" && (r.auto_decision === "review" || hasPendingPriority(r) || hasRejectedPriority(r))), [allRollingItems]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -342,6 +377,12 @@ export default function AdminRegistrationsPage() {
           }
           return {
             ...r,
+            // Từ chối minh chứng ưu tiên cascade registration.status → 'rejected' ngay ở
+            // backend (StudentPriorityController::verify()) — phải áp lại status/lý do từ
+            // chối vào state local, nếu không hồ sơ vẫn kẹt ở "Cần xem lại" cho tới khi
+            // reload trang, dù thực ra đã bị từ chối rồi.
+            status: (res.registration_status as typeof r.status) ?? r.status,
+            rejectionReason: res.rejection_reason ?? r.rejectionReason,
             top_priority_tier: res.top_priority_tier,
             total_priority_score: res.total_priority_score,
             priority_criteria: updatedCriteria,

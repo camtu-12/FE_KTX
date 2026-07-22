@@ -1,9 +1,10 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import type { ClipboardEvent, ElementType, KeyboardEvent, ReactNode } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useNavigate, useOutletContext } from "react-router-dom";
 import type { AdminLayoutOutletContext, PeriodAutocompleteSuggestion } from "../../../layouts/AdminLayout";
 import {
+  AlertCircle,
   CalendarDays,
   CalendarRange,
   CheckCircle2,
@@ -11,6 +12,7 @@ import {
   FileText,
   GraduationCap,
   Home,
+  Info,
   Loader2,
   Plus,
   RefreshCw,
@@ -32,7 +34,6 @@ import {
   type RegistrationPeriodPayload,
 } from "../../../api/registrationApi";
 import CapacityDetailsModal from "../components/CapacityDetailsModal";
-import CapacitySummaryCard from "../components/CapacitySummaryCard";
 import { formatDate } from "../../../utils/dateFormat";
 
 type PeriodStatus = "pending" | "active" | "closed" | "processing";
@@ -127,7 +128,11 @@ const emptyForm: RegistrationPeriodPayload = {
   processing_days: null,
   initial_payment_due_days: null,
   round_number: null,
-  allow_admission_candidates: false,
+  // Không còn cho admin chỉnh 2 cờ này qua UI — luôn cố định true, "ai được đăng ký"
+  // giờ xét thuần theo channel ở registrationPeriodTargetError() (BE). allow_admission_candidates
+  // vẫn cần true vì được dùng để xác định đợt có nhận hồ sơ giữ chỗ tân sinh viên không
+  // (DormReservationController, AutoCloseAdmissionPeriodsCommand...).
+  allow_admission_candidates: true,
   requires_student_code: true,
 };
 
@@ -150,8 +155,6 @@ const formFieldOrder: Array<keyof RegistrationPeriodPayload> = [
   "initial_payment_due_days",
   "stay_start_date",
   "stay_end_date",
-  "allow_admission_candidates",
-  "requires_student_code",
 ];
 
 const periodDateFields = new Set<keyof RegistrationPeriodPayload>([
@@ -289,6 +292,38 @@ function canModifyPeriod(period: RegistrationPeriodData) {
   return period.status === "pending" && startDate !== null && startDate > startOfDay(new Date());
 }
 
+/**
+ * Rule 1 + Rule 2 gộp chung — kiểm tra kênh (channel) ngay khi đổi giá trị, không cần chờ
+ * bấm "Tạo đợt" mới thấy lỗi (dùng lại y hệt logic ở validate(), tránh lệch nhau).
+ */
+function computeChannelError(
+  channel: PeriodChannel | undefined,
+  schoolYear: string | undefined,
+  periods: RegistrationPeriodData[],
+  editingId: number | null,
+): string | undefined {
+  // Chỉ check khi năm học đã nhập ĐỦ đúng định dạng YYYY-YYYY — tránh báo lỗi khi
+  // người dùng còn đang gõ dở (VD "2026-").
+  if (!schoolYearBounds(schoolYear)) return undefined;
+
+  if (channel === "main") {
+    const duplicate = periods.find(
+      (p) => p.channel === "main" && p.school_year === schoolYear.trim() && p.id !== editingId,
+    );
+    if (duplicate) return `Năm học ${schoolYear} đã có đợt chính rồi, không thể tạo thêm.`;
+  }
+
+  if (channel === "rolling") {
+    const mainPeriod = periods.find(
+      (p) => p.channel === "main" && p.school_year === schoolYear.trim(),
+    );
+    if (!mainPeriod) return `Năm học ${schoolYear} chưa có Đợt chính. Vui lòng tạo Đợt chính trước khi mở Quanh năm.`;
+    if (mainPeriod.status !== "closed") return "Kênh quanh năm chỉ được mở sau khi đợt chính đã đóng.";
+  }
+
+  return undefined;
+}
+
 function validate(
   form: RegistrationPeriodPayload,
   periods: RegistrationPeriodData[],
@@ -350,24 +385,20 @@ function validate(
   else if (!isValidPositiveInteger(form.initial_payment_due_days))
     errors.initial_payment_due_days = "Số ngày phải lớn hơn hoặc bằng 1.";
 
-  // Rule 1: Mỗi năm học chỉ được có 1 đợt chính
-  if (form.channel === "main" && !errors.school_year) {
-    const duplicate = periods.find(
-      (p) => p.channel === "main" && p.school_year === form.school_year?.trim() && p.id !== editingId,
-    );
-    if (duplicate)
-      errors.channel = `Năm học ${form.school_year} đã có đợt chính rồi, không thể tạo thêm.`;
-  }
+  // Rule 1 + Rule 2: ràng buộc theo kênh (mỗi năm học chỉ 1 đợt chính; quanh năm chỉ mở
+  // sau khi đợt chính đã đóng) — dùng chung computeChannelError() để khớp với kiểm tra
+  // live khi đổi kênh/năm học (xem useEffect ở component).
+  if (!errors.school_year) {
+    const channelError = computeChannelError(form.channel, form.school_year, periods, editingId);
+    if (channelError) errors.channel = channelError;
 
-  // Rule 2: Kênh quanh năm chỉ được mở sau khi đợt chính đã đóng
-  if (form.channel === "rolling" && !errors.school_year) {
-    const mainPeriod = periods.find(
-      (p) => p.channel === "main" && p.school_year === form.school_year?.trim(),
-    );
-    if (!mainPeriod || mainPeriod.status !== "closed")
-      errors.channel = "Kênh quanh năm chỉ được mở sau khi đợt chính đã đóng.";
-    else if (!normalizePeriodDate(mainPeriod.stay_end_date))
-      errors.stay_end_date = "Đợt chính chưa có ngày kết thúc lưu trú, vui lòng cập nhật đợt chính trước.";
+    if (form.channel === "rolling" && !channelError) {
+      const mainPeriod = periods.find(
+        (p) => p.channel === "main" && p.school_year === form.school_year?.trim(),
+      );
+      if (mainPeriod && !normalizePeriodDate(mainPeriod.stay_end_date))
+        errors.stay_end_date = "Đợt chính chưa có ngày kết thúc lưu trú, vui lòng cập nhật đợt chính trước.";
+    }
   }
 
   // Rule 3: Thời gian nhận đơn không được trùng
@@ -439,7 +470,9 @@ export default function AdminRegistrationPeriodsPage() {
   const [apiError, setApiError] = useState<string | null>(null);
   const [highlightedPeriodId, setHighlightedPeriodId] = useState<number | null>(null);
   const [now, setNow] = useState(() => new Date());
+  const [priorityNotice, setPriorityNotice] = useState<{ message: string; periodId: number; channel: string } | null>(null);
 
+  const navigate = useNavigate();
   const { headerSearchValue, setPeriodAutocomplete } = useOutletContext<AdminLayoutOutletContext>();
   const periodCardRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const formFieldRefs = useRef<Partial<Record<keyof RegistrationPeriodPayload, HTMLDivElement | null>>>({});
@@ -618,6 +651,13 @@ export default function AdminRegistrationPeriodsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.channel, form.school_year, periods]);
 
+  // Báo lỗi kênh/năm học NGAY khi đổi dropdown "Kênh" hoặc gõ "Năm học" — không cần đợi
+  // bấm "Tạo đợt" mới thấy (VD chọn "Quanh năm" cho năm học chưa có Đợt chính).
+  useEffect(() => {
+    const channelError = computeChannelError(form.channel, form.school_year, periods, editingId);
+    setFormErrors((prev) => (prev.channel === channelError ? prev : { ...prev, channel: channelError }));
+  }, [form.channel, form.school_year, periods, editingId]);
+
   const openCreate = () => {
     setEditingId(null);
     setForm(emptyForm);
@@ -650,8 +690,9 @@ export default function AdminRegistrationPeriodsPage() {
       processing_days: period.processing_days ?? null,
       initial_payment_due_days: period.initial_payment_due_days ?? null,
       round_number: period.round_number ?? null,
-      allow_admission_candidates: period.allow_admission_candidates ?? false,
-      requires_student_code: period.requires_student_code ?? true,
+      // Cố định true — xem ghi chú ở defaultForm.
+      allow_admission_candidates: true,
+      requires_student_code: true,
     });
     setFormErrors({});
     setApiError(null);
@@ -753,10 +794,17 @@ export default function AdminRegistrationPeriodsPage() {
         prev.map((p) => (p.id === id ? { ...p, status: "processing" } : p)),
       );
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-        "Xếp hạng không thành công.";
-      setApiError(msg);
+      const data = (err as { response?: { data?: { message?: string; pending_priority_count?: number } } })?.response?.data;
+      const period = periods.find((p) => p.id === id);
+      if (typeof data?.pending_priority_count === "number" && data.pending_priority_count > 0) {
+        setPriorityNotice({
+          message: data.message ?? `Còn ${data.pending_priority_count} minh chứng ưu tiên chưa được xác minh. Vui lòng xác minh tất cả minh chứng trước khi xếp hạng.`,
+          periodId: id,
+          channel: period?.channel ?? "main",
+        });
+      } else {
+        setApiError(data?.message ?? "Xếp hạng không thành công.");
+      }
     } finally {
       setProcessingId(null);
     }
@@ -1089,6 +1137,18 @@ export default function AdminRegistrationPeriodsPage() {
                   >
                     {channelLabel[periodChannel] ?? period.channel}
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCapacityDetailsPeriodId(period.id);
+                      if (periodCapacity[period.id] === undefined && !periodCapacityLoading[period.id]) {
+                        void loadCapacityForPeriod(period);
+                      }
+                    }}
+                    className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-3.5 text-sm font-semibold text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.09)] transition hover:-translate-y-0.5 hover:border-[#9eb9e6]"
+                  >
+                    <Info className="h-4 w-4" /> Sức chứa
+                  </button>
                   <span
                     className={`inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-xl border px-3.5 text-sm font-bold uppercase tracking-normal ${
                       dashboardStatusClass[periodStatus] ?? ""
@@ -1190,17 +1250,6 @@ export default function AdminRegistrationPeriodsPage() {
                   )}
                 </div>
               )}
-              {period.status === "processing" && (
-                <div className="mt-3">
-                  <CapacitySummaryCard
-                    capacity={periodCapacity[period.id] ?? null}
-                    loading={periodCapacityLoading[period.id] ?? false}
-                    error={periodCapacityError[period.id] ?? null}
-                    compact
-                    onOpenDetails={() => setCapacityDetailsPeriodId(period.id)}
-                  />
-                </div>
-              )}
               {period.status === "closed" && period.channel === "main" && (
                 <div className="mt-4 flex flex-wrap gap-3 text-sm font-semibold">
                   <span className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-blue-700">
@@ -1281,16 +1330,11 @@ export default function AdminRegistrationPeriodsPage() {
                     </Link>
                     {period.channel === "main" && (() => {
                       const noRegs = totalRegistrations === 0;
-                      const pendingCriteria = period.pending_criteria_count ?? 0;
                       const today = new Date(); today.setHours(0, 0, 0, 0);
                       const endDay = new Date(period.end_date ?? ""); endDay.setHours(0, 0, 0, 0);
                       const notEnded = today < endDay;
-                      const rankDisabled = processingId === period.id || noRegs || pendingCriteria > 0;
-                      const rankTitle = noRegs
-                        ? "Không có đơn nào để xếp hạng"
-                        : pendingCriteria > 0
-                          ? `Còn ${pendingCriteria} minh chứng chưa xác minh. Vui lòng xác minh hết trước khi xếp hạng.`
-                          : undefined;
+                      const rankDisabled = processingId === period.id || noRegs;
+                      const rankTitle = noRegs ? "Không có đơn nào để xếp hạng" : undefined;
                       return (
                         <span title={rankTitle} className="inline-flex">
                           <button
@@ -1312,13 +1356,9 @@ export default function AdminRegistrationPeriodsPage() {
                       Xem kết quả
                     </Link>
                     {(() => {
-                      const pendingCriteria = period.pending_criteria_count ?? 0;
-                      const reRankDisabled = processingId === period.id || pendingCriteria > 0;
-                      const reRankTitle = pendingCriteria > 0
-                        ? `Còn ${pendingCriteria} minh chứng chưa xác minh. Vui lòng xác minh hết trước khi xếp hạng.`
-                        : undefined;
+                      const reRankDisabled = processingId === period.id;
                       return (
-                        <span title={reRankTitle} className="inline-flex">
+                        <span className="inline-flex">
                           <button
                             type="button"
                             disabled={reRankDisabled}
@@ -1367,7 +1407,6 @@ export default function AdminRegistrationPeriodsPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-x-0 bottom-0 top-20 z-[70] bg-black/40"
-            onClick={closeForm}
           >
             <div className="flex h-full items-center justify-center p-3">
             <motion.div
@@ -1376,7 +1415,6 @@ export default function AdminRegistrationPeriodsPage() {
               exit={{ opacity: 0, scale: 0.96, y: 16 }}
               transition={{ duration: 0.22, ease: "easeOut" }}
               className="flex max-h-[calc(100dvh-7rem)] w-full max-w-lg flex-col overflow-hidden rounded-[24px] border border-[#c1d6f4] bg-white shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
-              onClick={(e) => e.stopPropagation()}
             >
               <div className="flex shrink-0 items-center justify-between border-b border-[#eef3fb] px-5 py-3">
                 <h2 className="text-[18px] font-bold text-[#1a2d52]">
@@ -1519,7 +1557,11 @@ export default function AdminRegistrationPeriodsPage() {
                             <div className={`w-full cursor-not-allowed rounded-xl border px-3 py-1.5 text-sm text-[#5d7299] ${
                               formErrors.stay_end_date ? "border-rose-400 bg-rose-50" : "border-[#cfdcf0] bg-[#eef2f8]"
                             }`}>
-                              {form.stay_end_date ? getDateFieldText(form.stay_end_date) : "Chưa xác định (đợt chính chưa có ngày kết thúc)"}
+                              {form.stay_end_date
+                                ? getDateFieldText(form.stay_end_date)
+                                : periods.some((p) => p.channel === "main" && p.school_year === form.school_year?.trim())
+                                  ? "Chưa xác định (đợt chính chưa có ngày kết thúc)"
+                                  : "Chưa xác định (năm học này chưa có đợt chính)"}
                             </div>
                             <p className="mt-1 text-[11px] text-[#8598bd]">Tự động theo đợt chính cùng năm học, không thể chỉnh sửa.</p>
                             {formErrors.stay_end_date && <p className="mt-1 text-xs text-rose-600">{formErrors.stay_end_date}</p>}
@@ -1530,53 +1572,6 @@ export default function AdminRegistrationPeriodsPage() {
                       </div>
                     </div>
                   </>
-
-                  {/* Tân sinh viên */}
-                  <div ref={(node) => {
-                    formFieldRefs.current.allow_admission_candidates = node;
-                    formFieldRefs.current.requires_student_code = node;
-                  }} className={`rounded-xl border p-2.5 ${
-                    formErrors.allow_admission_candidates || formErrors.requires_student_code
-                      ? "border-rose-400 bg-rose-50"
-                      : "border-[#cfdcf0] bg-[#f7faff]"
-                  }`}>
-                    <p className="mb-2 text-xs font-semibold text-[#324B76]">Đối tượng đăng ký</p>
-                    <div className="space-y-2.5">
-                      <label className="flex cursor-pointer items-center gap-2.5">
-                        <input
-                          type="checkbox"
-                          checked={form.allow_admission_candidates ?? false}
-                          onChange={(e) => {
-                            setForm((prev) => ({ ...prev, allow_admission_candidates: e.target.checked }));
-                            setFormErrors((prev) => ({ ...prev, allow_admission_candidates: undefined }));
-                          }}
-                          className="h-4 w-4 rounded border-[#cfdcf0] accent-[#244cb8]"
-                        />
-                        <span className="text-xs font-semibold text-[#324B76]">
-                          Tân sinh viên
-                        </span>
-                      </label>
-                      <label className="flex cursor-pointer items-center gap-2.5">
-                        <input
-                          type="checkbox"
-                          checked={form.requires_student_code ?? true}
-                          onChange={(e) => {
-                            setForm((prev) => ({ ...prev, requires_student_code: e.target.checked }));
-                            setFormErrors((prev) => ({ ...prev, requires_student_code: undefined }));
-                          }}
-                          className="h-4 w-4 rounded border-[#cfdcf0] accent-[#244cb8]"
-                        />
-                        <span className="text-xs font-semibold text-[#324B76]">
-                          Sinh viên đang học (năm 1-4)
-                        </span>
-                      </label>
-                      {(formErrors.allow_admission_candidates || formErrors.requires_student_code) && (
-                        <p className="text-xs text-rose-600">
-                          {formErrors.allow_admission_candidates || formErrors.requires_student_code}
-                        </p>
-                      )}
-                    </div>
-                  </div>
               </div>
 
               </div>
@@ -1649,6 +1644,50 @@ export default function AdminRegistrationPeriodsPage() {
             </motion.div>
           );
         })()}
+        {priorityNotice && (
+          <motion.div
+            key="priority-notice-overlay"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+            onClick={() => setPriorityNotice(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 16 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              className="w-full max-w-md rounded-[24px] border border-amber-200 bg-white p-6 shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-amber-200 bg-amber-50 text-amber-600">
+                  <AlertCircle className="h-6 w-6" />
+                </div>
+                <div>
+                  <h2 className="text-[18px] font-bold text-[#1a2d52]">Cần xác minh minh chứng</h2>
+                  <p className="mt-2 text-sm font-medium leading-6 text-[#5d7299]">{priorityNotice.message}</p>
+                </div>
+              </div>
+              <div className="mt-5 flex justify-end gap-2">
+                <button type="button" onClick={() => setPriorityNotice(null)}
+                  className="rounded-xl border border-[#d6e2f1] bg-white px-4 py-2 text-sm font-semibold text-[#5d7299] transition hover:bg-[#f5f9ff]">
+                  Đóng
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const { periodId, channel } = priorityNotice;
+                    setPriorityNotice(null);
+                    navigate(`/admin/registrations?period=${periodId}&channel=${channel}&filter=review`);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#31b7d4_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(36,76,184,0.22)] transition hover:brightness-110"
+                >
+                  Xem danh sách chờ xác minh
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
         {confirmBatchId !== null && (
           <motion.div
             key="confirm-batch-overlay"

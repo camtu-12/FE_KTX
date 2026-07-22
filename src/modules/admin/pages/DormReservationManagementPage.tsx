@@ -402,7 +402,7 @@ export default function DormReservationManagementPage() {
       const res = await approveReservation(r.id);
       patch(res.reservation);
       if (periodFilter) void loadRankCapacity(Number(periodFilter), rankResult?.capacity?.proposed_approved_count ?? 0);
-      showToast("success", "Đã duyệt giữ chỗ thành công.");
+      showToast("success", "Đã đề xuất duyệt — hồ sơ sẽ chính thức được duyệt khi chạy Xếp hạng.");
     } catch (err: unknown) {
       showToast("error", (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Thao tác thất bại.");
     } finally {
@@ -824,7 +824,7 @@ export default function DormReservationManagementPage() {
                         {effectiveStatusLabel(r)}
                       </span>
                     )}
-                    {r.hasPriorityEvidence && r.priorityEvidenceStatus && (
+                    {(r.status === "submitted" || r.status === "waitlisted") && r.hasPriorityEvidence && r.priorityEvidenceStatus && (
                       <span className={`rounded-lg border px-2 py-0.5 text-xs font-semibold ${PRIORITY_EVIDENCE_BADGE[r.priorityEvidenceStatus].className}`}>
                         {PRIORITY_EVIDENCE_BADGE[r.priorityEvidenceStatus].label}
                       </span>
@@ -832,6 +832,11 @@ export default function DormReservationManagementPage() {
                     {r.candidate?.status === "enrolled" && (
                       <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
                         Đã nhập học
+                      </span>
+                    )}
+                    {r.approveProposedAt && (
+                      <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                        Đã đề xuất duyệt
                       </span>
                     )}
                     {r.expirationReason === "approved_not_converted" && (
@@ -1269,6 +1274,13 @@ export default function DormReservationManagementPage() {
                       <span>Minh chứng ưu tiên không hợp lệ. Hồ sơ không thể duyệt/chuyển vào danh sách chờ/từ chối tiếp — vui lòng kiểm tra lại minh chứng.</span>
                     </div>
                   </div>
+                ) : detail.approveProposedAt ? (
+                  <div className="shrink-0 border-t border-[#eef3fb] bg-[#fbfdff] px-8 py-5">
+                    <div className="flex items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                      <span>Đã đề xuất duyệt lúc {formatListDate(detail.approveProposedAt)} — chờ chạy Xếp hạng để chính thức duyệt.</span>
+                    </div>
+                  </div>
                 ) : (
                 <div className="shrink-0 border-t border-[#eef3fb] bg-[#fbfdff] px-8 py-5">
                   <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#dce7f6] bg-white px-5 py-4">
@@ -1287,10 +1299,10 @@ export default function DormReservationManagementPage() {
                     <button
                       type="button"
                       disabled={actionId === detail.id || hasPendingReservationPriority(detail)}
-                      title={hasPendingReservationPriority(detail) ? "Cần xác minh hoặc từ chối tất cả minh chứng trước khi duyệt." : undefined}
+                      title={hasPendingReservationPriority(detail) ? "Cần xác minh hoặc từ chối tất cả minh chứng trước khi duyệt." : "Chỉ là đề xuất — hồ sơ được duyệt chính thức khi chạy Xếp hạng cho đợt."}
                       onClick={() => void handleApprove(detail)}
-                      className="inline-flex h-11 min-w-[132px] items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-5 text-sm font-semibold text-emerald-700 transition hover:-translate-y-0.5 disabled:opacity-50">
-                      {actionId === detail.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Duyệt
+                      className="inline-flex h-11 min-w-[150px] items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-5 text-sm font-semibold text-emerald-700 transition hover:-translate-y-0.5 disabled:opacity-50">
+                      {actionId === detail.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Đề xuất duyệt
                     </button>
                   </div>
                   </div>

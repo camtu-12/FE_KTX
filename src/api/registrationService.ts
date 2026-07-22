@@ -692,7 +692,7 @@ export const verifyStudentPriority = async (
   id: number,
   status: "verified" | "rejected",
   note?: string,
-): Promise<{ id: number; status: string; verified_at: string | null; top_priority_tier: number; total_priority_score: number }> => {
+): Promise<{ id: number; status: string; verified_at: string | null; top_priority_tier: number; total_priority_score: number; registration_status?: string; rejection_reason?: string | null }> => {
   const { data } = await apiClient.patch(`/admin/student-priority/${id}/verify`, { status, note });
   return data;
 };
