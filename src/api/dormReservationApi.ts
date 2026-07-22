@@ -412,6 +412,7 @@ export const createDormReservation = async (payload: {
       cccdBackUrl: null,
       submittedAt: null,
       approvedAt: null,
+      approveProposedAt: null,
       expiresAt: null,
       convertedRegistrationId: null,
       convertedRegistration: null,
