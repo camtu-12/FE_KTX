@@ -3,7 +3,10 @@ const VI_LOCALE = "vi-VN";
 function parseDate(date: string | Date, dateOnly = false): Date {
   if (date instanceof Date) return date;
 
-  const dateOnlyMatch = date.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|[T\s])/);
+  // Chỉ khớp chuỗi THUẦN ngày "YYYY-MM-DD" (không có phần giờ theo sau) — tránh nhầm
+  // với timestamp đầy đủ dạng "...T18:30:00.000000Z", vì cắt thẳng phần ngày từ chuỗi
+  // UTC đó (bỏ qua quy đổi timezone) sẽ lùi mất 1 ngày với giờ VN 00:00-06:59 sáng.
+  const dateOnlyMatch = date.match(/^(\d{4})-(\d{2})-(\d{2})\s*$/);
   if (dateOnly && dateOnlyMatch) {
     const [, year, month, day] = dateOnlyMatch;
     return new Date(Number(year), Number(month) - 1, Number(day));
