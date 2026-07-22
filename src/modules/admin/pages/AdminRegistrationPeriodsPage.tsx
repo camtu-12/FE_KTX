@@ -304,7 +304,7 @@ function computeChannelError(
 ): string | undefined {
   // Chỉ check khi năm học đã nhập ĐỦ đúng định dạng YYYY-YYYY — tránh báo lỗi khi
   // người dùng còn đang gõ dở (VD "2026-").
-  if (!schoolYearBounds(schoolYear)) return undefined;
+  if (!schoolYear || !schoolYearBounds(schoolYear)) return undefined;
 
   if (channel === "main") {
     const duplicate = periods.find(
