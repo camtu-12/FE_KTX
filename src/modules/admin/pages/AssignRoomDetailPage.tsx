@@ -1,18 +1,23 @@
-import { AnimatePresence, motion } from "framer-motion";
+﻿import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowUp, CheckCircle2, DoorOpen, Home, Star, UserRound, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  assignRoomToRegistration,
-  getDormRoomsInstant,
-  getRegistrationRequestByIdInstant,
-  getRegistrationRequests,
-  type DormRoom,
-} from "../../../api/registrationService";
+import { assignRoomToRegistration, getRegistrations } from "../../../api/registrationService";
+import { listBuildings } from "../../../api/buildingApi";
+import { listRooms, type RoomApi } from "../../../api/roomApi";
+import type { Building } from "../../../types/building";
 import type { RegistrationRequest } from "../data/registrationRequests";
+import type { DormRoom } from "../../../types/dormRoom";
 
 type ToastState = { kind: "success" | "error"; message: string } | null;
+
+type DormRoomWithFloor = DormRoom & {
+  floor_id?: number;
+  floor?: { id: number; building_code?: string; floor_number?: number; gender?: string };
+  floor_number?: number;
+  gender?: string | null;
+};
 
 const getRoomName = (room: DormRoom) => `${room.building_code}${room.room_number}`;
 
@@ -30,23 +35,78 @@ const getGenderLabel = (gender: string) => {
   return gender.trim() || "Khác";
 };
 
+const getRoomFloor = (room: DormRoomWithFloor) => {
+  if (room.floor && typeof room.floor.floor_number === "number") {
+    return room.floor.floor_number;
+  }
+
+  if (typeof room.floor_number === "number") {
+    return room.floor_number;
+  }
+
+  return 0;
+};
+
+const getRoomGender = (room: DormRoomWithFloor) => {
+  return room.floor?.gender ?? room.gender ?? null;
+};
+
+const normalizeGender = (gender: string | null | undefined) => {
+  const normalizedGender = (gender ?? "").trim().toLowerCase();
+
+  if (normalizedGender === "male") return "male";
+  if (normalizedGender === "female") return "female";
+
+  return null;
+};
+
+const getBuildingFloorNumbers = (building: Building) =>
+  building.floors.map((floor) => floor.floorNumber).sort((a, b) => a - b);
+
+const mapRoomFromApi = (r: RoomApi): DormRoomWithFloor => ({
+  id: r.id,
+  building_code: r.building_code,
+  room_number: r.room_number,
+  totalBeds: r.beds?.length ?? r.capacity ?? 0,
+  availableBeds: r.available_beds ?? (r.beds?.filter((b) => !b.occupied).length) ?? 0,
+  capacity: r.capacity ?? r.beds?.length,
+  gender: r.floor?.gender ?? null,
+  floor_id: r.floor?.id ?? r.floor_id,
+  floor: r.floor ? { id: r.floor.id, building_code: r.building_code, floor_number: r.floor.floor_number, gender: r.floor.gender ?? undefined } : undefined,
+  floor_number: r.floor_number ?? r.floor?.floor_number,
+  beds: Array.isArray(r.beds)
+    ? r.beds.map((b) => ({
+        id: b.id,
+        room_id: r.id,
+        bed_number: Number(b.bed_number) || 0,
+        position: String(b.position).toLowerCase() === "upper" ? "upper" : "lower",
+        status: String(b.status).toLowerCase() === "maintenance" ? "maintenance" : "active",
+        occupied: b.occupied,
+      }))
+    : [],
+});
+
 export default function AssignRoomDetailPage() {
   const navigate = useNavigate();
   const { requestId } = useParams();
   const numericRequestId = Number(requestId);
 
-  const [request, setRequest] = useState<RegistrationRequest | null>(() =>
-    Number.isFinite(numericRequestId) ? getRegistrationRequestByIdInstant(numericRequestId) : null,
+  // `undefined` = loading, `null` = not found, `RegistrationRequest` = loaded
+  // Start as `undefined` (loading) when we have a numeric requestId to avoid
+  // showing "Không tìm thấy sinh viên" briefly before the async loader runs.
+  const [request, setRequest] = useState<RegistrationRequest | null | undefined>(() =>
+    Number.isFinite(numericRequestId) ? undefined : null,
   );
-  const [rooms, setRooms] = useState<DormRoom[]>(() => getDormRoomsInstant());
+  const [rooms, setRooms] = useState<DormRoomWithFloor[]>([]);
+  const [buildings, setBuildings] = useState<Building[]>([]);
   const [toast, setToast] = useState<ToastState>(null);
   const [isAssigning, setIsAssigning] = useState(false);
   const [buildingFilter, setBuildingFilter] = useState<string>("all");
   const [floorFilter, setFloorFilter] = useState<string>("all");
   const [isScrollToTopVisible, setIsScrollToTopVisible] = useState(false);
-  // Hiển thị nút cuộn lên đầu khi vùng cuộn thực sự có thể cuộn
+  // Hiện thấy nút cuộn lên đầu khi vùng cuộn thực sự có thể cuộn
   // và người dùng đã cuộn một đoạn ngắn (giúp dễ thấy hơn trên các
-  // trang dài vừa phải mà ngưỡng cũ quá lớn).
+  // trang dài mà ngưỡng cũ quá lớn).
   useEffect(() => {
     const scrollContainer = document.querySelector('.auth-scrollbar') as HTMLElement | null;
     if (!scrollContainer) return;
@@ -76,30 +136,61 @@ export default function AssignRoomDetailPage() {
         return;
       }
 
-      const requests = await getRegistrationRequests();
-      if (!isMounted) {
-        return;
-      }
+      try {
+        const [requests, roomData, buildingData] = await Promise.all([
+          getRegistrations(),
+          listRooms(),
+          listBuildings(),
+        ]);
+        if (!isMounted) {
+          return;
+        }
 
-      setRequest(requests.find((item) => item.id === numericRequestId) ?? null);
-      setRooms(getDormRoomsInstant());
+        setRequest(requests.find((item) => item.id === numericRequestId) ?? null);
+        setRooms(roomData.map(mapRoomFromApi));
+        setBuildings(buildingData);
+      } catch {
+        if (!isMounted) {
+          return;
+        }
+        setRequest(null);
+        setRooms([]);
+        setBuildings([]);
+      }
     };
 
     void load();
 
+    const refreshRooms = async () => {
+      if (!isMounted) {
+        return;
+      }
+
+      try {
+        const [roomData, buildingData] = await Promise.all([listRooms(), listBuildings()]);
+        if (!isMounted) {
+          return;
+        }
+        setRooms(roomData.map(mapRoomFromApi));
+        setBuildings(buildingData);
+      } catch {
+        if (!isMounted) {
+          return;
+        }
+        setRooms([]);
+        setBuildings([]);
+      }
+    };
+
+    window.addEventListener("focus", refreshRooms);
+    window.addEventListener("ktx-buildings-updated", refreshRooms);
+
     return () => {
       isMounted = false;
+      window.removeEventListener("focus", refreshRooms);
+      window.removeEventListener("ktx-buildings-updated", refreshRooms);
     };
   }, [numericRequestId]);
-
-  useEffect(() => {
-    // Cuộn container chính (auth-scrollbar) lên đầu khi chuyển hướng
-    const scrollContainer = document.querySelector('.auth-scrollbar') as HTMLElement | null;
-    if (scrollContainer) {
-      scrollContainer.scrollTo({ top: 0, behavior: 'auto' });
-    }
-  }, [numericRequestId]);
-
   useEffect(() => {
     if (!toast) {
       return undefined;
@@ -116,19 +207,24 @@ export default function AssignRoomDetailPage() {
   }, [rooms]);
 
   const buildingOptions = useMemo(() => {
-    const values = Array.from(new Set(rooms.map((room) => room.building_code))).sort();
+    const values = buildings.map((building) => building.building_code).sort();
     return ["all", ...values];
-  }, [rooms]);
+  }, [buildings]);
 
   const floorOptions = useMemo(() => {
-    const floors = Array.from(
-      new Set(rooms.filter((room) => buildingFilter === "all" || room.building_code === buildingFilter).map((room) => Math.floor(room.room_number / 100))),
-    )
-      .sort((a, b) => a - b)
-      .map((value) => `${value}`);
+    if (buildingFilter === "all") {
+      const floors = Array.from(new Set(buildings.flatMap((building) => getBuildingFloorNumbers(building))))
+        .sort((a, b) => a - b)
+        .map((value) => `${value}`);
+
+      return ["all", ...floors];
+    }
+
+    const selectedBuilding = buildings.find((building) => building.building_code === buildingFilter);
+    const floors = selectedBuilding ? getBuildingFloorNumbers(selectedBuilding).map((value) => `${value}`) : [];
 
     return ["all", ...floors];
-  }, [buildingFilter, rooms]);
+  }, [buildingFilter, buildings]);
 
   useEffect(() => {
     if (buildingFilter !== "all" && buildingOptions.length > 0 && !buildingOptions.includes(buildingFilter)) {
@@ -149,17 +245,19 @@ export default function AssignRoomDetailPage() {
   const visibleRooms = useMemo(() => {
     return rooms
       .filter((room) => {
-        // Lọc theo giới tính sinh viên
-        const studentGender = request?.formData.gender.trim().toLowerCase();
-        
-        if (studentGender === "male" && room.gender !== "male") return false;
-        if (studentGender === "female" && room.gender !== "female") return false;
-        
+        // Lọc theo giới tính sinh viên (an toàn khi request đang loading)
+        const rawGender = request?.formData?.gender;
+        const studentGender = rawGender ? String(rawGender).trim().toLowerCase() : undefined;
+        const roomGender = normalizeGender(getRoomGender(room));
+
+        if (studentGender === "male" && roomGender !== "male") return false;
+        if (studentGender === "female" && roomGender !== "female") return false;
+
         return true;
       })
       .filter((room) => (buildingFilter === "all" ? true : room.building_code === buildingFilter))
       .filter((room) =>
-        floorFilter === "all" ? true : `${Math.floor(room.room_number / 100)}` === floorFilter,
+        floorFilter === "all" ? true : `${getRoomFloor(room)}` === floorFilter,
       )
       .sort((a, b) => {
         const diff = b.availableBeds - a.availableBeds;
@@ -187,12 +285,12 @@ export default function AssignRoomDetailPage() {
     }
 
     if (request.status !== "approved") {
-      setToast({ kind: "error", message: "Chỉ phân phòng cho sinh viên đã duyệt." });
+      setToast({ kind: "error", message: "Không thể phân phòng cho sinh viên chưa được duyệt." });
       return;
     }
 
-    if (request.assigned_room_id) {
-      handleBack({ kind: "success", message: "Sinh viên đã được phân phòng." });
+    if (request.assigned_room_id === room.id) {
+      setToast({ kind: "error", message: "Sinh viên đang ở phòng này. Vui lòng chọn phòng khác." });
       return;
     }
 
@@ -203,10 +301,18 @@ export default function AssignRoomDetailPage() {
 
     setIsAssigning(true);
     try {
-      const updated = await assignRoomToRegistration({ requestId: request.id, roomId: room.id });
-      setRequest(updated);
-      setRooms(getDormRoomsInstant());
-      handleBack({ kind: "success", message: "Phân phòng thành công" });
+      const updatedRequest = await assignRoomToRegistration({
+        requestId: request.id,
+        roomId: room.id,
+        currentRequest: request,
+      });
+
+      if (!updatedRequest) {
+        throw new Error("Không thể cập nhật phân phòng.");
+      }
+
+      setRequest(updatedRequest);
+      handleBack({ kind: "success", message: request.assigned_room_id ? "Đổi phòng thành công" : "Phân phòng thành công" });
     } catch (error) {
       setToast({
         kind: "error",
@@ -298,9 +404,11 @@ export default function AssignRoomDetailPage() {
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
               <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">
-                Chọn phòng
+                {request?.assigned_room_id ? "Đổi phòng" : "Chọn phòng"}
               </h1>
-              <p className="mt-1 text-sm text-[#62789f]">Chọn phòng cho sinh viên đã được duyệt đơn đăng ký.</p>
+              <p className="mt-1 text-sm text-[#62789f]">
+                {request?.assigned_room_id ? "Chọn phòng mới cho sinh viên đã được phân phòng." : "Chọn phòng cho sinh viên đã được duyệt đơn đăng ký."}
+              </p>
             </div>
           </div>
 
@@ -319,7 +427,9 @@ export default function AssignRoomDetailPage() {
           Thông tin sinh viên
         </div>
 
-        {request ? (
+        {request === undefined ? (
+          <div className="mt-4 text-sm text-[#62789f]">Đang tải thông tin sinh viên...</div>
+        ) : request ? (
           <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-[16px] leading-7 text-[#4b6494] sm:text-[17px]">
             <span>
               Họ tên: <span className="font-semibold text-[#1f3152]">{request.formData.fullName}</span>
@@ -349,7 +459,7 @@ export default function AssignRoomDetailPage() {
         )}
       </div>
 
-      <div className="rounded-[22px] border border-[#d3e0f2] bg-white p-5 shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
+      <div className="flex min-h-[360px] flex-1 flex-col rounded-[22px] border border-[#d3e0f2] bg-white p-5 shadow-[0_14px_30px_rgba(36,76,184,0.08)]">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-[#6f84ad]">
             <DoorOpen className="h-4 w-4 text-[#2f63d8]" />
@@ -382,7 +492,7 @@ export default function AssignRoomDetailPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto rounded-xl border border-[#dde7f5]">
+        <div className="flex-1 overflow-x-auto rounded-xl border border-[#dde7f5]">
           <table className="min-w-[700px] w-full border-separate border-spacing-0">
             <thead>
               <tr className="bg-[linear-gradient(180deg,#f7faff_0%,#eef4ff_100%)]">
@@ -403,7 +513,8 @@ export default function AssignRoomDetailPage() {
             <tbody>
               {visibleRooms.map((room) => {
                 const isRoomFull = room.availableBeds <= 0;
-                const disableChoose = isAssigning || !request || Boolean(request.assigned_room_id) || isRoomFull;
+                const isCurrentRoom = request?.assigned_room_id === room.id;
+                const disableChoose = isAssigning || !request || isCurrentRoom || isRoomFull;
                 const isRecommended = recommendedRoomId === room.id;
                 const label = isRoomFull ? "Hết chỗ" : isRecommended ? "Chọn ngay" : "Chọn";
 
@@ -415,12 +526,12 @@ export default function AssignRoomDetailPage() {
                     <td className="border-t border-[#e7eef9] px-4 py-3 text-center text-sm font-semibold">
                       <span
                         className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${
-                          room.gender === "female"
+                          normalizeGender(getRoomGender(room)) === "female"
                             ? "border-[#f2bfd0] bg-[#fff0f6] text-[#c45b87]"
                             : "border-[#bfd2ee] bg-[#edf4ff] text-[#2f63d8]"
                         }`}
                       >
-                        {room.gender === "female" ? "Nữ" : "Nam"}
+                        {normalizeGender(getRoomGender(room)) === "female" ? "Nữ" : "Nam"}
                       </span>
                     </td>
                     <td className="border-t border-[#e7eef9] px-4 py-3 text-center text-sm font-semibold text-[#1f7a4e]">
@@ -432,7 +543,7 @@ export default function AssignRoomDetailPage() {
                         disabled={disableChoose}
                         onClick={() => void handleChooseRoom(room)}
                         className={`auth-btn-gloss inline-flex min-w-[118px] flex-nowrap items-center justify-center whitespace-nowrap rounded-full px-5 py-2.5 text-sm font-semibold transition duration-200 ${
-                          isRoomFull
+                          isRoomFull || isCurrentRoom
                             ? "border border-[#d2def0] bg-[linear-gradient(135deg,#edf4ff_0%,#dfeaff_100%)] text-[#7f8da8] shadow-[0_10px_18px_rgba(36,76,184,0.10)] disabled:opacity-100"
                             : isRecommended
                               ? "bg-[linear-gradient(135deg,#1f5fd1_0%,#244cb8_42%,#31b7d4_100%)] text-white shadow-[0_18px_34px_rgba(36,76,184,0.30)] ring-2 ring-[#d9e7ff] hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
@@ -441,7 +552,7 @@ export default function AssignRoomDetailPage() {
                       >
                         <span className="auth-btn-gloss__content inline-flex items-center justify-center gap-2">
                           {isRecommended ? <Star className="h-4 w-4 fill-[#facc15] text-[#facc15]" /> : null}
-                          {label}
+                          {isCurrentRoom ? "Phòng hiện tại" : label}
                         </span>
                       </button>
                     </td>
@@ -455,3 +566,4 @@ export default function AssignRoomDetailPage() {
     </motion.section>
   );
 }
+

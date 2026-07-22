@@ -1,8 +1,19 @@
 import * as regApi from "./registrationApi";
+import apiClient from "../lib/apiClient";
+import {
+  getDormBedPairsForRoomInstant,
+  getDormBedsForRoomInstant,
+  getDormRoomsInstant,
+} from "../mocks/dormRoomStore.ts";
+import type { DormRoom } from "../types/dormRoom.ts";
+import { listRooms, type RoomApi } from "./roomApi";
 import type {
   RegistrationFormData,
   RegistrationRequest,
   RegistrationStatus,
+} from "../modules/admin/data/registrationRequests";
+import {
+  dispatchRegistrationRequestsUpdated,
 } from "../modules/admin/data/registrationRequests";
 
 // Sử dụng Railway URL từ environment variables (có fallback nếu biến không được set)
@@ -11,32 +22,19 @@ const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) || "http://127.0
 
 console.log("API_BASE:", API_BASE); // Debug - kiểm tra URL đúng không
 
-export type DormRoom = {
-  id: number;
-  building_code: string;
-  room_number: number;
-  totalBeds: number;
-  availableBeds: number;
-  gender?: string | null;
-};
-
-export type DormBed = {
-  id: number;
-  room_id: number;
-  bed_number: number;
-  position: "upper" | "lower";
-  status: "occupied" | "empty" | "maintenance";
-};
-
-export type DormBedPair = {
-  pairNumber: number;
-  upper: DormBed;
-  lower: DormBed;
-};
-
 type JsonRecord = Record<string, unknown>;
 
 const isRecord = (value: unknown): value is JsonRecord => typeof value === "object" && value !== null;
+
+const isBrowser = () => typeof window !== "undefined";
+
+const dispatchRoomsUpdated = () => {
+  if (!isBrowser()) {
+    return;
+  }
+
+  window.dispatchEvent(new Event("ktx-rooms-updated"));
+};
 
 const extract = <T>(res: unknown): T => {
   if (!isRecord(res)) {
@@ -72,34 +70,44 @@ const createPreviewSvg = (title: string, subtitle: string, accent: string) =>
 const toPublicAssetUrl = (value?: string | null) => {
   if (!value) return "";
   
-  // If it's already a full URL (including Railway's API endpoint), return as-is
-  if (/^(data:|https?:\/\/)/i.test(value)) {
-    // Check if it's a Railway URL missing /api/ (old format)
-    if (value.includes('railway.app') && value.includes('/storage/') && !value.includes('/api/')) {
-      // Fix it by adding /api/
-      const fixed = value.replace('/storage/', '/api/storage/');
-      console.log('[toPublicAssetUrl] Fixed missing /api/:', fixed);
-      return fixed;
-    }
+  // If it's already a full URL, return it as-is (backend already did the work)
+  if (value.includes('http://') || value.includes('https://')) {
+    return value;
+  }
+  
+  // Handle data URLs
+  if (value.startsWith('data:')) {
     return value;
   }
 
+  // Only build URLs for relative paths
   const normalized = String(value).replace(/^\/+/, "");
+  // Strip optional 'api/' prefix AND 'storage/' prefix together
+  const cleanPath = normalized.replace(/^(?:api\/)?storage\//, "");
   
-  // For Railway, use /api/storage/
-  if (normalized.startsWith("storage/")) {
-    return `${API_BASE}/api/storage/${normalized}`;
+  // Local development
+  if (!API_BASE.includes('railway.app')) {
+    return `${API_BASE}/storage/${cleanPath}`;
   }
   
-  return `${API_BASE}/api/storage/${normalized}`;
+  // Railway - use /api/storage/
+  return `${API_BASE}/api/storage/${cleanPath}`;
 };
 
 const normalizeStatus = (value: unknown): RegistrationStatus => {
+  if (value === "approved" || value === "rejected" || value === "submitted" || value === "cancelled") {
+    return value;
+  }
+
+  return "submitted";
+};
+
+const normalizeBedApprovalStatus = (value: unknown): RegistrationRequest["bed_approval_status"] => {
   if (value === "approved" || value === "rejected" || value === "pending") {
     return value;
   }
 
-  return "pending";
+  return null;
 };
 
 const firstDefinedString = (...values: unknown[]) => {
@@ -161,6 +169,14 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
   const student = readRecord(rawRecord?.student, dataRecord?.student, registration.student) ?? {};
   const account = readRecord(student.account, rawRecord?.account, dataRecord?.account, registration.account) ?? {};
   const existingFormData = readRecord(registration.formData, rawRecord?.formData, dataRecord?.formData) ?? {};
+  const registrationPeriod = readRecord(
+    registration.registration_period,
+    registration.period,
+    rawRecord?.registration_period,
+    rawRecord?.period,
+    dataRecord?.registration_period,
+    dataRecord?.period,
+  ) ?? {};
 
   const studentCode = firstDefinedString(existingFormData.mssv, account.student_code, student.student_code);
   const fullName = firstDefinedString(existingFormData.fullName, account.full_name, student.full_name);
@@ -196,9 +212,11 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
   );
   const address = firstDefinedString(existingFormData.address, registration.address, student.permanent_address, student.address);
   const fatherName = firstDefinedString(existingFormData.father_name, registration.father_name, student.father_name);
+  const fatherBirthYear = firstDefinedString(existingFormData.father_birth_year, registration.father_birth_year, student.father_birth_year);
   const fatherPhone = firstDefinedString(existingFormData.father_phone, registration.father_phone, student.father_phone);
   const fatherJob = firstDefinedString(existingFormData.father_job, registration.father_job, student.father_job);
   const motherName = firstDefinedString(existingFormData.mother_name, registration.mother_name, student.mother_name);
+  const motherBirthYear = firstDefinedString(existingFormData.mother_birth_year, registration.mother_birth_year, student.mother_birth_year);
   const motherPhone = firstDefinedString(existingFormData.mother_phone, registration.mother_phone, student.mother_phone);
   const motherJob = firstDefinedString(existingFormData.mother_job, registration.mother_job, student.mother_job);
   const familyContactAddress = firstDefinedString(
@@ -207,9 +225,12 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
     registration.parent_address,
     student.parent_address,
   );
-  const relationName = firstDefinedString(existingFormData.relationName, registration.parent_name, student.parent_name);
-  const relationPhone = firstDefinedString(existingFormData.relationPhone, registration.parent_phone, student.parent_phone);
-  const relationship = firstDefinedString(existingFormData.relationship, registration.parent_relationship, student.parent_relationship, "parent");
+  // registration.parent_name/parent_phone/parent_relationship chưa từng tồn tại làm cột
+  // thật trên registrations (bug cũ) — đọc đúng emergency_contact_* mới, parent_* giữ lại
+  // cuối danh sách chỉ để tương thích ngược nếu có bản ghi cũ nào đó từng có giá trị này.
+  const relationName = firstDefinedString(existingFormData.relationName, registration.emergency_contact_name, student.emergency_contact_name, registration.parent_name, student.parent_name);
+  const relationPhone = firstDefinedString(existingFormData.relationPhone, registration.emergency_contact_phone, student.emergency_contact_phone, registration.parent_phone, student.parent_phone);
+  const relationship = firstDefinedString(existingFormData.relationship, registration.emergency_contact_relationship, student.emergency_contact_relationship, registration.parent_relationship, student.parent_relationship, "parent");
   const dormStartDate = firstDefinedString(existingFormData.dormStartDate, registration.stay_from_date, registration.dormStartDate);
   const dormEndDate = firstDefinedString(existingFormData.dormEndDate, registration.stay_to_date, registration.dormEndDate);
 
@@ -229,9 +250,11 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
     cccdIssuePlace,
     address,
     father_name: fatherName,
+    father_birth_year: fatherBirthYear,
     father_phone: fatherPhone,
     father_job: fatherJob,
     mother_name: motherName,
+    mother_birth_year: motherBirthYear,
     mother_phone: motherPhone,
     mother_job: motherJob,
     familyContactAddress,
@@ -249,7 +272,7 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
   // Ưu tiên ảnh được nộp kèm trong hồ sơ (`documents.portraitPhoto`) trước,
   // sau đó mới tới avatar hiện tại của student nếu có.
   const portraitPhotoUrl = toPublicAssetUrl(
-    firstDefinedString(documents.portraitPhoto, registration.avatar, student.avatar, documents.avatar),
+    firstDefinedString(documents.portraitPhoto, registration.avatarUrl, registration.avatar_url, registration.avatar, student.avatar, documents.avatar),
   );
   const cccdFrontPhotoUrl = toPublicAssetUrl(
     firstDefinedString(registration.cccd_front_url, documents.cccdFrontPhoto, documents.cccdFrontUrl),
@@ -278,6 +301,7 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
 
   const rawCommitment = registration.commitmentConfirmed ?? registration.commitment_confirmed ?? registration.commitment_confirm;
   const commitmentConfirmed = rawCommitment === true || rawCommitment === 1 || rawCommitment === "1" || rawCommitment === "true";
+  const blacklist = readRecord(registration.blacklist, rawRecord?.blacklist, dataRecord?.blacklist);
 
   return {
     id: toNumberOrNull(registration.id) ?? 0,
@@ -295,147 +319,382 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
     cccdFrontUrl: cccdFrontPhotoUrl,
     cccdBackUrl: cccdBackPhotoUrl,
     commitmentConfirmed,
+    occupancy_id: toNumberOrNull(registration.occupancy_id) ?? null,
     assigned_room_id: toNumberOrNull(registration.assigned_room_id) ?? null,
     bedId: toNumberOrNull(registration.bedId ?? registration.assigned_bed_id) ?? null,
+    bed_approval_status: normalizeBedApprovalStatus(registration.bed_approval_status),
+    occupancy_status: firstDefinedString(registration.occupancy_status) || null,
+    occupancy_reason: firstDefinedString(registration.occupancy_reason) || null,
+    check_in_date: firstDefinedString(registration.check_in_date) || null,
+    check_out_date: firstDefinedString(registration.check_out_date) || null,
+    checkout_request: (() => {
+      const cr = readRecord(registration.checkout_request);
+      if (!cr) return null;
+      return {
+        id: toNumberOrNull(cr.id) ?? 0,
+        reason: firstDefinedString(cr.reason) || "",
+        expected_leave_date: firstDefinedString(cr.expected_leave_date) || "",
+        created_at: firstDefinedString(cr.created_at) || "",
+      };
+    })(),
+    priority_criteria: Array.isArray(registration.priority_criteria)
+      ? (registration.priority_criteria as RegistrationRequest["priority_criteria"])
+      : [],
+    auto_decision: (registration.auto_decision ?? null) as RegistrationRequest["auto_decision"],
+    auto_decision_reason: firstDefinedString(registration.auto_decision_reason) || null,
+    source_dorm_reservation_id: toNumberOrNull(registration.source_dorm_reservation_id) ?? null,
+    registration_period_id: toNumberOrNull(registration.registration_period_id) ?? null,
+    bed_selection_days: toNumberOrNull(registration.bed_selection_days ?? registrationPeriod.bed_selection_days) ?? null,
+    bed_selection_deadline: firstDefinedString(registration.bed_selection_deadline) || null,
+    room_assigned_at: firstDefinedString(registration.room_assigned_at, registration.occupancy_created_at) || null,
+    blacklist: blacklist
+      ? {
+          reason: firstDefinedString(blacklist.reason) || null,
+          source: firstDefinedString(blacklist.source) || null,
+          created_at: firstDefinedString(blacklist.created_at, blacklist.createdAt) || null,
+        }
+      : null,
+    channel: (registration.channel as 'main' | 'rolling' | null) ?? null,
+    period_name: firstDefinedString(registration.period_name) || null,
+    period_status: firstDefinedString(registration.period_status) || null,
+    registration_type: firstDefinedString(registration.registration_type) || null,
+    top_priority_tier: toNumberOrNull(registration.top_priority_tier) ?? null,
+    total_priority_score: toNumberOrNull(registration.total_priority_score) ?? null,
+    approved_at: firstDefinedString(registration.approved_at) || null,
+    current_year: toNumberOrNull(student.current_year) ?? null,
+    cancelled_at: firstDefinedString(registration.cancelled_at) || null,
+    cancellation_reason: firstDefinedString(registration.cancellation_reason) || null,
+    cancelled_by: firstDefinedString(registration.cancelled_by) || null,
   };
 };
 
-const normalizeRegistrationList = (rows: unknown[]) =>
-  rows.map((row) => normalizeRegistrationRequest(row)).filter(Boolean) as RegistrationRequest[];
-
-export const getRegistrationRequests = async () => {
-  const res = await regApi.getRegistrations();
-  return normalizeRegistrationList(extract<unknown[]>(res) ?? []);
+const normalizeRegistrationResponse = (value: unknown): RegistrationRequest | null => {
+  return normalizeRegistrationRequest(extract<unknown>(value));
 };
 
-export const getRegistrations = getRegistrationRequests;
+const normalizeRegistrationResponseArray = (value: unknown): RegistrationRequest[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => normalizeRegistrationResponse(item))
+    .filter((item): item is RegistrationRequest => item !== null);
+};
+
+export const getRegistrationRequests = async () => {
+  return [];
+};
+
+export const getRegistrations = async (): Promise<RegistrationRequest[]> => {
+  const res = await regApi.getRegistrations();
+  return normalizeRegistrationResponseArray(res);
+};
 
 export const getRegistrationRequestsInstant = (): RegistrationRequest[] => {
   return [];
 };
 
-export const getRegistrationRequestByIdInstant = (_id: number): RegistrationRequest | null => {
-  void _id;
+export const getRegistrationRequestByIdInstant = (id: number): RegistrationRequest | null => {
+  void id;
   return null;
 };
 
-export const getLatestRegistrationByEmailInstant = (_email: string): RegistrationRequest | null => {
-  void _email;
+export const getLatestRegistrationByEmailInstant = (email: string): RegistrationRequest | null => {
+  void email;
   return null;
 };
 
-export const getDormRoomsInstant = (): DormRoom[] => {
-  return [];
-};
+export { getDormRoomsInstant, getDormBedsForRoomInstant, getDormBedPairsForRoomInstant };
 
-export const getDormBedsForRoomInstant = (_roomId: number): DormBed[] => {
-  void _roomId;
-  return [];
-};
-
-export const getDormBedPairsForRoomInstant = (_roomId: number): DormBedPair[] => {
-  void _roomId;
-  return [];
-};
+const mapRoomApiToDormRoom = (room: RoomApi): DormRoom => ({
+  id: room.id,
+  building_code: room.building_code,
+  room_number: room.room_number,
+  totalBeds: room.beds?.length ?? room.capacity ?? 0,
+  availableBeds: room.available_beds ?? room.beds?.filter((bed) => !bed.occupied).length ?? 0,
+  capacity: room.capacity ?? room.beds?.length ?? 0,
+  gender: room.floor?.gender ?? null,
+  floor_id: room.floor?.id ?? room.floor_id,
+  floor: room.floor
+    ? {
+        id: room.floor.id,
+        building_code: room.floor.building_code,
+        floor_number: room.floor.floor_number,
+        gender: room.floor.gender ?? undefined,
+      }
+    : undefined,
+  floor_number: room.floor_number ?? room.floor?.floor_number,
+  beds: Array.isArray(room.beds)
+    ? room.beds.map((bed) => ({
+        id: bed.id,
+        room_id: room.id,
+        bed_number: Number(bed.bed_number) || 0,
+        position: bed.position === "LOWER" ? "lower" : "upper",
+        status: bed.status === "MAINTENANCE" ? "maintenance" : "active",
+        occupied: bed.occupied,
+      }))
+    : [],
+});
 
 export const getRooms = async (): Promise<DormRoom[]> => {
-  const res = await regApi.getRooms();
-  return extract<DormRoom[]>(res) ?? [];
+  const rooms = await listRooms();
+  return rooms.map(mapRoomApiToDormRoom);
 };
 
 export const getRegistrationById = async (id: number): Promise<RegistrationRequest | null> => {
-  const res = await regApi.getRegistrationById(id);
-  return normalizeRegistrationRequest(extract<unknown>(res));
+  try {
+    const res = await regApi.getRegistrationById(id);
+    return normalizeRegistrationResponse(res);
+  } catch {
+    return null;
+  }
 };
 
 export const getLatestRegistrationByEmail = async (email: string): Promise<RegistrationRequest | null> => {
-  const res = await regApi.getMyRegistration(email);
-  return normalizeRegistrationRequest(extract<unknown>(res));
+  if (!email.trim()) {
+    return null;
+  }
+
+  return getMyRegistration(email);
 };
 
 export const getRegistrationHistoryByEmailSemester = async (
   email: string,
-  semester: string
+  semester?: string
 ): Promise<RegistrationRequest[]> => {
+  if (!email.trim()) {
+    return [];
+  }
+
   const res = await regApi.getRegistrationHistory(email, semester);
-  const rows = Array.isArray(res) ? res : [];
-  return rows.map((row) => normalizeRegistrationRequest(row)).filter(Boolean) as RegistrationRequest[];
+  return normalizeRegistrationResponseArray(res);
+};
+
+// Toàn bộ lịch sử đăng ký (mọi kỳ) của sinh viên đang đăng nhập, mới nhất trước.
+export const getMyRegistrationHistory = async (email: string): Promise<RegistrationRequest[]> => {
+  return getRegistrationHistoryByEmailSemester(email);
 };
 
 export const updateRegistrationStatus = async ({
   id,
   status,
   rejectionReason,
+  currentRequest,
 }: {
   id: number;
   status: "approved" | "rejected";
   rejectionReason?: string;
+  currentRequest?: RegistrationRequest;
 }): Promise<RegistrationRequest> => {
-  try {
-    if (status === "approved") {
-      await regApi.API.put(`/registration/${id}/approve`);
-      const updated = await getRegistrationById(id);
-      if (!updated) {
-        throw new Error("Không thể tải lại đơn đăng ký sau khi duyệt.");
-      }
+  const response =
+    status === "approved"
+      ? await regApi.approveRegistration(id)
+      : await regApi.rejectRegistration(id, rejectionReason ?? "");
 
-      return updated;
-    }
-
-    await regApi.API.put(`/registration/${id}/reject`, {
-      rejectionReason: rejectionReason?.trim() ?? "",
-    });
-    const updated = await getRegistrationById(id);
-    if (!updated) {
-      throw new Error("Không thể tải lại đơn đăng ký sau khi từ chối.");
-    }
-
+  // id=0 có nghĩa BE trả về message-only (không có registration data) → bỏ qua
+  const updated = normalizeRegistrationResponse(response);
+  if (updated && updated.id > 0) {
+    dispatchRegistrationRequestsUpdated();
     return updated;
-  } catch (err: unknown) {
-    const error = isRecord(err) ? err : null;
-    const response = readRecord(error?.response);
-    const responseData = readRecord(response?.data);
-    const message = firstDefinedString(responseData?.message, error?.message, "Không thể cập nhật trạng thái đơn đăng ký.");
-    throw new Error(message);
   }
+
+  const refreshed = normalizeRegistrationResponse(await regApi.getRegistrationById(id));
+  if (refreshed) {
+    dispatchRegistrationRequestsUpdated();
+    return refreshed;
+  }
+
+  if (!currentRequest) {
+    throw new Error("Không thể cập nhật trạng thái đăng ký.");
+  }
+
+  const fallback: RegistrationRequest = {
+    ...currentRequest,
+    status,
+    rejectionReason: status === "rejected" ? rejectionReason?.trim() ?? "" : undefined,
+  };
+
+  dispatchRegistrationRequestsUpdated();
+  return fallback;
 };
 
 // Các tác vụ admin: wrapper tốt nhất - backend có thể cung cấp endpoint khác.
-export const assignRoomToRegistration = async ({ requestId, roomId }: { requestId: number; roomId: number }): Promise<RegistrationRequest | null> => {
-  try {
-    const res = await regApi.API.put(`/registration/${requestId}/assign-room`,{ room_id: roomId });
-    void res;
-    return getRegistrationById(requestId);
-  } catch (err: unknown) {
-    const error = isRecord(err) ? err : null;
-    const response = readRecord(error?.response);
-    const responseData = readRecord(response?.data);
-    const message = firstDefinedString(responseData?.message, error?.message, "Không thể phân phòng (backend chưa hỗ trợ).");
-    throw new Error(message);
+export const assignRoomToRegistration = async ({
+  requestId,
+  roomId,
+  bedId,
+  currentRequest,
+}: {
+  requestId: number;
+  roomId: number;
+  bedId?: number | null;
+  currentRequest?: RegistrationRequest;
+}): Promise<RegistrationRequest | null> => {
+  void bedId;
+
+  const current = currentRequest ?? normalizeRegistrationResponse(await regApi.getRegistrationById(requestId));
+  if (!current) {
+    throw new Error("Không tìm thấy đơn đăng ký.");
   }
+
+  await regApi.assignRoom(requestId, roomId);
+
+  const refreshed = normalizeRegistrationResponse(await regApi.getRegistrationById(requestId));
+  const nextRequest = refreshed ?? {
+    ...current,
+    assigned_room_id: roomId,
+    assigned_bed_id: null,
+    bedId: null,
+  };
+  dispatchRegistrationRequestsUpdated();
+  dispatchRoomsUpdated();
+
+  return nextRequest;
 };
 
-export const selectBedForRegistration = async ({ email, bedId }: { email: string; bedId: number }) => {
-  try {
-    const res = await regApi.API.put(`/registration/select-bed`, { email, bed_id: bedId });
-    return extract<unknown>(res);
-  } catch (err: unknown) {
-    const error = isRecord(err) ? err : null;
-    const response = readRecord(error?.response);
-    const responseData = readRecord(response?.data);
-    const message = firstDefinedString(responseData?.message, error?.message, "Không thể chọn giường (backend chưa hỗ trợ).");
-    throw new Error(message);
+export const selectBedForRegistration = async ({
+  email,
+  bedId,
+  currentRequest,
+}: {
+  email: string;
+  bedId: number;
+  currentRequest?: RegistrationRequest;
+}): Promise<{ request: RegistrationRequest; billId: number | null }> => {
+  const current = currentRequest ?? normalizeRegistrationResponse(await regApi.getMyRegistration(email));
+  if (!current) {
+    throw new Error("Không tìm thấy đơn đăng ký của sinh viên.");
   }
+
+  const result = await regApi.selectBed(email, bedId);
+
+  const refreshed = normalizeRegistrationResponse(await regApi.getMyRegistration(email));
+  const nextRequest = refreshed ?? {
+    ...current,
+    assigned_bed_id: bedId,
+    bedId,
+    bed_approval_status: "pending",
+  };
+  dispatchRegistrationRequestsUpdated();
+  dispatchRoomsUpdated();
+
+  return { request: nextRequest, billId: result.bill_id ?? null };
+};
+
+export const getEffectiveBedApprovalStatus = (
+  requestOrStatus?: RegistrationRequest | RegistrationRequest["bed_approval_status"] | null,
+  bedId?: number | null,
+): RegistrationRequest["bed_approval_status"] | null => {
+  if (!requestOrStatus) {
+    return null;
+  }
+
+  if (typeof requestOrStatus === "string") {
+    return bedId ? requestOrStatus : null;
+  }
+
+  if (!requestOrStatus.bedId) {
+    return null;
+  }
+
+  return requestOrStatus.bed_approval_status ?? "pending";
+};
+
+export const approveBedSelectionForRegistration = async (id: number): Promise<RegistrationRequest | null> => {
+  const updated = normalizeRegistrationResponse(await regApi.approveBedSelection(id));
+  dispatchRegistrationRequestsUpdated();
+  dispatchRoomsUpdated();
+  return updated;
+};
+
+export const rejectBedSelectionForRegistration = async (id: number): Promise<RegistrationRequest | null> => {
+  const updated = normalizeRegistrationResponse(await regApi.rejectBedSelection(id));
+  dispatchRegistrationRequestsUpdated();
+  dispatchRoomsUpdated();
+  return updated;
+};
+
+export const requestCheckoutForRegistration = async ({
+  email,
+  reason,
+  expectedLeaveDate,
+}: {
+  email: string;
+  reason: string;
+  expectedLeaveDate?: string;
+}): Promise<RegistrationRequest | null> => {
+  const updated = normalizeRegistrationResponse(await regApi.requestCheckout(email, reason, expectedLeaveDate));
+  dispatchRegistrationRequestsUpdated();
+  dispatchRoomsUpdated();
+  return updated;
+};
+
+export const cancelCheckoutForRegistration = async (): Promise<RegistrationRequest | null> => {
+  const updated = normalizeRegistrationResponse(await regApi.cancelCheckout());
+  dispatchRegistrationRequestsUpdated();
+  dispatchRoomsUpdated();
+  return updated;
+};
+
+export const confirmCheckoutForRegistration = async (id: number): Promise<RegistrationRequest | null> => {
+  const updated = normalizeRegistrationResponse(await regApi.confirmCheckout(id));
+  dispatchRegistrationRequestsUpdated();
+  dispatchRoomsUpdated();
+  return updated;
+};
+
+export const forceCheckoutForRegistration = async (id: number, reason: string): Promise<RegistrationRequest | null> => {
+  const updated = normalizeRegistrationResponse(await regApi.forceCheckout(id, reason));
+  dispatchRegistrationRequestsUpdated();
+  dispatchRoomsUpdated();
+  return updated;
+};
+
+export const patchAutoDecision = async (
+  id: number,
+  decision: 'approve' | 'reject' | 'review',
+  reason?: string,
+): Promise<RegistrationRequest | null> => {
+  const updated = normalizeRegistrationResponse(await regApi.patchAutoDecision(id, decision, reason));
+  return updated;
+};
+
+export const confirmSingleRegistration = async (id: number): Promise<RegistrationRequest | null> => {
+  const updated = normalizeRegistrationResponse(await regApi.confirmSingle(id));
+  dispatchRegistrationRequestsUpdated();
+  return updated;
+};
+
+export const confirmBatchRegistrations = async (
+  periodId: number,
+): Promise<{ confirmed: number; skipped_review: number; skipped_null: number }> => {
+  const result = await regApi.confirmBatch(periodId);
+  dispatchRegistrationRequestsUpdated();
+  return result;
 };
 
 export const submitRegistration = async (formData: FormData): Promise<RegistrationRequest | null> => {
   const res = await regApi.submitRegistration(formData);
-  return normalizeRegistrationRequest(extract<unknown>(res));
+  const result = normalizeRegistrationResponse(res);
+  if (result) {
+    dispatchRegistrationRequestsUpdated();
+  }
+  return result;
 };
 
 export const getMyRegistration = async (email: string): Promise<RegistrationRequest | null> => {
   const res = await regApi.getMyRegistration(email);
   return normalizeRegistrationRequest(extract<unknown>(res));
+};
+
+export const verifyStudentPriority = async (
+  id: number,
+  status: "verified" | "rejected",
+  note?: string,
+): Promise<{ id: number; status: string; verified_at: string | null; top_priority_tier: number; total_priority_score: number; registration_status?: string; rejection_reason?: string | null }> => {
+  const { data } = await apiClient.patch(`/admin/student-priority/${id}/verify`, { status, note });
+  return data;
 };
 
 export default {
@@ -447,10 +706,17 @@ export default {
   getRegistrationRequestByIdInstant,
   assignRoomToRegistration,
   selectBedForRegistration,
+  approveBedSelectionForRegistration,
+  rejectBedSelectionForRegistration,
+  requestCheckoutForRegistration,
+  confirmCheckoutForRegistration,
+  forceCheckoutForRegistration,
+  getEffectiveBedApprovalStatus,
   getRooms,
   getRegistrationById,
   getLatestRegistrationByEmail,
   getRegistrationHistoryByEmailSemester,
+  getMyRegistrationHistory,
   updateRegistrationStatus,
   submitRegistration,
   getMyRegistration,

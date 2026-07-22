@@ -1,38 +1,27 @@
 import { create } from "zustand";
-
-type User = {
-  id: number;
-  email: string;
-  role: "admin" | "student";
-  student_id?: number | null;
-  student_code?: string | null;
-  full_name?: string | null;
-};
+import type { AuthUser } from "./types/auth.type";
+import { clearAuthStorage, getStoredAuth, setAuthStorage } from "./utils/authStorage";
 
 type AuthState = {
-  user: User | null;
+  user: AuthUser | null;
   token: string | null;
-  setAuth: (user: User, token: string) => void;
+  setAuth: (user: AuthUser, token: string) => void;
   logout: () => void;
 };
 
-// Lấy từ localStorage khi tải lại
-const storedUser = localStorage.getItem("user");
-const storedToken = localStorage.getItem("token");
+const storedAuth = getStoredAuth();
 
 export const useAuthStore = create<AuthState>((set) => ({
-  user: storedUser ? JSON.parse(storedUser) : null,
-  token: storedToken,
+  user: storedAuth?.user ?? null,
+  token: storedAuth?.token ?? null,
 
   setAuth: (user, token) => {
-    localStorage.setItem("token", token);
-    localStorage.setItem("user", JSON.stringify(user)); 
+    setAuthStorage(token, user);
     set({ user, token });
   },
 
   logout: () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user"); 
+    clearAuthStorage();
     set({ user: null, token: null });
   },
 }));

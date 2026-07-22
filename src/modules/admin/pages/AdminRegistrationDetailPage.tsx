@@ -2,8 +2,11 @@ import { motion } from "framer-motion";
 import {
   ArrowLeft,
   ArrowUp,
+  Ban,
   CheckCircle,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   CircleAlert,
   Clock3,
   ExternalLink,
@@ -26,12 +29,15 @@ import {
   type RegistrationStatus,
 } from "../data/registrationRequests";
 import { getRegistrationById } from "../../../api/registrationService";
+import { getPriorityCriteria } from "../../../api/registrationApi";
 import { createPortal } from "react-dom";
+import { formatDate } from "../../../utils/dateFormat";
 
 const statusIconMap: Record<RegistrationStatus, typeof Clock3> = {
-  pending: Clock3,
+  submitted: Clock3,
   approved: CheckCircle2,
   rejected: CircleAlert,
+  cancelled: Ban,
 };
 
 const readOnlyFieldClassName =
@@ -136,16 +142,7 @@ const formatDateDisplay = (value: string) => {
     return value;
   }
 
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  return parsed.toLocaleDateString("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  return formatDate(value);
 };
 
 const isDateField = (field: keyof RegistrationFormData) =>
@@ -158,12 +155,44 @@ export default function AdminRegistrationDetailPage() {
   const routeState = location.state as DetailRouteState | null;
   const [isScrollToTopVisible, setIsScrollToTopVisible] = useState(false);
   const [imagePreview, setImagePreview] = useState<{ src: string; title: string } | null>(null);
+  const [evidenceLightbox, setEvidenceLightbox] = useState<{ urls: string[]; index: number; title: string } | null>(null);
   const [failedDocuments, setFailedDocuments] = useState<Record<RegistrationDocumentField, boolean>>(() =>
     createEmptyDocumentErrorState(),
   );
   const [imageLoadErrors, setImageLoadErrors] = useState<Record<string, boolean>>({});
 
   const [request, setRequest] = useState<RegistrationRequest | null>(routeState?.request ?? null);
+  const [allCriteria, setAllCriteria] = useState<Array<{ id: number; code: string; name: string }>>([]);
+
+  useEffect(() => {
+    getPriorityCriteria()
+      .then((data: Array<{ id: number; code: string; name: string }>) => setAllCriteria(data))
+      .catch(() => {/* ignore */});
+  }, []);
+
+  function asyncSetRequest(next: RegistrationRequest | null) {
+    // Defer update to avoid synchronous setState in effect body which can cause cascading renders warning
+    setTimeout(() => {
+      setRequest((prev) => {
+        if (prev === next) return prev;
+        if (prev && next && prev.id === next.id) return prev;
+        return next;
+      });
+    }, 0);
+  }
+
+  function asyncSetFailedDocuments(next: Record<RegistrationDocumentField, boolean>) {
+    setTimeout(() => {
+      setFailedDocuments((prev) => {
+        try {
+          if (JSON.stringify(prev) === JSON.stringify(next)) return prev;
+        } catch {
+          // fallback to update
+        }
+        return next;
+      });
+    }, 0);
+  }
 
   useEffect(() => {
     const id = Number(registrationId);
@@ -216,18 +245,25 @@ export default function AdminRegistrationDetailPage() {
         setRequest(res);
         setFailedDocuments(createEmptyDocumentErrorState());
         setImageLoadErrors({});
-      } catch (err) {
+      } catch (error) {
         if (cancelled) return;
-        console.log('[AdminRegistrationDetailPage] API error:', err);
-        setRequest(null);
-        setFailedDocuments(createEmptyDocumentErrorState());
+        console.log('[AdminRegistrationDetailPage] API error:', error);
+        asyncSetRequest(null);
+        asyncSetFailedDocuments(createEmptyDocumentErrorState());
       }
     };
 
     void load();
 
+    const refreshRequest = () => {
+      void load();
+    };
+
+    window.addEventListener("ktx-registrations-updated", refreshRequest);
+
     return () => {
       cancelled = true;
+      window.removeEventListener("ktx-registrations-updated", refreshRequest);
     };
   }, [registrationId, routeState?.request, routeState?.returnToModal]);
 
@@ -251,6 +287,35 @@ export default function AdminRegistrationDetailPage() {
       document.body.style.overflow = previousOverflow;
     };
   }, [imagePreview]);
+
+  useEffect(() => {
+    if (!evidenceLightbox) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setEvidenceLightbox(null);
+      } else if (event.key === "ArrowRight") {
+        setEvidenceLightbox((prev) =>
+          prev ? { ...prev, index: (prev.index + 1) % prev.urls.length } : prev,
+        );
+      } else if (event.key === "ArrowLeft") {
+        setEvidenceLightbox((prev) =>
+          prev ? { ...prev, index: (prev.index - 1 + prev.urls.length) % prev.urls.length } : prev,
+        );
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [evidenceLightbox]);
 
   useEffect(() => {
     const scrollContainer = document.querySelector(".auth-scrollbar") as HTMLElement | null;
@@ -322,9 +387,9 @@ export default function AdminRegistrationDetailPage() {
 
     let rawUrl = "";
     if (field === "portraitPhoto") {
-      rawUrl = request.avatarUrl || request.documents?.[field] || "";
-      console.log('[resolveDocumentSrc] portraitPhoto - request.avatarUrl:', request.avatarUrl);
+      rawUrl = request.documents?.portraitPhoto || request.avatarUrl || "";
       console.log('[resolveDocumentSrc] portraitPhoto - request.documents.portraitPhoto:', request.documents?.portraitPhoto);
+      console.log('[resolveDocumentSrc] portraitPhoto - request.avatarUrl:', request.avatarUrl);
       console.log('[resolveDocumentSrc] portraitPhoto - rawUrl:', rawUrl);
     } else if (field === "cccdFrontPhoto") {
       rawUrl = request.cccdFrontUrl || request.documents?.[field] || "";
@@ -452,9 +517,11 @@ export default function AdminRegistrationDetailPage() {
 
   const familyFields: FieldConfig[] = [
     { name: "father_name", label: "Họ tên cha" },
+    { name: "father_birth_year", label: "Năm sinh cha" },
     { name: "father_phone", label: "SĐT cha", type: "tel" },
     { name: "father_job", label: "Nghề nghiệp cha" },
     { name: "mother_name", label: "Họ tên mẹ" },
+    { name: "mother_birth_year", label: "Năm sinh mẹ" },
     { name: "mother_phone", label: "SĐT mẹ", type: "tel" },
     { name: "mother_job", label: "Nghề nghiệp mẹ" },
     { name: "familyContactAddress", label: "Địa chỉ liên hệ cha/mẹ", fullWidth: true },
@@ -504,6 +571,17 @@ export default function AdminRegistrationDetailPage() {
               </span>
             </div>
           </div>
+
+          {request.status === "cancelled" && (request.cancelled_at || request.cancellation_reason || request.cancelled_by) ? (
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              <p className="font-semibold text-slate-700">Thông tin hủy</p>
+              {request.cancelled_at ? <p className="mt-1">Thời điểm: {formatDate(request.cancelled_at)}</p> : null}
+              {request.cancellation_reason ? <p className="mt-1">Lý do: {request.cancellation_reason}</p> : null}
+              {request.cancelled_by ? (
+                <p className="mt-1">Người hủy: {request.cancelled_by === "candidate" ? "Sinh viên tự hủy" : request.cancelled_by}</p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </motion.div>
 
@@ -568,7 +646,7 @@ export default function AdminRegistrationDetailPage() {
                     <div>
                       <p className="text-sm font-semibold text-[#204178]">{documentLabels[field]}</p>
                     </div>
-                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(180deg,#eef4ff_0%,#e2ecff_100%)] text-[#244CB8]">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(180deg,#eef4ff_0%,#e2ecff_100%)] text-[#244CB8]">
                       <CheckCircle2 className="h-5 w-5" />
                     </div>
                   </div>
@@ -669,6 +747,109 @@ export default function AdminRegistrationDetailPage() {
             )
           : null}
 
+        {evidenceLightbox
+          ? createPortal(
+              <div
+                className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/80 p-4 backdrop-blur-[2px]"
+                role="dialog"
+                aria-modal="true"
+                aria-label={evidenceLightbox.title}
+                onMouseDown={(event) => {
+                  if (event.target === event.currentTarget) {
+                    setEvidenceLightbox(null);
+                  }
+                }}
+              >
+                <div className="flex w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-white shadow-[0_30px_80px_rgba(0,0,0,0.35)]">
+                  <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-800">{evidenceLightbox.title}</p>
+                      <a
+                        href={evidenceLightbox.urls[evidenceLightbox.index]}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-[#244CB8] hover:underline"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        Mở ảnh {evidenceLightbox.index + 1}/{evidenceLightbox.urls.length} ở tab mới
+                      </a>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEvidenceLightbox(null)}
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] transition hover:bg-slate-50"
+                      aria-label="Đóng xem ảnh"
+                      title="Đóng (Esc)"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  <div className="relative flex max-h-[calc(100vh-10rem)] items-center justify-center bg-slate-50 p-4 sm:p-6">
+                    <img
+                      src={evidenceLightbox.urls[evidenceLightbox.index]}
+                      alt={`${evidenceLightbox.title} - ảnh ${evidenceLightbox.index + 1}`}
+                      className="max-h-[calc(100vh-16rem)] w-full object-contain"
+                    />
+
+                    {evidenceLightbox.urls.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEvidenceLightbox((prev) =>
+                              prev ? { ...prev, index: (prev.index - 1 + prev.urls.length) % prev.urls.length } : prev,
+                            )
+                          }
+                          className="absolute left-3 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-slate-700 shadow-md transition hover:bg-white"
+                          aria-label="Ảnh trước"
+                          title="Ảnh trước (←)"
+                        >
+                          <ChevronLeft className="h-6 w-6" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEvidenceLightbox((prev) =>
+                              prev ? { ...prev, index: (prev.index + 1) % prev.urls.length } : prev,
+                            )
+                          }
+                          className="absolute right-3 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-slate-700 shadow-md transition hover:bg-white"
+                          aria-label="Ảnh sau"
+                          title="Ảnh sau (→)"
+                        >
+                          <ChevronRight className="h-6 w-6" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  {evidenceLightbox.urls.length > 1 && (
+                    <div className="flex items-center justify-center gap-2 overflow-x-auto border-t border-slate-200 bg-white px-4 py-3">
+                      {evidenceLightbox.urls.map((url, i) => (
+                        <button
+                          key={url}
+                          type="button"
+                          onClick={() => setEvidenceLightbox((prev) => (prev ? { ...prev, index: i } : prev))}
+                          className={`h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 transition ${
+                            i === evidenceLightbox.index
+                              ? "border-[#244CB8] ring-2 ring-[#244CB8]/30"
+                              : "border-slate-200 opacity-70 hover:opacity-100"
+                          }`}
+                          aria-label={`Xem ảnh ${i + 1}`}
+                          aria-current={i === evidenceLightbox.index}
+                        >
+                          <img src={url} alt={`Ảnh ${i + 1}`} loading="lazy" className="h-full w-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>,
+              document.body,
+            )
+          : null}
+
         <motion.div
           transition={{ duration: 0.22 }}
           className="space-y-4 rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] sm:p-7"
@@ -709,6 +890,105 @@ export default function AdminRegistrationDetailPage() {
 
         <motion.div
           transition={{ duration: 0.22 }}
+          className="space-y-4 rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] sm:p-7"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-[#2d58c4] bg-[radial-gradient(circle_at_30%_30%,#2347a8_0%,#1b3e97_58%,#17347e_100%)] text-[#b7ccff] shadow-[inset_0_1px_0_rgba(132,166,244,0.30),0_12px_24px_rgba(36,76,184,0.18)]">
+              <ArrowUp className="h-5 w-5 stroke-[2.2]" />
+            </div>
+            <div>
+              <span className="text-xs font-semibold uppercase tracking-wide text-[#2F83C9]">Bước 4</span>
+              <h2 className="text-lg font-semibold text-[#1F3152]">Tiêu chí ưu tiên</h2>
+              {(() => {
+                const n = (request.priority_criteria ?? []).length;
+                return (
+                  <p className="mt-0.5 text-sm text-[#5C7094]">
+                    {n > 0 ? `Sinh viên đã đăng ký ${n} diện ưu tiên` : 'Sinh viên không đăng ký diện ưu tiên nào'}
+                  </p>
+                );
+              })()}
+            </div>
+          </div>
+          <div className="space-y-2.5">
+            {allCriteria.map((c) => {
+              const studentEntry = (request.priority_criteria ?? []).find((p) => p.criteria_id === c.id);
+              return (
+                <div
+                  key={c.id}
+                  className={`rounded-xl border p-3.5 ${studentEntry ? 'border-[#c1d6f4] bg-[#f5f9ff]' : 'border-[#e8eef7] bg-[#fafbfd]'}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      readOnly
+                      disabled
+                      checked={Boolean(studentEntry)}
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-2 border-[#b7ccee] accent-[#244CB8] disabled:cursor-default disabled:opacity-100"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className={`text-sm font-semibold ${studentEntry ? 'text-[#1F3152]' : 'text-[#8095B4]'}`}>
+                          [{c.code}] {c.name}
+                        </p>
+                        {studentEntry && (
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                            studentEntry.status === 'verified' || studentEntry.status === 'approved'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : studentEntry.status === 'rejected'
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {studentEntry.status === 'verified' || studentEntry.status === 'approved'
+                              ? 'Đã xác minh'
+                              : studentEntry.status === 'rejected'
+                                ? 'Từ chối'
+                                : 'Chờ duyệt'}
+                          </span>
+                        )}
+                      </div>
+                      {studentEntry && studentEntry.evidence_urls && studentEntry.evidence_urls.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2.5">
+                          {studentEntry.evidence_urls.map((url, i) => (
+                            <button
+                              key={url}
+                              type="button"
+                              onClick={() =>
+                                setEvidenceLightbox({
+                                  urls: studentEntry.evidence_urls,
+                                  index: i,
+                                  title: `[${c.code}] ${c.name}`,
+                                })
+                              }
+                              className="group relative h-24 w-24 overflow-hidden rounded-xl border border-[#cfdcf0] bg-white shadow-sm transition hover:border-[#244CB8] hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#244CB8]/40"
+                              title={`Xem minh chứng ${i + 1}`}
+                            >
+                              <img
+                                src={url}
+                                alt={`Minh chứng ${i + 1} - ${c.name}`}
+                                loading="lazy"
+                                className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.06]"
+                              />
+                              <span className="absolute inset-0 bg-slate-900/0 transition group-hover:bg-slate-900/10" />
+                              <span className="absolute bottom-1 right-1 rounded-md bg-slate-900/65 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                                {i + 1}/{studentEntry.evidence_urls.length}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {allCriteria.length === 0 && (
+              <p className="py-2 text-sm text-[#8ca4c4]">Đang tải danh sách tiêu chí...</p>
+            )}
+          </div>
+        </motion.div>
+
+        <motion.div
+          transition={{ duration: 0.22 }}
           className="space-y-4 rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f3f8ff_68%,#edf5ff_100%)] p-6 shadow-[0_14px_30px_rgba(36,76,184,0.08)] sm:p-7 xl:col-span-2"
         >
           <div className="flex items-start gap-3">
@@ -740,7 +1020,7 @@ export default function AdminRegistrationDetailPage() {
               checked={commitmentConfirmed}
               readOnly
               disabled
-              className="mt-1 h-5 w-5 flex-shrink-0 rounded-lg border-2 border-[#b7ccee] bg-white text-[#244CB8] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] accent-[#244CB8]"
+              className="mt-1 h-5 w-5 shrink-0 rounded-lg border-2 border-[#b7ccee] bg-white text-[#244CB8] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] accent-[#244CB8]"
             />
             <div className="flex-1 text-sm leading-6 text-[#324B76]">
               <p>Tôi cam kết thực hiện đúng nội quy, quy định của Nhà trường và chịu trách nhiệm về các thông tin đã kê khai. Nếu vi phạm, tôi xin chịu hoàn toàn trách nhiệm trước Nhà trường và pháp luật.</p>

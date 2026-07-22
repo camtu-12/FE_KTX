@@ -1,6 +1,14 @@
-export type RegistrationStatus = "pending" | "approved" | "rejected";
+export type RegistrationStatus = "submitted" | "approved" | "rejected" | "cancelled";
 export type RegistrationFilterStatus = "all" | RegistrationStatus;
+export type AutoDecision = "approve" | "reject" | "review" | null;
 export type RegistrationDocumentField = "portraitPhoto" | "cccdFrontPhoto" | "cccdBackPhoto";
+export type BedApprovalStatus = "pending" | "approved" | "rejected";
+
+export type BlacklistInfo = {
+  reason?: string | null;
+  source?: string | null;
+  created_at?: string | null;
+};
 
 export type RegistrationFormData = {
   mssv: string;
@@ -18,9 +26,11 @@ export type RegistrationFormData = {
   cccdIssuePlace: string;
   address: string;
   father_name: string;
+  father_birth_year: string;
   father_phone: string;
   father_job: string;
   mother_name: string;
+  mother_birth_year: string;
   mother_phone: string;
   mother_job: string;
   familyContactAddress: string;
@@ -43,8 +53,21 @@ export type RegistrationRequest = {
   cccdFrontUrl?: string;
   cccdBackUrl?: string;
   commitmentConfirmed?: boolean;
+  occupancy_id?: number | null;
   assigned_room_id?: number | null;
+  assigned_bed_id?: number | null;
   bedId?: number | null;
+  bed_approval_status?: BedApprovalStatus | null;
+  occupancy_status?: string | null;
+  occupancy_reason?: string | null;
+  check_in_date?: string | null;
+  check_out_date?: string | null;
+  checkout_request?: {
+    id: number;
+    reason: string;
+    expected_leave_date: string;
+    created_at: string;
+  } | null;
   student?: {
     account?: {
       student_code?: string;
@@ -52,6 +75,33 @@ export type RegistrationRequest = {
       email?: string;
     };
   };
+  priority_criteria?: Array<{
+    id: number;
+    criteria_id: number;
+    code: string;
+    name: string;
+    evidence_urls: string[];
+    status: string;
+  }>;
+  auto_decision?: AutoDecision;
+  auto_decision_reason?: string | null;
+  source_dorm_reservation_id?: number | null;
+  registration_period_id?: number | null;
+  bed_selection_days?: number | null;
+  bed_selection_deadline?: string | null;
+  room_assigned_at?: string | null;
+  blacklist?: BlacklistInfo | null;
+  channel?: 'main' | 'rolling' | null;
+  period_name?: string | null;
+  period_status?: string | null;
+  registration_type?: string | null;
+  top_priority_tier?: number | null;
+  total_priority_score?: number | null;
+  approved_at?: string | null;
+  current_year?: number | null;
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
+  cancelled_by?: string | null;
 };
 
 const createPreviewSvg = (title: string, subtitle: string, accent: string) =>
@@ -113,7 +163,7 @@ export const statusMap: Record<
     className: string;
   }
 > = {
-  pending: {
+  submitted: {
     label: "Chờ duyệt",
     className: "border border-amber-200 bg-amber-50 text-amber-700",
   },
@@ -124,6 +174,10 @@ export const statusMap: Record<
   rejected: {
     label: "Bị từ chối",
     className: "border border-rose-200 bg-rose-50 text-rose-700",
+  },
+  cancelled: {
+    label: "Đã hủy",
+    className: "border border-slate-200 bg-slate-50 text-slate-500",
   },
 };
 
@@ -179,4 +233,58 @@ export const registrationRequests: RegistrationRequest[] = [];
 */
 
 export const getRegistrationRequestById = () => null;
+
+const isBrowser = () => typeof window !== "undefined";
+
+export const getRegistrationRequestsSeed = () => registrationRequests;
+
+export const getStoredRegistrationRequests = (): RegistrationRequest[] => [];
+
+export const writeStoredRegistrationRequests = (requests: RegistrationRequest[]) => {
+  return requests;
+};
+
+export const upsertStoredRegistrationRequest = (nextRequest: RegistrationRequest): RegistrationRequest[] => {
+  const requests = [...getStoredRegistrationRequests()];
+  const index = requests.findIndex((request) => request.id === nextRequest.id);
+
+  if (index >= 0) {
+    requests[index] = nextRequest;
+  } else {
+    requests.push(nextRequest);
+  }
+
+  return writeStoredRegistrationRequests(requests);
+};
+
+export const replaceStoredRegistrationRequests = (nextRequests: RegistrationRequest[]) =>
+  writeStoredRegistrationRequests(nextRequests);
+
+export const dispatchRegistrationRequestsUpdated = () => {
+  if (!isBrowser()) {
+    return;
+  }
+
+  window.dispatchEvent(new Event("ktx-registrations-updated"));
+};
+
+export const readRegistrationRequestById = (id: number): RegistrationRequest | null => {
+  if (!Number.isFinite(id)) {
+    return null;
+  }
+
+  return getStoredRegistrationRequests().find((request) => request.id === id) ?? null;
+};
+
+export const readLatestRegistrationByEmail = (email: string): RegistrationRequest | null => {
+  const normalizedEmail = email.trim().toLowerCase();
+
+  if (!normalizedEmail) {
+    return null;
+  }
+
+  return getStoredRegistrationRequests()
+    .filter((request) => request.email.trim().toLowerCase() === normalizedEmail)
+    .sort((a, b) => b.id - a.id)[0] ?? null;
+};
 
