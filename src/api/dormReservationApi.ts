@@ -1,7 +1,7 @@
 import axios from "axios";
 import apiClient from "../lib/apiClient";
-import type { DormCapacitySummary } from "../types/dormCapacity";
-export type { DormCapacitySummary } from "../types/dormCapacity";
+import type { DormCapacityByGender } from "../types/dormCapacity";
+export type { DormCapacitySummary, DormCapacityByGender } from "../types/dormCapacity";
 
 const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
 const API_ROOT = API_BASE.endsWith("/api") ? API_BASE : `${API_BASE}/api`;
@@ -18,8 +18,9 @@ export type ReservationStatus =
   | "rejected"
   | "waitlisted"
   | "converted"
-  | "expired"
-  | "cancelled";
+  | "expired";
+
+export type DormReservationAutoDecision = "approve" | "waitlist" | "reject" | "review";
 
 export type ReservationProgress = {
   reservationCode: string | null;
@@ -29,8 +30,6 @@ export type ReservationProgress = {
   periodName: string | null;
   periodEndDate?: string | null;
   rejectionReason?: string | null;
-  cancellationReason?: string | null;
-  cancelledAt?: string | null;
   expirationReason?: string | null;
   canCancel?: boolean;
   registrationStatus?: string | null;
@@ -53,8 +52,6 @@ type ApiReservationProgress = {
   period_name: string | null;
   period_end_date?: string | null;
   rejection_reason?: string | null;
-  cancellation_reason?: string | null;
-  cancelled_at?: string | null;
   expiration_reason?: string | null;
   can_cancel?: boolean;
   registration_status?: string | null;
@@ -78,8 +75,6 @@ function normalizeReservationProgress(d: ApiReservationProgress): ReservationPro
     periodName: d.period_name,
     periodEndDate: d.period_end_date ?? null,
     rejectionReason: d.rejection_reason ?? null,
-    cancellationReason: d.cancellation_reason ?? null,
-    cancelledAt: d.cancelled_at ?? null,
     expirationReason: d.expiration_reason ?? null,
     canCancel: d.can_cancel ?? false,
     registrationStatus: d.registration_status ?? null,
@@ -114,11 +109,10 @@ export type DormReservation = {
   reservationCode: string | null;
   studentCode: string | null;
   status: ReservationStatus;
+  autoDecision: DormReservationAutoDecision | null;
+  autoDecisionReason: string | null;
   priorityNote: string | null;
   rejectionReason: string | null;
-  cancellationReason: string | null;
-  cancelledAt: string | null;
-  cancelledBy: string | null;
   expirationReason: string | null;
   adminNote: string | null;
   avatarUrl: string | null;
@@ -171,11 +165,10 @@ type ApiReservation = {
   reservation_code: string | null;
   student_code: string | null;
   status: ReservationStatus;
+  auto_decision?: DormReservationAutoDecision | null;
+  auto_decision_reason?: string | null;
   priority_note: string | null;
   rejection_reason: string | null;
-  cancellation_reason?: string | null;
-  cancelled_at?: string | null;
-  cancelled_by?: string | null;
   expiration_reason?: string | null;
   admin_note: string | null;
   avatar_url: string | null;
@@ -222,6 +215,15 @@ type ApiReservation = {
 };
 
 function normalizeReservation(r: ApiReservation): DormReservation {
+  const reservationPriorities = r.reservation_priorities?.map(normalizePriority);
+  const fallbackPriorityEvidenceStatus = reservationPriorities?.some((priority) => priority.status === "pending")
+    ? "pending"
+    : reservationPriorities?.some((priority) => priority.status === "verified")
+      ? "verified"
+      : reservationPriorities?.some((priority) => priority.status === "rejected")
+        ? "rejected"
+        : null;
+
   return {
     id: r.id,
     admissionCandidateId: r.admission_candidate_id,
@@ -229,11 +231,10 @@ function normalizeReservation(r: ApiReservation): DormReservation {
     reservationCode: r.reservation_code,
     studentCode: r.student_code,
     status: r.status,
+    autoDecision: r.auto_decision ?? null,
+    autoDecisionReason: r.auto_decision_reason ?? null,
     priorityNote: r.priority_note,
     rejectionReason: r.rejection_reason,
-    cancellationReason: r.cancellation_reason ?? null,
-    cancelledAt: r.cancelled_at ?? null,
-    cancelledBy: r.cancelled_by ?? null,
     expirationReason: r.expiration_reason ?? null,
     adminNote: r.admin_note,
     avatarUrl: r.avatar_url,
@@ -278,9 +279,9 @@ function normalizeReservation(r: ApiReservation): DormReservation {
           endDate: r.period.end_date ?? null,
         }
       : undefined,
-    reservationPriorities: r.reservation_priorities?.map(normalizePriority),
-    hasPriorityEvidence: r.has_priority_evidence ?? false,
-    priorityEvidenceStatus: r.priority_evidence_status ?? null,
+    reservationPriorities,
+    hasPriorityEvidence: r.has_priority_evidence ?? Boolean(reservationPriorities?.length),
+    priorityEvidenceStatus: r.priority_evidence_status ?? fallbackPriorityEvidenceStatus,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -397,11 +398,10 @@ export const createDormReservation = async (payload: {
       reservationCode: d.reservation.reservation_code,
       studentCode: null,
       status: d.reservation.status,
+      autoDecision: null,
+      autoDecisionReason: null,
       priorityNote: null,
       rejectionReason: null,
-      cancellationReason: null,
-      cancelledAt: null,
-      cancelledBy: null,
       expirationReason: null,
       adminNote: null,
       avatarUrl: null,
@@ -427,9 +427,13 @@ export const getAdminDormReservations = async (params?: {
   status?: ReservationStatus | "";
   statuses?: ReservationStatus[];
   registration_status?: "cancelled" | "not_cancelled";
+  self_cancelled?: "yes" | "no";
   registration_period_id?: number | "";
   expiration_reason?: string | "";
+  auto_decision?: DormReservationAutoDecision | "";
+  auto_decision_empty?: boolean;
   priority_evidence_status?: "pending" | "verified" | "rejected" | "";
+  gender?: "male" | "female" | "";
   page?: number;
 }): Promise<PaginatedResponse<DormReservation>> => {
   const res = await apiClient.get("/admin/dorm-reservations", {
@@ -474,8 +478,18 @@ export const waitlistReservation = async (id: number, adminNote?: string): Promi
   return { message: d.message, reservation: normalizeReservation(d.reservation) };
 };
 
-export const cancelReservation = async (id: number, reason: string, adminNote?: string): Promise<{ message: string; reservation: DormReservation }> => {
-  const res = await apiClient.put(`/admin/dorm-reservations/${id}/cancel`, { reason, admin_note: adminNote });
+export const patchReservationAutoDecision = async (
+  id: number,
+  decision: DormReservationAutoDecision,
+  reason?: string,
+): Promise<{ message: string; reservation: DormReservation }> => {
+  const res = await apiClient.patch(`/admin/dorm-reservations/${id}/auto-decision`, { decision, reason });
+  const d = res.data as { message: string; reservation: ApiReservation };
+  return { message: d.message, reservation: normalizeReservation(d.reservation) };
+};
+
+export const confirmReservationDecision = async (id: number): Promise<{ message: string; reservation: DormReservation }> => {
+  const res = await apiClient.post(`/admin/dorm-reservations/${id}/confirm-decision`);
   const d = res.data as { message: string; reservation: ApiReservation };
   return { message: d.message, reservation: normalizeReservation(d.reservation) };
 };
@@ -677,20 +691,41 @@ export const rankDormReservations = async (
   registrationPeriodId: number,
 ): Promise<{
   message: string;
-  free_beds: number;
+  free_beds_by_gender: { male: number; female: number };
   approved: number;
   waitlist: number;
-  capacity?: DormCapacitySummary;
+  capacity_by_gender?: DormCapacityByGender;
 }> => {
   const res = await apiClient.post("/admin/dorm-reservations/rank", {
     registration_period_id: registrationPeriodId,
   });
   return res.data as {
     message: string;
-    free_beds: number;
+    free_beds_by_gender: { male: number; female: number };
     approved: number;
     waitlist: number;
-    capacity?: DormCapacitySummary;
+    capacity_by_gender?: DormCapacityByGender;
+  };
+};
+
+export const confirmRankedDormReservations = async (
+  registrationPeriodId: number,
+): Promise<{
+  message: string;
+  approved: number;
+  waitlisted: number;
+  rejected: number;
+  converted: number;
+}> => {
+  const res = await apiClient.post("/admin/dorm-reservations/confirm-ranked", {
+    registration_period_id: registrationPeriodId,
+  });
+  return res.data as {
+    message: string;
+    approved: number;
+    waitlisted: number;
+    rejected: number;
+    converted: number;
   };
 };
 

@@ -411,7 +411,7 @@ function RoomInfoCard({ occupancy }: { occupancy: CurrentOccupancy }) {
               className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-[14px] bg-[#2563eb] px-4 text-base font-semibold text-white shadow-[0_8px_18px_rgba(37,99,235,0.18)] transition hover:bg-[#1d4ed8] lg:flex-none"
             >
               <CalendarClock className="h-5 w-5" />
-              Gia hạn hợp đồng
+              Gia hạn lưu trú
             </Link>
           )}
         </div>

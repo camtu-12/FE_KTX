@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import { CheckCircle2, ImagePlus, Loader2, X, XCircle } from "lucide-react";
 import { fetchStaticPage, updateStaticPage } from "../../../api/staticPageApi";
 
@@ -137,20 +138,31 @@ export default function AdminContentAboutPage() {
         </p>
       </motion.div>
 
-      {/* Toast */}
-      {toast && (
-        <div
-          className={`flex items-center gap-3 rounded-[20px] border px-4 py-3 text-sm font-semibold shadow-[0_12px_28px_rgba(36,76,184,0.09)] ${
-            toast.type === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-              : "border-rose-200 bg-rose-50 text-rose-700"
-          }`}
-        >
-          {toast.type === "success"
-            ? <CheckCircle2 className="h-5 w-5 shrink-0" />
-            : <XCircle     className="h-5 w-5 shrink-0" />}
-          {toast.message}
-        </div>
+      {/* Toast — khung nổi giữa màn hình */}
+      {createPortal(
+        <AnimatePresence>
+          {toast && (
+            <div className="fixed inset-0 z-90 flex items-center justify-center bg-[rgba(14,25,48,0.35)] px-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 12 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className={`flex items-center gap-3 rounded-[20px] border bg-white px-6 py-4 text-sm font-semibold shadow-[0_24px_60px_rgba(15,23,42,0.25)] ${
+                  toast.type === "success"
+                    ? "border-emerald-200 text-emerald-700"
+                    : "border-rose-200 text-rose-700"
+                }`}
+              >
+                {toast.type === "success"
+                  ? <CheckCircle2 className="h-5 w-5 shrink-0" />
+                  : <XCircle     className="h-5 w-5 shrink-0" />}
+                {toast.message}
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>,
+        document.body,
       )}
 
       {loading ? (

@@ -15,15 +15,7 @@ type LookupState = {
   reservationCode?: string;
 } | null;
 
-const getNextSteps = (status: ReservationStatus, registrationCancelled = false): string[] => {
-  if (registrationCancelled) {
-    return [
-      "Đơn đăng ký nội trú được tạo từ hồ sơ giữ chỗ này đã bị hủy.",
-      "Bạn hiện không còn đăng ký lưu trú KTX có hiệu lực.",
-      "Vui lòng liên hệ Ban quản lý KTX nếu cần hỗ trợ thêm.",
-    ];
-  }
-
+const getNextSteps = (status: ReservationStatus): string[] => {
   if (status === "approved") {
     return [
       "Chờ trường xác nhận nhập học.",
@@ -61,13 +53,6 @@ const getNextSteps = (status: ReservationStatus, registrationCancelled = false):
       "Hồ sơ giữ chỗ không được duyệt.",
       "Nếu đợt đăng ký vẫn còn mở và đủ điều kiện, bạn có thể nộp hồ sơ giữ chỗ mới.",
       "Liên hệ Ban quản lý KTX nếu cần hỗ trợ thêm.",
-    ];
-  }
-
-  if (status === "cancelled") {
-    return [
-      "Hồ sơ giữ chỗ đã bị hủy.",
-      "Nếu đợt đăng ký vẫn còn mở và đủ điều kiện, bạn cần tạo hồ sơ giữ chỗ mới.",
     ];
   }
 
@@ -132,8 +117,6 @@ export default function FreshmanReservationStatusPage() {
     setError(null);
     window.setTimeout(() => inputRef.current?.focus(), 0);
   };
-
-  const registrationCancelled = reservation?.status === "converted" && reservation.registrationStatus === "cancelled";
 
   return (
     <div className="relative min-h-[calc(100vh-110px)] overflow-hidden bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] px-4 py-6 sm:py-8">
@@ -251,7 +234,7 @@ export default function FreshmanReservationStatusPage() {
             <div className="rounded-[22px] border border-[#cfdcf0] bg-[linear-gradient(180deg,#ffffff_0%,#f6faff_100%)] p-5 shadow-[0_14px_30px_rgba(36,76,184,0.08)] sm:p-6">
               <h2 className="text-lg font-semibold text-[#1F3152]">Bước tiếp theo</h2>
               <ul className="mt-3 space-y-2 text-sm font-medium leading-6 text-[#5C7094]">
-                {getNextSteps(reservation.status, registrationCancelled).map((step) => (
+                {getNextSteps(reservation.status).map((step) => (
                   <li key={step} className="flex gap-2">
                     <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#244CB8]" />
                     <span>{step}</span>

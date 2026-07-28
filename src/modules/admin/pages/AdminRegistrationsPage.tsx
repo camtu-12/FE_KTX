@@ -87,6 +87,12 @@ export default function AdminRegistrationsPage() {
   const [verifyModalId, setVerifyModalId] = useState<number | null>(null);
   const [submittingPriorityIds, setSubmittingPriorityIds] = useState<Set<number>>(new Set());
   const [verifyAllDoneToast, setVerifyAllDoneToast] = useState(false);
+  const [priorityRejectDialog, setPriorityRejectDialog] = useState<{
+    priorityId: number;
+    registrationId: number;
+    criteriaLabel: string;
+  } | null>(null);
+  const [priorityRejectionInput, setPriorityRejectionInput] = useState("");
 
   // Filter
   const [filterPeriodId, setFilterPeriodId] = useState<number | "all">(() => {
@@ -98,6 +104,7 @@ export default function AdminRegistrationsPage() {
   const [processedFilter, setProcessedFilter] = useState<ProcessedFilter>("all");
   const [openSubFilterMenu, setOpenSubFilterMenu] = useState<"pending" | "done" | null>(null);
   const [periods, setPeriods] = useState<RegistrationPeriodData[]>([]);
+  const [now, setNow] = useState(() => new Date());
 
   // "Đổi đề xuất" dropdown
   const [openDropdownId, setOpenDropdownId] = useState<number | null>(null);
@@ -110,6 +117,11 @@ export default function AdminRegistrationsPage() {
       setSearchParams({}, { replace: true });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(timer);
   }, []);
 
   // ─── Load ───────────────────────────────────────────────
@@ -246,6 +258,18 @@ export default function AdminRegistrationsPage() {
     [rollingDoneItems, processedFilter],
   );
 
+  // Hạn cuối THẬT (không phải dự kiến) — LUÔN là 17:00 của end_date, dùng chung công thức
+  // với AdminRegistrationPeriodsPage.tsx (cùng quy tắc BE ở admissionDeadline()) — nút "Xác
+  // nhận tất cả" ở đây trước đây không hề check deadline, cho bấm được trước hạn dù backend
+  // vẫn chặn (422), gây trải nghiệm xấu: tưởng xong việc rồi mới thấy báo lỗi (báo cáo 28/07).
+  function admissionDeadline(endDate: string | null | undefined): Date | null {
+    if (!endDate) return null;
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(endDate);
+    if (!match) return null;
+    const [, y, m, d] = match;
+    return new Date(Number(y), Number(m) - 1, Number(d), 17, 0, 0);
+  }
+
   // Processing periods banner (main tab — "Chờ xác nhận" sub-filter)
   const mainPeriodGroups = useMemo(() => {
     const map = new Map<number, { periodId: number; periodName: string; periodStatus: string; approveCount: number; rejectCount: number; nullCount: number }>();
@@ -315,9 +339,13 @@ export default function AdminRegistrationsPage() {
     if (!rejectDialog || !rejectionInput.trim()) return;
     setIsSubmitting(true);
     try {
-      await patchAutoDecision(rejectDialog.id, "reject", rejectionInput.trim());
-      const updated = await confirmSingleRegistration(rejectDialog.id);
-      updateLocalRequest(updated);
+      const updatedDecision = await patchAutoDecision(rejectDialog.id, "reject", rejectionInput.trim());
+      if (rejectDialog.fromReview) {
+        const updated = await confirmSingleRegistration(rejectDialog.id);
+        updateLocalRequest(updated);
+      } else {
+        updateLocalRequest(updatedDecision);
+      }
     } finally {
       setIsSubmitting(false);
       setRejectDialog(null);
@@ -357,10 +385,10 @@ export default function AdminRegistrationsPage() {
     (document.querySelector(".auth-scrollbar") as HTMLElement | null)?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleVerifyPriority = async (priorityId: number, registrationId: number, status: "verified" | "rejected") => {
+  const handleVerifyPriority = async (priorityId: number, registrationId: number, status: "verified" | "rejected", note?: string) => {
     setSubmittingPriorityIds((prev) => new Set(prev).add(priorityId));
     try {
-      const res = await verifyStudentPriority(priorityId, status);
+      const res = await verifyStudentPriority(priorityId, status, note);
       setRequests((prev) =>
         prev.map((r) => {
           if (r.id !== registrationId) return r;
@@ -396,6 +424,18 @@ export default function AdminRegistrationsPage() {
         return next;
       });
     }
+  };
+
+  const handleConfirmPriorityReject = async () => {
+    if (!priorityRejectDialog || !priorityRejectionInput.trim()) return;
+    await handleVerifyPriority(
+      priorityRejectDialog.priorityId,
+      priorityRejectDialog.registrationId,
+      "rejected",
+      priorityRejectionInput.trim(),
+    );
+    setPriorityRejectDialog(null);
+    setPriorityRejectionInput("");
   };
 
   // Derived from updated requests state so it always reflects latest verify results
@@ -534,20 +574,11 @@ export default function AdminRegistrationsPage() {
     ) : null;
 
   const renderDropdown = (r: RegistrationRequest) => {
-    // Registration nguồn giữ chỗ tân sinh viên đã có suất được DormReservation approved giữ
-    // sẵn — backend chặn đổi đề xuất rời khỏi 'approve' (xem patchAutoDecision()), nên không
-    // hiện dropdown đổi đề xuất, tránh admin bấm rồi gặp lỗi.
-    if (hasDormReservationSource(r)) {
-      return (
-        <span
-          className="inline-flex h-10 min-w-[132px] cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-[#e2e8f5] bg-[#f5f7fb] px-4 text-[13px] font-semibold text-[#9aa7c2]"
-          title="Đã có suất giữ chỗ từ hồ sơ giữ chỗ tân sinh viên — chỉ có thể Xác nhận, không đổi đề xuất."
-        >
-          Đã khóa đề xuất
-        </span>
-      );
-    }
-
+    // Trước đây khóa cứng dropdown cho Registration nguồn giữ chỗ (không cho đổi đề xuất
+    // rời khỏi 'approve'), vì sợ để lại DormReservation approved dở dang. Giờ backend đã tự
+    // xử lý chuyển DormReservation nguồn về waitlisted + báo thí sinh khi đề xuất đổi thành
+    // reject (xem patchAutoDecision()/confirmSingle()/confirmBatch()), nên admin đổi đề xuất
+    // bình thường như mọi đơn khác.
     return (
       <div className="relative" ref={openDropdownId === r.id ? dropdownRef : null}>
         <button
@@ -564,7 +595,15 @@ export default function AdminRegistrationsPage() {
               <button
                 key={opt}
                 type="button"
-                onClick={() => void handlePatchAutoDecision(r.id, opt)}
+                onClick={() => {
+                  if (opt === "reject") {
+                    setRejectDialog({ id: r.id, fromReview: false });
+                    setRejectionInput(r.auto_decision === "reject" ? r.auto_decision_reason ?? "" : "");
+                    setOpenDropdownId(null);
+                    return;
+                  }
+                  void handlePatchAutoDecision(r.id, opt);
+                }}
                 className={`flex w-full items-center px-3 py-2 text-left text-xs font-medium transition hover:bg-[#f5f9ff] ${
                   opt === "approve" ? "text-emerald-700" : opt === "reject" ? "text-rose-700" : "text-amber-700"
                 }`}
@@ -803,14 +842,23 @@ export default function AdminRegistrationsPage() {
                     {g.nullCount > 0 ? ` &nbsp;⏳ ${g.nullCount} chưa xếp hạng` : ""}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  disabled={isSubmitting || g.approveCount + g.rejectCount === 0}
-                  onClick={() => setConfirmBatchInfo({ periodId: g.periodId, periodName: g.periodName, approveCount: g.approveCount, rejectCount: g.rejectCount })}
-                  className="rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(36,76,184,0.24)] transition hover:brightness-110 disabled:opacity-40"
-                >
-                  Xác nhận tất cả
-                </button>
+                {(() => {
+                  const deadline = admissionDeadline(periods.find((p) => p.id === g.periodId)?.end_date);
+                  const isBeforeDeadline = deadline ? now.getTime() < deadline.getTime() : false;
+                  return (
+                    <button
+                      type="button"
+                      disabled={isSubmitting || g.approveCount + g.rejectCount === 0 || isBeforeDeadline}
+                      title={isBeforeDeadline
+                        ? `Chưa tới hạn 17:00 ngày ${deadline ? formatDate(deadline) : ""} — chưa thể xác nhận đóng đợt.`
+                        : undefined}
+                      onClick={() => setConfirmBatchInfo({ periodId: g.periodId, periodName: g.periodName, approveCount: g.approveCount, rejectCount: g.rejectCount })}
+                      className="rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(36,76,184,0.24)] transition hover:brightness-110 disabled:opacity-40"
+                    >
+                      Xác nhận tất cả
+                    </button>
+                  );
+                })()}
               </div>
             </div>
           ))}
@@ -1108,9 +1156,7 @@ export default function AdminRegistrationsPage() {
             >
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#7d90b5]">Phản hồi hồ sơ</p>
-                  <h3 className="mt-2 text-2xl font-bold text-[#1a2d52]">Từ chối đơn đăng ký</h3>
-                  <p className="mt-2 text-sm leading-7 text-[#61779d]">Nhập lý do để sinh viên biết cần bổ sung hoặc chỉnh sửa thông tin nào.</p>
+                  <p className="text-2xl font-bold text-[#1a2d52]">Phản hồi hồ sơ</p>
                 </div>
                 <button type="button" onClick={() => setRejectDialog(null)}
                   className="rounded-xl border border-[#d5e1f2] bg-white p-2 text-[#6c80a8] transition hover:text-[#244cb8]">
@@ -1273,7 +1319,14 @@ export default function AdminRegistrationsPage() {
                               <button
                                 type="button"
                                 disabled={isSubmittingThis}
-                                onClick={() => void handleVerifyPriority(p.id, verifyModalRegistration.id, "rejected")}
+                                onClick={() => {
+                                  setPriorityRejectDialog({
+                                    priorityId: p.id,
+                                    registrationId: verifyModalRegistration.id,
+                                    criteriaLabel: `[${p.code}] ${p.name}`,
+                                  });
+                                  setPriorityRejectionInput("");
+                                }}
                                 className="rounded-xl bg-[linear-gradient(135deg,#e25569_0%,#cc3c4f_100%)] px-3 py-1.5 text-xs font-bold text-white shadow-[0_4px_10px_rgba(204,60,79,0.18)] transition hover:brightness-105 disabled:opacity-40"
                               >
                                 {isSubmittingThis ? "..." : "✗ Từ chối"}
@@ -1310,6 +1363,72 @@ export default function AdminRegistrationsPage() {
                 <button type="button" onClick={() => setVerifyModalId(null)}
                   className="rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_58%,#31a8cf_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(36,76,184,0.24)] transition hover:brightness-110">
                   Đóng
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+
+        {priorityRejectDialog ? (
+          <motion.div
+            key="priority-reject-dialog"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.22 }}
+            className="fixed inset-0 z-[78] flex items-center justify-center bg-[rgba(14,25,48,0.58)] px-4 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 16, scale: 0.98 }}
+              transition={{ duration: 0.3 }}
+              className="w-full max-w-xl rounded-[28px] border border-[#d5e1f2] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-6 shadow-[0_28px_70px_rgba(15,23,42,0.24)]"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-2xl font-bold text-[#1a2d52]">Phản hồi hồ sơ</p>
+                  <p className="mt-2 text-sm font-semibold text-[#bf3e53]">{priorityRejectDialog.criteriaLabel}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPriorityRejectDialog(null);
+                    setPriorityRejectionInput("");
+                  }}
+                  className="rounded-xl border border-[#d5e1f2] bg-white p-2 text-[#6c80a8] transition hover:text-[#244cb8]"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="mt-5">
+                <label className="mb-2 block text-xs font-bold uppercase tracking-[0.16em] text-[#667ca8]">Lý do từ chối</label>
+                <textarea
+                  value={priorityRejectionInput}
+                  onChange={(e) => setPriorityRejectionInput(e.target.value)}
+                  placeholder="Ví dụ: Minh chứng không đúng tiêu chí đã chọn, ảnh bị mờ hoặc thiếu xác nhận của địa phương..."
+                  rows={5}
+                  className="w-full rounded-2xl border border-[#d6e2f1] bg-[#f8fbff] px-4 py-3 text-sm text-[#1f3152] outline-none transition placeholder:text-[#8ea1c0] focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/12"
+                />
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPriorityRejectDialog(null);
+                    setPriorityRejectionInput("");
+                  }}
+                  className="rounded-2xl border border-[#c9d8ef] bg-white px-5 py-2.5 text-sm font-semibold text-[#4b6494] transition hover:text-[#244cb8]"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  disabled={!priorityRejectionInput.trim() || submittingPriorityIds.has(priorityRejectDialog.priorityId)}
+                  onClick={() => void handleConfirmPriorityReject()}
+                  className="rounded-2xl bg-[linear-gradient(135deg,#e25569_0%,#cc3c4f_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_20px_rgba(204,60,79,0.22)] transition hover:brightness-105 disabled:opacity-40"
+                >
+                  Xác nhận từ chối
                 </button>
               </div>
             </motion.div>

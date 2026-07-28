@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import type { ClipboardEvent, ElementType, KeyboardEvent, ReactNode } from "react";
-import { useNavigate, useOutletContext } from "react-router-dom";
+import { useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 import type { AdminLayoutOutletContext, PeriodAutocompleteSuggestion } from "../../../layouts/AdminLayout";
 import {
   AlertCircle,
@@ -29,7 +29,7 @@ import {
   processRegistrationPeriod,
   confirmBatch,
   getRegistrationPeriodCapacity,
-  type DormCapacitySummary,
+  type DormCapacityByGender,
   type RegistrationPeriodData,
   type RegistrationPeriodPayload,
 } from "../../../api/registrationApi";
@@ -113,6 +113,37 @@ function DashboardTile({ icon: Icon, label, children }: DashboardTileProps) {
 }
 
 const formatDayCount = (value?: number | null) => `${value ?? "--"} ngày`;
+
+const admissionReservationBlockerTotal = (period: RegistrationPeriodData) =>
+  (period.admission_submitted_count ?? 0)
+  + (period.admission_waitlisted_count ?? 0)
+  + (period.admission_awaiting_confirm_count ?? 0)
+  + (period.admission_approved_count ?? 0);
+
+const admissionReservationBlockerMessage = (period: RegistrationPeriodData) => {
+  const submitted = period.admission_submitted_count ?? 0;
+  const waitlisted = period.admission_waitlisted_count ?? 0;
+  const awaitingConfirm = period.admission_awaiting_confirm_count ?? 0;
+  const approved = period.admission_approved_count ?? 0;
+  const total = submitted + waitlisted + awaitingConfirm + approved;
+
+  return `Còn ${total} hồ sơ giữ chỗ tân sinh viên chưa hoàn tất trong đợt này: chờ xét ${submitted}, danh sách chờ ${waitlisted}, đã có gợi ý chờ xác nhận ${awaitingConfirm}, đã duyệt giữ chỗ nhưng chưa nhập học ${approved}. Hồ sơ "chờ xét" cần bấm Xếp hạng; "danh sách chờ" sẽ tự đôn khi có người hủy, không cần thao tác; "đã có gợi ý" chỉ cần bấm Xác nhận đề xuất (không liên quan nhập học); "chưa nhập học" cần nhập danh sách nhập học/MSSV. Bạn vẫn có thể tiếp tục xếp hạng ngay nếu muốn.`;
+};
+
+const admissionReservationBlockerStats = (period: RegistrationPeriodData) => {
+  const submitted = period.admission_submitted_count ?? 0;
+  const waitlisted = period.admission_waitlisted_count ?? 0;
+  const awaitingConfirm = period.admission_awaiting_confirm_count ?? 0;
+  const approved = period.admission_approved_count ?? 0;
+
+  return {
+    submitted,
+    waitlisted,
+    awaitingConfirm,
+    approved,
+    total: submitted + waitlisted + awaitingConfirm + approved,
+  };
+};
 
 const emptyForm: RegistrationPeriodPayload = {
   name: "",
@@ -455,12 +486,13 @@ export default function AdminRegistrationPeriodsPage() {
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [processResult, setProcessResult] = useState<{
     message: string;
-    free_beds: number;
+    free_beds_by_gender: { male: number; female: number };
     approved: number;
     waitlist: number;
-    capacity?: DormCapacitySummary;
+    promoted_from_waitlist?: number;
+    capacity_by_gender?: DormCapacityByGender;
   } | null>(null);
-  const [periodCapacity, setPeriodCapacity] = useState<Record<number, DormCapacitySummary | null>>({});
+  const [periodCapacity, setPeriodCapacity] = useState<Record<number, DormCapacityByGender | null>>({});
   const [periodCapacityLoading, setPeriodCapacityLoading] = useState<Record<number, boolean>>({});
   const [periodCapacityError, setPeriodCapacityError] = useState<Record<number, string | null>>({});
   const [capacityDetailsPeriodId, setCapacityDetailsPeriodId] = useState<number | null>(null);
@@ -471,8 +503,16 @@ export default function AdminRegistrationPeriodsPage() {
   const [highlightedPeriodId, setHighlightedPeriodId] = useState<number | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [priorityNotice, setPriorityNotice] = useState<{ message: string; periodId: number; channel: string } | null>(null);
+  const [admissionBlockerNotice, setAdmissionBlockerNotice] = useState<{
+    message: string;
+    periodName: string;
+    stats: ReturnType<typeof admissionReservationBlockerStats>;
+    onProceed: () => void;
+    actionLabel: string;
+  } | null>(null);
 
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { headerSearchValue, setPeriodAutocomplete } = useOutletContext<AdminLayoutOutletContext>();
   const periodCardRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const formFieldRefs = useRef<Partial<Record<keyof RegistrationPeriodPayload, HTMLDivElement | null>>>({});
@@ -554,12 +594,13 @@ export default function AdminRegistrationPeriodsPage() {
   }, [setPeriodAutocomplete]);
 
   const loadCapacityForPeriod = async (period: RegistrationPeriodData) => {
-    const proposedApprovedCount = period.approve_proposal_count ?? 0;
+    const proposedApprovedCountMale = period.approve_proposal_count_male ?? 0;
+    const proposedApprovedCountFemale = period.approve_proposal_count_female ?? 0;
     setPeriodCapacityLoading((prev) => ({ ...prev, [period.id]: true }));
     setPeriodCapacityError((prev) => ({ ...prev, [period.id]: null }));
 
     try {
-      const capacity = await getRegistrationPeriodCapacity(period.id, proposedApprovedCount);
+      const capacity = await getRegistrationPeriodCapacity(period.id, proposedApprovedCountMale, proposedApprovedCountFemale);
       setPeriodCapacity((prev) => ({ ...prev, [period.id]: capacity }));
     } catch {
       setPeriodCapacity((prev) => ({ ...prev, [period.id]: null }));
@@ -577,10 +618,10 @@ export default function AdminRegistrationPeriodsPage() {
     setApiError(null);
     try {
       const result = await confirmBatch(id);
-      setPeriods((prev) => prev.map((p) => (p.id === id ? { ...p, status: "closed" } : p)));
-      setProcessResult({ message: `Đã xác nhận ${result.confirmed} đơn.`, free_beds: 0, approved: result.confirmed, waitlist: result.skipped_review + result.skipped_null });
+      setProcessResult({ message: `Đã xác nhận ${result.confirmed} đơn.`, free_beds_by_gender: { male: 0, female: 0 }, approved: result.confirmed, waitlist: result.skipped_review + result.skipped_null });
+      await load(false);
       const period = periods.find((p) => p.id === id);
-      if (period) void loadCapacityForPeriod({ ...period, status: "closed", approve_proposal_count: 0 });
+      if (period) void loadCapacityForPeriod({ ...period, status: "closed", approve_proposal_count: 0, approve_proposal_count_male: 0, approve_proposal_count_female: 0 });
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Xác nhận không thành công.";
       setApiError(msg);
@@ -590,8 +631,8 @@ export default function AdminRegistrationPeriodsPage() {
     }
   };
 
-  const load = async () => {
-    setLoading(true);
+  const load = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const data = await getRegistrationPeriods();
       setPeriods(data);
@@ -601,13 +642,30 @@ export default function AdminRegistrationPeriodsPage() {
     } catch {
       setApiError("Không thể tải danh sách đợt đăng ký.");
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
   useEffect(() => {
     void load();
   }, []);
+
+  useEffect(() => {
+    const highlightId = Number(searchParams.get("highlight"));
+    if (!highlightId || periods.length === 0) return;
+    if (!periods.some((p) => p.id === highlightId)) return;
+
+    periodCardRefs.current[highlightId]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedPeriodId(highlightId);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete("highlight");
+      return next;
+    }, { replace: true });
+    window.setTimeout(() => {
+      setHighlightedPeriodId((current) => (current === highlightId ? null : current));
+    }, 1800);
+  }, [periods, searchParams, setSearchParams]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 60_000);
@@ -786,13 +844,14 @@ export default function AdminRegistrationPeriodsPage() {
     try {
       const result = await processRegistrationPeriod(id);
       setProcessResult(result);
-      if (result.capacity) {
-        setPeriodCapacity((prev) => ({ ...prev, [id]: result.capacity ?? null }));
+      if (result.capacity_by_gender) {
+        setPeriodCapacity((prev) => ({ ...prev, [id]: result.capacity_by_gender ?? null }));
         setPeriodCapacityError((prev) => ({ ...prev, [id]: null }));
       }
       setPeriods((prev) =>
         prev.map((p) => (p.id === id ? { ...p, status: "processing" } : p)),
       );
+      await load(false);
     } catch (err: unknown) {
       const data = (err as { response?: { data?: { message?: string; pending_priority_count?: number } } })?.response?.data;
       const period = periods.find((p) => p.id === id);
@@ -1074,11 +1133,11 @@ export default function AdminRegistrationPeriodsPage() {
       {/* Process result toast */}
       {processResult && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          <strong>Xếp hạng xong.</strong> Giường khả dụng:{" "}
-          {processResult.capacity?.available_physical_beds ?? processResult.free_beds} — Có thể duyệt thêm:{" "}
-          {processResult.capacity?.available_approval_slots ?? processResult.free_beds} — Gợi ý duyệt:{" "}
-          {processResult.approved} — Danh sách chờ: {processResult.waitlist} — Còn lại sau xác nhận:{" "}
-          {processResult.capacity?.remaining_after_proposals ?? Math.max(0, processResult.free_beds - processResult.approved)}
+          <strong>Xếp hạng xong.</strong> Suất cho đơn đăng ký (Nam: {processResult.free_beds_by_gender.male} · Nữ: {processResult.free_beds_by_gender.female}) —{" "}
+          Duyệt: {processResult.approved} — Từ chối: {processResult.waitlist}
+          {(processResult.promoted_from_waitlist ?? 0) > 0
+            ? ` — Đôn thêm ${processResult.promoted_from_waitlist} hồ sơ giữ chỗ từ danh sách chờ (còn suất dư)`
+            : ""}
           <button
             type="button"
             onClick={() => setProcessResult(null)}
@@ -1106,6 +1165,27 @@ export default function AdminRegistrationPeriodsPage() {
             const periodChannel = period.channel as PeriodChannel;
             const totalRegistrations = period.registrations_count ?? 0;
             const isModifiable = canModifyPeriod(period);
+            const admissionBlockerTotal = period.allow_admission_candidates
+              ? admissionReservationBlockerTotal(period)
+              : 0;
+            const hasAdmissionBlockers = admissionBlockerTotal > 0;
+            const admissionBlockerMessage = admissionReservationBlockerMessage(period);
+            const admissionBlockerStats = admissionReservationBlockerStats(period);
+            // status 'active'/'processing' không phân biệt được "còn nhận đơn thật" khỏi "đã
+            // quá hạn 17:00 nhưng chưa xử lý xong" — badge xanh "Đang mở" gây hiểu nhầm là
+            // còn nhận đơn mới trong khi cửa nhận đơn đã khóa từ lâu (báo cáo 27/07). Chỉ
+            // tính cho đợt kênh chính, vì đợt quanh năm không có khái niệm hạn 17:00 này —
+            // admin tự xác nhận/đóng bất cứ lúc nào, không cần chờ gì.
+            const periodDeadline = periodChannel === "main" ? admissionDeadline(period.end_date) : null;
+            const isOverdueUnprocessed =
+              periodDeadline !== null &&
+              now.getTime() > periodDeadline.getTime() &&
+              (periodStatus === "active" || periodStatus === "processing");
+            // Còn minh chứng ưu tiên pending → hệ thống THẬT SỰ không tự xử lý được, cần admin
+            // can thiệp tay. Không còn minh chứng → không có gì chặn, chỉ đang chờ tới lượt
+            // lệnh lập lịch chạy (hoặc admin bấm tay cho nhanh) — 2 tình huống khác hẳn nhau,
+            // không nên dùng chung 1 câu "vui lòng xử lý" mập mờ.
+            const isOverdueBlocked = isOverdueUnprocessed && (period.pending_criteria_count ?? 0) > 0;
 
             return (
             <motion.div
@@ -1151,11 +1231,27 @@ export default function AdminRegistrationPeriodsPage() {
                   </button>
                   <span
                     className={`inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-xl border px-3.5 text-sm font-bold uppercase tracking-normal ${
-                      dashboardStatusClass[periodStatus] ?? ""
+                      isOverdueBlocked
+                        ? "border-rose-200 bg-rose-50 text-rose-700 shadow-[0_12px_28px_rgba(225,29,72,0.14)]"
+                        : isOverdueUnprocessed
+                          ? "border-orange-200 bg-orange-50 text-orange-700 shadow-[0_12px_28px_rgba(234,88,12,0.16)]"
+                          : dashboardStatusClass[periodStatus] ?? ""
                     }`}
                   >
-                    <span className={`h-2.5 w-2.5 rounded-full ${dashboardStatusDotClass[periodStatus] ?? ""}`} />
-                    {statusLabel[periodStatus] ?? period.status}
+                    <span
+                      className={`h-2.5 w-2.5 rounded-full ${
+                        isOverdueBlocked
+                          ? "bg-rose-500"
+                          : isOverdueUnprocessed
+                            ? "bg-orange-500"
+                            : dashboardStatusDotClass[periodStatus] ?? ""
+                      }`}
+                    />
+                    {isOverdueBlocked
+                      ? "Quá hạn, cần xử lý"
+                      : isOverdueUnprocessed
+                        ? "Quá hạn, chờ hệ thống xử lý"
+                        : statusLabel[periodStatus] ?? period.status}
                   </span>
                 </div>
               </div>
@@ -1261,6 +1357,11 @@ export default function AdminRegistrationPeriodsPage() {
                   <span className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-rose-600">
                     Đã từ chối: <strong className="text-base">{period.rejected_count ?? 0}</strong>
                   </span>
+                  {(period.cancelled_count ?? 0) > 0 && (
+                    <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600">
+                      SV tự hủy: <strong className="text-base">{period.cancelled_count}</strong>
+                    </span>
+                  )}
                   {(period.review_count ?? 0) > 0 && (
                     <span className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700">
                       Cần xem lại: <strong className="text-base">{period.review_count}</strong>
@@ -1279,25 +1380,38 @@ export default function AdminRegistrationPeriodsPage() {
                   <span className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-rose-600">
                     Đã từ chối: <strong className="text-base">{period.rejected_count ?? 0}</strong>
                   </span>
+                  {(period.cancelled_count ?? 0) > 0 && (
+                    <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600">
+                      SV tự hủy: <strong className="text-base">{period.cancelled_count}</strong>
+                    </span>
+                  )}
                 </div>
               )}
 
-              {period.allow_admission_candidates && period.status !== "closed" && (() => {
-                const deadline = admissionDeadline(period.end_date);
+              {period.allow_admission_candidates && period.status !== "closed" && periodChannel === "main" && (() => {
+                const deadline = periodDeadline;
                 if (!deadline) return null;
                 const isOverdue = now.getTime() > deadline.getTime();
                 return (
                   <div className={`mt-4 rounded-xl border px-4 py-3 text-sm font-semibold ${
-                    isOverdue
+                    isOverdueBlocked
                       ? "border-rose-200 bg-rose-50 text-rose-700"
-                      : "border-sky-200 bg-sky-50 text-sky-700"
+                      : isOverdue
+                        ? "border-orange-200 bg-orange-50 text-orange-700"
+                        : "border-sky-200 bg-sky-50 text-sky-700"
                   }`}>
                     {isOverdue ? (
                       <>
                         <p>Đợt đã kết thúc lúc 17:00 ngày {formatDate(deadline)}.</p>
-                        <p className="mt-1 text-xs font-medium">Hệ thống đang xử lý đóng đợt.</p>
                         <p className="mt-1 text-xs font-medium">
-                          Approved chưa nhập học: {period.admission_approved_count ?? 0} · Submitted: {period.admission_submitted_count ?? 0} · Waitlisted: {period.admission_waitlisted_count ?? 0}
+                          {isOverdueBlocked
+                            ? `Còn ${period.pending_criteria_count} minh chứng ưu tiên chưa xác minh — cần bạn xác minh trước, hệ thống không tự xếp hạng được.`
+                            : period.status === "processing"
+                              ? 'Không còn gì chặn — hệ thống sẽ tự xác nhận khi lệnh lập lịch chạy tới, hoặc bấm "Xác nhận tất cả" để xử lý ngay.'
+                              : 'Không còn gì chặn — hệ thống sẽ tự xếp hạng và xác nhận khi lệnh lập lịch chạy tới, hoặc bấm "Xếp hạng" để xử lý ngay.'}
+                        </p>
+                        <p className="mt-1 text-xs font-medium">
+                          Đã duyệt chưa nhập học: {period.admission_approved_count ?? 0} · Chờ xét: {period.admission_submitted_count ?? 0} · Danh sách chờ: {period.admission_waitlisted_count ?? 0} · Chờ xác nhận đề xuất: {period.admission_awaiting_confirm_count ?? 0}
                         </p>
                       </>
                     ) : (
@@ -1334,13 +1448,25 @@ export default function AdminRegistrationPeriodsPage() {
                       const endDay = new Date(period.end_date ?? ""); endDay.setHours(0, 0, 0, 0);
                       const notEnded = today < endDay;
                       const rankDisabled = processingId === period.id || noRegs;
-                      const rankTitle = noRegs ? "Không có đơn nào để xếp hạng" : undefined;
+                      const rankTitle = noRegs
+                          ? "Không có đơn nào để xếp hạng"
+                          : undefined;
                       return (
                         <span title={rankTitle} className="inline-flex">
                           <button
                             type="button"
                             disabled={rankDisabled}
-                            onClick={() => notEnded ? setConfirmRankId(period.id) : void handleProcess(period.id)}
+                            onClick={() => {
+                              const proceed = () => {
+                                if (notEnded) setConfirmRankId(period.id);
+                                else void handleProcess(period.id);
+                              };
+                              if (hasAdmissionBlockers) {
+                                setAdmissionBlockerNotice({ message: admissionBlockerMessage, periodName: period.name ?? "đợt này", stats: admissionBlockerStats, onProceed: proceed, actionLabel: "Tiếp tục xếp hạng" });
+                                return;
+                              }
+                              proceed();
+                            }}
                             className={warningActionClass}
                           >
                             {processingId === period.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />} Xếp hạng
@@ -1358,11 +1484,17 @@ export default function AdminRegistrationPeriodsPage() {
                     {(() => {
                       const reRankDisabled = processingId === period.id;
                       return (
-                        <span className="inline-flex">
+                        <span title={hasAdmissionBlockers ? admissionBlockerMessage : undefined} className="inline-flex">
                           <button
                             type="button"
                             disabled={reRankDisabled}
-                            onClick={() => void handleProcess(period.id)}
+                            onClick={() => {
+                              if (hasAdmissionBlockers) {
+                                setAdmissionBlockerNotice({ message: admissionBlockerMessage, periodName: period.name ?? "đợt này", stats: admissionBlockerStats, onProceed: () => void handleProcess(period.id), actionLabel: "Tiếp tục xếp hạng" });
+                                return;
+                              }
+                              void handleProcess(period.id);
+                            }}
                             className={warningActionClass}
                           >
                             {processingId === period.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />} Xếp hạng lại
@@ -1370,20 +1502,40 @@ export default function AdminRegistrationPeriodsPage() {
                         </span>
                       );
                     })()}
-                    <button type="button"
-                      disabled={
-                        confirmingBatchId === period.id ||
-                        (periodCapacityLoading[period.id] ?? false) ||
-                        Boolean(periodCapacityError[period.id]) ||
-                        Boolean(periodCapacity[period.id]?.capacity_exceeded)
-                      }
-                      title={periodCapacity[period.id]?.capacity_exceeded
-                        ? "Không thể xác nhận vì số hồ sơ đang chọn duyệt vượt quá sức chứa hiện tại."
-                        : undefined}
-                      onClick={() => setConfirmBatchId(period.id)}
-                      className={primaryActionClass}>
-                      {confirmingBatchId === period.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Xác nhận tất cả
-                    </button>
+                    {(() => {
+                      const deadline = period.channel === "main" ? admissionDeadline(period.end_date) : null;
+                      const isBeforeDeadline = deadline ? now.getTime() < deadline.getTime() : false;
+                      const capacityExceededMale = periodCapacity[period.id]?.male?.capacity_exceeded ?? false;
+                      const capacityExceededFemale = periodCapacity[period.id]?.female?.capacity_exceeded ?? false;
+                      const capacityExceeded = capacityExceededMale || capacityExceededFemale;
+                      return (
+                        <button type="button"
+                          disabled={
+                            confirmingBatchId === period.id ||
+                            (periodCapacityLoading[period.id] ?? false) ||
+                            Boolean(periodCapacityError[period.id]) ||
+                            capacityExceeded ||
+                            isBeforeDeadline
+                          }
+                          title={isBeforeDeadline
+                            ? `Chưa tới hạn 17:00 ngày ${deadline ? formatDate(deadline) : ""} — chưa thể xác nhận đóng đợt.`
+                            : capacityExceeded
+                              ? `Không thể xác nhận vì số hồ sơ đang chọn duyệt vượt quá sức chứa hiện tại (${capacityExceededMale ? "nam" : ""}${capacityExceededMale && capacityExceededFemale ? " và " : ""}${capacityExceededFemale ? "nữ" : ""}).`
+                              : hasAdmissionBlockers
+                                ? admissionBlockerMessage
+                                : undefined}
+                          onClick={() => {
+                            if (hasAdmissionBlockers) {
+                              setAdmissionBlockerNotice({ message: admissionBlockerMessage, periodName: period.name ?? "đợt này", stats: admissionBlockerStats, onProceed: () => setConfirmBatchId(period.id), actionLabel: "Tiếp tục xác nhận" });
+                              return;
+                            }
+                            setConfirmBatchId(period.id);
+                          }}
+                          className={primaryActionClass}>
+                          {confirmingBatchId === period.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Xác nhận tất cả
+                        </button>
+                      );
+                    })()}
                   </>
                 )}
                 {period.status === "closed" && period.channel === "main" && (
@@ -1458,7 +1610,7 @@ export default function AdminRegistrationPeriodsPage() {
 
                     {/* School year & Semester */}
                     <div className="grid grid-cols-2 gap-2.5">
-                      {field("school_year", "Năm học (vd: 2025-2026)")}
+                      {field("school_year", "Năm học")}
                       <div ref={setFieldRef("semester")}>
                         <label className="mb-1 block text-xs font-semibold text-[#324B76]">Học kỳ</label>
                         <div className="relative">
@@ -1687,6 +1839,97 @@ export default function AdminRegistrationPeriodsPage() {
               </div>
             </motion.div>
           </motion.div>
+        )}
+        {admissionBlockerNotice && (
+          (() => {
+            const onlyApprovedUnconverted =
+              admissionBlockerNotice.stats.approved > 0
+              && admissionBlockerNotice.stats.submitted === 0
+              && admissionBlockerNotice.stats.waitlisted === 0
+              && admissionBlockerNotice.stats.awaitingConfirm === 0;
+            const targetPath = onlyApprovedUnconverted ? "/admin/admission-candidates" : "/admin/dorm-reservations";
+            const targetLabel = onlyApprovedUnconverted ? "Hồ sơ trúng tuyển" : "Hồ sơ giữ chỗ";
+
+            return (
+          <motion.div
+            key="admission-blocker-overlay"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+            onClick={() => setAdmissionBlockerNotice(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 16 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              className="w-full max-w-2xl rounded-[24px] border border-amber-200 bg-white p-6 shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-amber-200 bg-amber-50 text-amber-600">
+                  <AlertCircle className="h-6 w-6" />
+                </div>
+                <div>
+                  <h2 className="text-[18px] font-bold text-[#1a2d52]">Còn hồ sơ giữ chỗ chưa hoàn tất</h2>
+                  <p className="mt-1 text-sm font-semibold text-[#7c8fb5]">{admissionBlockerNotice.periodName}</p>
+                </div>
+              </div>
+              <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase text-amber-700">Chờ xét</p>
+                  <p className="mt-1 text-3xl font-bold text-amber-800">{admissionBlockerNotice.stats.submitted}</p>
+                  <p className="mt-1 text-[11px] font-medium text-amber-700">Cần bấm Xếp hạng</p>
+                </div>
+                <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase text-sky-700">Danh sách chờ</p>
+                  <p className="mt-1 text-3xl font-bold text-sky-800">{admissionBlockerNotice.stats.waitlisted}</p>
+                  <p className="mt-1 text-[11px] font-medium text-sky-700">Tự đôn khi có người hủy, không cần bấm gì</p>
+                </div>
+                <div className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3">
+                  <p className="whitespace-nowrap text-xs font-semibold uppercase text-violet-700">Đã có gợi ý</p>
+                  <p className="mt-1 text-3xl font-bold text-violet-800">{admissionBlockerNotice.stats.awaitingConfirm}</p>
+                  <p className="mt-1 text-[11px] font-medium text-violet-700">Cần bấm Xác nhận đề xuất</p>
+                </div>
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                  <p className="whitespace-nowrap text-xs font-semibold uppercase text-emerald-700">Chưa nhập học</p>
+                  <p className="mt-1 text-3xl font-bold text-emerald-800">{admissionBlockerNotice.stats.approved}</p>
+                  <p className="mt-1 text-[11px] font-medium text-emerald-700">Cần nhập danh sách nhập học/MSSV</p>
+                </div>
+              </div>
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium leading-6 text-[#5d7299]">
+                Tổng cộng <strong className="text-[#1a2d52]">{admissionBlockerNotice.stats.total}</strong> hồ sơ giữ chỗ chưa xử lý xong trong đợt này — mỗi nhóm cần hành động khác nhau (xem ghi chú dưới mỗi ô). Bạn vẫn có thể {admissionBlockerNotice.actionLabel.toLowerCase()} ngay nếu muốn.
+              </div>
+              <div className="mt-5 flex flex-wrap justify-end gap-2">
+                <button type="button" onClick={() => setAdmissionBlockerNotice(null)}
+                  className="rounded-xl border border-[#d6e2f1] bg-white px-4 py-2 text-sm font-semibold text-[#5d7299] transition hover:bg-[#f5f9ff]">
+                  Đóng
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdmissionBlockerNotice(null);
+                    navigate(targetPath);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-50"
+                >
+                  {targetLabel}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const proceed = admissionBlockerNotice.onProceed;
+                    setAdmissionBlockerNotice(null);
+                    proceed();
+                  }}
+                  className="inline-flex items-center gap-2 rounded-xl bg-[linear-gradient(135deg,#f59e0b_0%,#d97706_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(245,158,11,0.22)] transition hover:brightness-110"
+                >
+                  {admissionBlockerNotice.actionLabel}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+            );
+          })()
         )}
         {confirmBatchId !== null && (
           <motion.div

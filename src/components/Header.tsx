@@ -262,7 +262,8 @@ export default function Header({
     if (
       (item.type === "room_change_approved" ||
         item.type === "bed_change_approved" ||
-        item.type === "roommate_request_approved") &&
+        item.type === "roommate_request_approved" ||
+        item.type === "support_request_status") &&
       item.related_id
     ) {
       return `/student/support?open=${item.related_id}`;
@@ -365,6 +366,15 @@ export default function Header({
     if (item.type === "checkout_requested" && item.related_id) {
       setIsNotifOpen(false);
       navigate(`/admin/occupancies?open=${item.related_id}`);
+      return;
+    }
+    if (
+      item.type === "admission_auto_confirmed" ||
+      item.type === "admission_auto_blocked" ||
+      item.type === "admission_promoted"
+    ) {
+      setIsNotifOpen(false);
+      navigate(item.related_id ? `/admin/registration-periods?highlight=${item.related_id}` : "/admin/registration-periods");
       return;
     }
     if (
@@ -596,7 +606,7 @@ export default function Header({
                                     </p>
                                     {unread && <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-[#ff5a6b]" />}
                                   </div>
-                                  <p className="mt-0.5 line-clamp-2 text-[0.75rem] leading-snug text-[#6b7fa8]">{item.content}</p>
+                                  <p className="mt-0.5 whitespace-pre-line text-[0.75rem] leading-snug text-[#6b7fa8]">{item.content}</p>
                                   <p className="mt-1 text-[0.7rem] text-[#94a6c4]">{relativeTime(item.created_at)}</p>
                                 </div>
                               </button>

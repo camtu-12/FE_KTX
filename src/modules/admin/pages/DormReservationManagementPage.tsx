@@ -4,6 +4,7 @@ import {
   ArrowRight,
   Award,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
@@ -16,21 +17,21 @@ import {
   Shuffle,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import {
-  approveReservation,
-  cancelReservation,
+  confirmRankedDormReservations,
   getAdminDormReservation,
   getAdminDormReservationHistory,
   getAdminDormReservations,
+  patchReservationAutoDecision,
   rankDormReservations,
-  rejectReservation,
   rejectReservationPriority,
   verifyReservationPriority,
-  waitlistReservation,
   type DormReservation,
-  type DormCapacitySummary,
+  type DormReservationAutoDecision,
+  type DormCapacityByGender,
+  type ReservationPriority,
   type ReservationStatus,
 } from "../../../api/dormReservationApi";
 import { getRegistrationPeriodCapacity, getRegistrationPeriods } from "../../../api/registrationApi";
@@ -76,7 +77,6 @@ const STATUS_LABELS: Record<ReservationStatus, string> = {
   waitlisted: "Danh sách chờ",
   converted: "Đã chuyển thành đơn nội trú",
   expired: "Đã hết hạn",
-  cancelled: "Đã hủy",
 };
 const STATUS_COLORS: Record<ReservationStatus, string> = {
   submitted: "border-blue-200 bg-blue-50 text-blue-700",
@@ -85,7 +85,6 @@ const STATUS_COLORS: Record<ReservationStatus, string> = {
   waitlisted: "border-amber-200 bg-amber-50 text-amber-700",
   converted: "border-teal-200 bg-teal-50 text-teal-700",
   expired: "border-slate-200 bg-slate-50 text-slate-600",
-  cancelled: "border-slate-200 bg-slate-100 text-slate-500",
 };
 
 const STATUS_TOOLTIPS: Record<ReservationStatus, string> = {
@@ -95,42 +94,56 @@ const STATUS_TOOLTIPS: Record<ReservationStatus, string> = {
   waitlisted: "Hồ sơ đang nằm trong danh sách chờ.",
   converted: "Hồ sơ giữ chỗ đã được chuyển thành đơn đăng ký nội trú chính thức.",
   expired: "Hồ sơ giữ chỗ đã hết hạn.",
-  cancelled: "Hồ sơ giữ chỗ đã bị hủy.",
 };
 
-type EffectiveReservationStatus = ReservationStatus | "registration_cancelled";
+type EffectiveReservationStatus = ReservationStatus | "registration_cancelled" | "self_cancelled";
+
+// Cùng quy ước với ReservationProgressCard.tsx (trang public) — status 'rejected' dùng chung
+// cho cả "bị admin từ chối" lẫn "sinh viên tự hủy" (xem DormReservationCancellationService),
+// phân biệt qua tiền tố "Tự hủy:" trong rejectionReason.
+const SELF_CANCEL_REASON_PREFIX = "Tự hủy:";
 type ReservationStatusFilter =
   | "all"
   | "submitted"
   | "waitlisted"
   | "approved"
   | "rejected"
-  | "cancelled"
-  | "expired"
+  | "self_cancelled"
   | "converted"
-  | "registration_cancelled"
-  | "approved_not_converted";
+  | "approved_not_converted"
+  | "expired_waitlisted";
+
+type AutoDecisionFilter = "" | DormReservationAutoDecision;
 
 const EFFECTIVE_STATUS_LABELS: Record<EffectiveReservationStatus, string> = {
   ...STATUS_LABELS,
   registration_cancelled: "Đơn nội trú đã hủy",
+  self_cancelled: "SV tự hủy giữ chỗ",
 };
 
 const EFFECTIVE_STATUS_COLORS: Record<EffectiveReservationStatus, string> = {
   ...STATUS_COLORS,
   registration_cancelled: "border-rose-200 bg-rose-50 text-rose-700",
+  self_cancelled: "border-slate-200 bg-slate-50 text-slate-600",
 };
 
 const EFFECTIVE_STATUS_TOOLTIPS: Record<EffectiveReservationStatus, string> = {
   ...STATUS_TOOLTIPS,
   registration_cancelled: "Hồ sơ giữ chỗ đã được chuyển thành đơn nội trú, sau đó đơn nội trú đã bị hủy.",
+  self_cancelled: "Sinh viên/thí sinh tự hủy hồ sơ giữ chỗ — không phải do Ban quản lý từ chối.",
 };
 
 const isConvertedRegistrationCancelled = (reservation: DormReservation | null | undefined): boolean =>
   reservation?.status === "converted" && reservation.convertedRegistration?.status === "cancelled";
 
-const effectiveReservationStatus = (reservation: DormReservation): EffectiveReservationStatus =>
-  isConvertedRegistrationCancelled(reservation) ? "registration_cancelled" : reservation.status;
+const isSelfCancelledReservation = (reservation: DormReservation | null | undefined): boolean =>
+  reservation?.status === "rejected" && Boolean(reservation.rejectionReason?.startsWith(SELF_CANCEL_REASON_PREFIX));
+
+const effectiveReservationStatus = (reservation: DormReservation): EffectiveReservationStatus => {
+  if (isConvertedRegistrationCancelled(reservation)) return "registration_cancelled";
+  if (isSelfCancelledReservation(reservation)) return "self_cancelled";
+  return reservation.status;
+};
 
 const effectiveStatusLabel = (reservation: DormReservation): string =>
   EFFECTIVE_STATUS_LABELS[effectiveReservationStatus(reservation)];
@@ -147,19 +160,33 @@ const PRIORITY_EVIDENCE_BADGE: Record<"pending" | "verified" | "rejected", { lab
   rejected: { label: "Minh chứng không hợp lệ", className: "border-rose-200 bg-rose-50 text-rose-700" },
 };
 
-type Period = { id: number; name: string; allowAdmissionCandidates: boolean; endDate: string | null };
+const AUTO_DECISION_BADGE: Record<DormReservationAutoDecision, { label: string; className: string }> = {
+  approve: { label: "Gợi ý duyệt", className: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+  waitlist: { label: "Gợi ý danh sách chờ", className: "border-sky-200 bg-sky-50 text-sky-700" },
+  reject: { label: "Gợi ý từ chối", className: "border-rose-200 bg-rose-50 text-rose-700" },
+  review: { label: "Cần xem lại", className: "border-amber-200 bg-amber-50 text-amber-700" },
+};
+
+type Period = { id: number; name: string; status: string; allowAdmissionCandidates: boolean; endDate: string | null };
 type PreviewImage = { url: string; label: string };
 
 const RESERVATION_STATUS_FILTERS: Array<{ key: ReservationStatusFilter; label: string }> = [
   { key: "all", label: "Tất cả trạng thái" },
   { key: "approved", label: "Đã duyệt giữ chỗ" },
   { key: "rejected", label: "Không được duyệt" },
+  { key: "self_cancelled", label: "SV tự hủy giữ chỗ" },
   { key: "converted", label: "Đã tạo đơn nội trú" },
-  { key: "approved_not_converted", label: "Chưa hoàn tất đăng ký" },
   { key: "waitlisted", label: "Danh sách chờ" },
-  { key: "cancelled", label: "Hủy giữ chỗ" },
-  { key: "registration_cancelled", label: "Hủy đơn nội trú" },
-  { key: "expired", label: "Hồ sơ hết hạn" },
+  { key: "approved_not_converted", label: "Hết hạn - chưa nhập học" },
+  { key: "expired_waitlisted", label: "Hết hạn - danh sách chờ" },
+];
+
+const AUTO_DECISION_FILTERS: Array<{ key: AutoDecisionFilter; label: string }> = [
+  { key: "", label: "Tất cả gợi ý" },
+  { key: "approve", label: "Gợi ý duyệt" },
+  { key: "waitlist", label: "Gợi ý danh sách chờ" },
+  { key: "reject", label: "Gợi ý từ chối" },
+  { key: "review", label: "Cần xem lại" },
 ];
 
 const getPeriodEndDate = (value: string | null): Date | null => {
@@ -194,6 +221,39 @@ const hasRejectedReservationPriority = (reservation: DormReservation | null | un
   reservation?.priorityEvidenceStatus === "rejected"
   || (reservation?.reservationPriorities ?? []).some((priority) => priority.status === "rejected");
 
+const summarizePriorityEvidenceStatus = (
+  priorities: ReservationPriority[] | undefined,
+  fallback: DormReservation["priorityEvidenceStatus"],
+): DormReservation["priorityEvidenceStatus"] => {
+  if (!priorities || priorities.length === 0) return fallback;
+  if (priorities.some((priority) => priority.status === "rejected")) return "rejected";
+  if (priorities.some((priority) => priority.status === "pending")) return "pending";
+  return "verified";
+};
+
+const applyPriorityUpdate = (
+  reservation: DormReservation,
+  updatedPriority: ReservationPriority,
+): DormReservation => {
+  const priorities = reservation.reservationPriorities?.map((priority) =>
+    priority.id === updatedPriority.id ? updatedPriority : priority
+  );
+  const priorityEvidenceStatus = summarizePriorityEvidenceStatus(priorities, updatedPriority.status);
+  const shouldRejectReservation = priorityEvidenceStatus === "rejected"
+    && !["converted", "expired"].includes(reservation.status);
+
+  return {
+    ...reservation,
+    status: shouldRejectReservation ? "rejected" : reservation.status,
+    rejectionReason: shouldRejectReservation
+      ? reservation.rejectionReason ?? "Minh chứng ưu tiên không hợp lệ."
+      : reservation.rejectionReason,
+    reservationPriorities: priorities,
+    hasPriorityEvidence: true,
+    priorityEvidenceStatus,
+  };
+};
+
 /** Hạn cuối THẬT — LUÔN 17:00 của period.endDate, dùng cùng công thức các nơi khác trong FE. */
 const formatAdmissionDeadlineLabel = (endDate: string | null | undefined): string | null => {
   if (!endDate) return null;
@@ -204,14 +264,12 @@ const formatAdmissionDeadlineLabel = (endDate: string | null | undefined): strin
 };
 
 const EXPIRATION_REASON_LABEL: Record<string, string> = {
-  approved_not_converted: "Hết hiệu lực giữ chỗ",
-  period_closed_while_submitted: "Hết hiệu lực khi đợt kết thúc",
-  period_closed_while_waitlisted: "Hết hiệu lực khi đợt kết thúc",
+  approved_not_converted: "Hết hạn - chưa nhập học",
+  period_closed_while_waitlisted: "Hết hạn - danh sách chờ",
 };
 
 const EXPIRATION_REASON_DESCRIPTION: Record<string, string> = {
-  approved_not_converted: "Hồ sơ đã được duyệt giữ chỗ nhưng chưa hoàn tất chuyển thành đơn đăng ký nội trú trước khi đợt kết thúc.",
-  period_closed_while_submitted: "Hồ sơ hết hiệu lực khi đợt đăng ký kết thúc trước khi được xét duyệt.",
+  approved_not_converted: "Hồ sơ đã được duyệt giữ chỗ nhưng chưa nhập học/chưa chuyển thành đơn nội trú trước khi đợt kết thúc.",
   period_closed_while_waitlisted: "Hồ sơ hết hiệu lực khi đợt đăng ký kết thúc trong lúc còn ở danh sách chờ.",
 };
 
@@ -219,14 +277,15 @@ export default function DormReservationManagementPage() {
   const { headerSearchValue: search } = useOutletContext<AdminLayoutOutletContext>();
 
   const [reservations, setReservations] = useState<DormReservation[]>([]);
-  const [total, setTotal] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [lastPage, setLastPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [periodFilter, setPeriodFilter] = useState<number | "">("");
   const [statusFilter, setStatusFilter] = useState<ReservationStatusFilter>("all");
+  const [autoDecisionFilter, setAutoDecisionFilter] = useState<AutoDecisionFilter>("");
   const [priorityEvidenceFilter, setPriorityEvidenceFilter] = useState<"" | "pending" | "verified" | "rejected">("");
   const [periods, setPeriods] = useState<Period[]>([]);
+  const [periodsLoaded, setPeriodsLoaded] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
 
@@ -237,29 +296,29 @@ export default function DormReservationManagementPage() {
   const [detailHistoryLoading, setDetailHistoryLoading] = useState(false);
   const [detailFromHistory, setDetailFromHistory] = useState(false);
 
-  // reject dialog
-  const [rejectTarget, setRejectTarget] = useState<DormReservation | null>(null);
-  const [rejectReason, setRejectReason] = useState("");
-  const [rejectLoading, setRejectLoading] = useState(false);
-
-  // cancel dialog
-  const [cancelTarget, setCancelTarget] = useState<DormReservation | null>(null);
-  const [cancelReason, setCancelReason] = useState("");
-
   // action loading
   const [actionId, setActionId] = useState<number | null>(null);
 
   // detail loading (for full detail with priorities)
   const [detailLoading, setDetailLoading] = useState(false);
 
-  // ranking panel — dùng chung periodFilter (bộ lọc phía trên), không tạo state đợt riêng.
+  // ranking panel — dùng đợt tân sinh viên đang mở/mới nhất, không bắt admin chọn tay trên màn này.
   const [rankLoading, setRankLoading] = useState(false);
-  const [rankResult, setRankResult] = useState<{ approved: number; waitlist: number; freeBeds: number; capacity?: DormCapacitySummary } | null>(null);
-  const [rankCapacity, setRankCapacity] = useState<DormCapacitySummary | null>(null);
+  const [rankResult, setRankResult] = useState<{ approved: number; waitlist: number; freeBedsByGender: { male: number; female: number }; capacity?: DormCapacityByGender } | null>(null);
+  const [rankCapacity, setRankCapacity] = useState<DormCapacityByGender | null>(null);
   const [rankCapacityLoading, setRankCapacityLoading] = useState(false);
   const [rankCapacityError, setRankCapacityError] = useState<string | null>(null);
+  const [rankableReservationCount, setRankableReservationCount] = useState(0);
+  const [confirmRankedLoading, setConfirmRankedLoading] = useState(false);
   const [showCapacityDetails, setShowCapacityDetails] = useState(false);
   const [rankConfirmPeriod, setRankConfirmPeriod] = useState<Period | null>(null);
+  const [proposalRejectTarget, setProposalRejectTarget] = useState<DormReservation | null>(null);
+  const [proposalRejectReason, setProposalRejectReason] = useState("");
+  // Key gồm cả variant ("list"/"detail") + id — không chỉ id, vì cùng 1 reservation có thể
+  // được render đồng thời ở dòng danh sách LẪN modal chi tiết; chỉ dùng id sẽ khiến mở dropdown
+  // ở chỗ này cũng "mở ké" luôn dropdown của chỗ kia (bị che phía sau modal).
+  const [openDecisionDropdownKey, setOpenDecisionDropdownKey] = useState<string | null>(null);
+  const decisionDropdownRef = useRef<HTMLDivElement | null>(null);
   const [priorityNotice, setPriorityNotice] = useState<{ message: string } | null>(null);
 
   // priority action loading in detail modal
@@ -273,17 +332,51 @@ export default function DormReservationManagementPage() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  const loadRankCapacity = useCallback(async (periodId: number, proposedApprovedCount = 0) => {
+  const loadRankCapacity = useCallback(async (periodId: number, proposedApprovedCountByGender?: { male: number; female: number }) => {
     setRankCapacityLoading(true);
     setRankCapacityError(null);
     setRankCapacity(null);
     try {
-      const capacity = await getRegistrationPeriodCapacity(periodId, proposedApprovedCount);
+      const approvedProposalCountByGender = proposedApprovedCountByGender ?? {
+        male: (
+          await getAdminDormReservations({
+            registration_period_id: periodId,
+            statuses: ["submitted", "waitlisted"],
+            auto_decision: "approve",
+            gender: "male",
+            page: 1,
+          })
+        ).total,
+        female: (
+          await getAdminDormReservations({
+            registration_period_id: periodId,
+            statuses: ["submitted", "waitlisted"],
+            auto_decision: "approve",
+            gender: "female",
+            page: 1,
+          })
+        ).total,
+      };
+      const capacity = await getRegistrationPeriodCapacity(periodId, approvedProposalCountByGender.male, approvedProposalCountByGender.female);
       setRankCapacity(capacity);
     } catch {
       setRankCapacityError("Không thể tải thông tin sức chứa. Vui lòng làm mới và thử lại.");
     } finally {
       setRankCapacityLoading(false);
+    }
+  }, []);
+
+  const loadRankableReservationCount = useCallback(async (periodId: number) => {
+    try {
+      const res = await getAdminDormReservations({
+        registration_period_id: periodId,
+        status: "submitted",
+        auto_decision_empty: true,
+        page: 1,
+      });
+      setRankableReservationCount(res.total);
+    } catch {
+      setRankableReservationCount(0);
     }
   }, []);
 
@@ -295,11 +388,13 @@ export default function DormReservationManagementPage() {
       setRankCapacity(null);
       setRankCapacityError(null);
       setRankCapacityLoading(false);
+      setRankableReservationCount(0);
       return;
     }
 
     void loadRankCapacity(Number(periodFilter));
-  }, [loadRankCapacity, periodFilter]);
+    void loadRankableReservationCount(Number(periodFilter));
+  }, [loadRankCapacity, loadRankableReservationCount, periodFilter]);
 
   const copyReservationCode = async (code: string | null | undefined) => {
     const value = code?.trim();
@@ -327,18 +422,35 @@ export default function DormReservationManagementPage() {
 
   useEffect(() => {
     getRegistrationPeriods()
-      .then((data: Array<{ id: number; name: string; end_date?: string | null; application_end_date?: string | null; allow_admission_candidates?: boolean }>) =>
+      .then((data: Array<{ id: number; name: string; status?: string; end_date?: string | null; application_end_date?: string | null; allow_admission_candidates?: boolean }>) =>
         setPeriods(
           data.map((p) => ({
             id: p.id,
             name: p.name,
+            status: p.status ?? "",
             endDate: p.application_end_date ?? p.end_date ?? null,
             allowAdmissionCandidates: Boolean((p as unknown as { allow_admission_candidates?: boolean }).allow_admission_candidates),
           }))
         )
       )
-      .catch(() => null);
+      .catch(() => null)
+      .finally(() => setPeriodsLoaded(true));
   }, []);
+
+  useEffect(() => {
+    if (periodFilter || periods.length === 0) return;
+
+    const admissionPeriods = periods.filter((p) => p.allowAdmissionCandidates);
+    const currentPeriod =
+      admissionPeriods.find((p) => p.status === "active")
+      ?? admissionPeriods.find((p) => p.status === "processing")
+      ?? admissionPeriods.find((p) => p.status === "pending")
+      ?? admissionPeriods[0];
+
+    if (currentPeriod) {
+      setPeriodFilter(currentPeriod.id);
+    }
+  }, [periodFilter, periods]);
 
   const buildReservationFilterParams = useCallback((): Parameters<typeof getAdminDormReservations>[0] => {
     switch (statusFilter) {
@@ -347,20 +459,26 @@ export default function DormReservationManagementPage() {
       case "submitted":
       case "waitlisted":
       case "approved":
-      case "rejected":
-      case "cancelled":
-      case "expired":
         return { status: statusFilter };
+      case "rejected":
+        return { status: "rejected", self_cancelled: "no" };
+      case "self_cancelled":
+        return { status: "rejected", self_cancelled: "yes" };
       case "converted":
-        return { status: "converted", registration_status: "not_cancelled" };
-      case "registration_cancelled":
-        return { status: "converted", registration_status: "cancelled" };
+        return { status: "converted" };
       case "approved_not_converted":
         return { status: "expired", expiration_reason: "approved_not_converted" };
+      case "expired_waitlisted":
+        return { status: "expired", expiration_reason: "period_closed_while_waitlisted" };
     }
   }, [statusFilter]);
 
   const load = useCallback(async (page = 1) => {
+    if (!periodsLoaded || !periodFilter) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setApiError(null);
     try {
@@ -368,11 +486,11 @@ export default function DormReservationManagementPage() {
         ...buildReservationFilterParams(),
         search: search || undefined,
         registration_period_id: periodFilter || undefined,
+        auto_decision: autoDecisionFilter || undefined,
         priority_evidence_status: priorityEvidenceFilter || undefined,
         page,
       });
       setReservations(res.data);
-      setTotal(res.total);
       setCurrentPage(res.current_page);
       setLastPage(res.last_page);
     } catch {
@@ -380,81 +498,57 @@ export default function DormReservationManagementPage() {
     } finally {
       setLoading(false);
     }
-  }, [buildReservationFilterParams, search, periodFilter, priorityEvidenceFilter]);
+  }, [autoDecisionFilter, buildReservationFilterParams, search, periodFilter, periodsLoaded, priorityEvidenceFilter]);
 
   useEffect(() => { void load(1); }, [load]);
+
+  useEffect(() => {
+    if (openDecisionDropdownKey == null) return;
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!decisionDropdownRef.current?.contains(event.target as Node)) {
+        setOpenDecisionDropdownKey(null);
+      }
+    };
+
+    window.addEventListener("mousedown", closeOnOutsideClick);
+    return () => window.removeEventListener("mousedown", closeOnOutsideClick);
+  }, [openDecisionDropdownKey]);
 
   const patch = (updated: DormReservation) => {
     setReservations((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
     if (detail?.id === updated.id) setDetail(updated);
   };
 
-  const handleApprove = async (r: DormReservation) => {
-    if (hasPendingReservationPriority(r)) {
-      setPriorityNotice({
-        message: "Còn minh chứng ưu tiên chưa xác minh. Vui lòng xác minh hoặc từ chối tất cả minh chứng trước khi duyệt.",
-      });
-      return;
-    }
+  const syncReservationAfterPriorityUpdate = async (baseDetail: DormReservation, updatedPriority: ReservationPriority) => {
+    const optimisticDetail = applyPriorityUpdate(baseDetail, updatedPriority);
+    patch(optimisticDetail);
 
-    setActionId(r.id);
     try {
-      const res = await approveReservation(r.id);
-      patch(res.reservation);
-      if (periodFilter) void loadRankCapacity(Number(periodFilter), rankResult?.capacity?.proposed_approved_count ?? 0);
-      showToast("success", "Đã duyệt giữ chỗ thành công.");
-    } catch (err: unknown) {
-      showToast("error", (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Thao tác thất bại.");
+      const full = await getAdminDormReservation(baseDetail.id);
+      patch(full);
+    } catch {
+      // optimistic state is already applied; list refresh below will retry the latest server state
     } finally {
-      setActionId(null);
-    }
-  };
-
-  const handleWaitlist = async (r: DormReservation) => {
-    setActionId(r.id);
-    try {
-      const res = await waitlistReservation(r.id);
-      patch(res.reservation);
-      if (periodFilter) void loadRankCapacity(Number(periodFilter), rankResult?.capacity?.proposed_approved_count ?? 0);
-      showToast("success", "Đã chuyển hồ sơ vào danh sách chờ.");
-    } catch (err: unknown) {
-      showToast("error", (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Thao tác thất bại.");
-    } finally {
-      setActionId(null);
-    }
-  };
-
-  const closeCancelDialog = () => {
-    if (cancelTarget && actionId === cancelTarget.id) return;
-    setCancelTarget(null);
-    setCancelReason("");
-  };
-
-  useEffect(() => {
-    if (!cancelTarget) return;
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        closeCancelDialog();
+      void load(currentPage);
+      if (periodFilter) {
+        void loadRankCapacity(Number(periodFilter));
+        void loadRankableReservationCount(Number(periodFilter));
       }
-    };
+    }
+  };
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [cancelTarget, actionId]);
-
-  const handleConfirmCancel = async () => {
-    const reason = cancelReason.trim();
-    if (!cancelTarget || !reason) return;
-    const r = cancelTarget;
+  const handlePatchAutoDecision = async (r: DormReservation, decision: DormReservationAutoDecision, reason?: string) => {
     setActionId(r.id);
     try {
-      const res = await cancelReservation(r.id, reason);
+      const res = await patchReservationAutoDecision(r.id, decision, reason);
       patch(res.reservation);
-      if (periodFilter) void loadRankCapacity(Number(periodFilter), rankResult?.capacity?.proposed_approved_count ?? 0);
-      showToast("success", "Đã hủy giữ chỗ.");
-      setCancelTarget(null);
-      setCancelReason("");
+      setRankResult(null);
+      if (periodFilter) {
+        void loadRankCapacity(Number(periodFilter));
+        void loadRankableReservationCount(Number(periodFilter));
+      }
+      showToast("success", "Đã cập nhật đề xuất hồ sơ.");
     } catch (err: unknown) {
       showToast("error", (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Thao tác thất bại.");
     } finally {
@@ -462,24 +556,30 @@ export default function DormReservationManagementPage() {
     }
   };
 
-  const handleReject = async () => {
-    if (!rejectTarget || !rejectReason.trim()) return;
-    setRejectLoading(true);
-    try {
-      const res = await rejectReservation(rejectTarget.id, rejectReason);
-      patch(res.reservation);
-      if (periodFilter) void loadRankCapacity(Number(periodFilter), rankResult?.capacity?.proposed_approved_count ?? 0);
-      showToast("success", "Đã từ chối hồ sơ giữ chỗ.");
-      setRejectTarget(null);
-      setRejectReason("");
-    } catch (err: unknown) {
-      showToast("error", (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Thao tác thất bại.");
-    } finally {
-      setRejectLoading(false);
-    }
+  const handleConfirmProposalReject = async () => {
+    if (!proposalRejectTarget || !proposalRejectReason.trim()) return;
+    const target = proposalRejectTarget;
+    await handlePatchAutoDecision(target, "reject", proposalRejectReason.trim());
+    setProposalRejectTarget(null);
+    setProposalRejectReason("");
   };
 
-  const canCancelReservation = (r: DormReservation) => ["submitted", "approved", "waitlisted"].includes(r.status);
+  const handleConfirmRanked = async () => {
+    if (!periodFilter) return;
+    setConfirmRankedLoading(true);
+    try {
+      const res = await confirmRankedDormReservations(Number(periodFilter));
+      showToast("success", `Đã xác nhận: ${res.approved} duyệt, ${res.waitlisted} danh sách chờ, ${res.rejected} từ chối.`);
+      setRankResult(null);
+      void load(1);
+      void loadRankCapacity(Number(periodFilter), { male: 0, female: 0 });
+      void loadRankableReservationCount(Number(periodFilter));
+    } catch (err: unknown) {
+      showToast("error", (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Xác nhận đề xuất thất bại.");
+    } finally {
+      setConfirmRankedLoading(false);
+    }
+  };
 
   const handleOpenDetail = async (r: DormReservation) => {
     setDetail(r);
@@ -543,10 +643,11 @@ export default function DormReservationManagementPage() {
     setRankResult(null);
     try {
       const res = await rankDormReservations(periodId);
-      setRankResult({ approved: res.approved, waitlist: res.waitlist, freeBeds: res.free_beds, capacity: res.capacity });
-      setRankCapacity(res.capacity ?? null);
-      showToast("success", `Đã xếp hạng: ${res.approved} duyệt giữ chỗ, ${res.waitlist} danh sách chờ.`);
+      setRankResult({ approved: res.approved, waitlist: res.waitlist, freeBedsByGender: res.free_beds_by_gender, capacity: res.capacity_by_gender });
+      setRankCapacity(res.capacity_by_gender ?? null);
+      showToast("success", `Đã tạo đề xuất: ${res.approved} gợi ý duyệt, ${res.waitlist} gợi ý danh sách chờ.`);
       void load(1);
+      void loadRankableReservationCount(periodId);
     } catch (err: unknown) {
       const data = (err as { response?: { data?: { message?: string; pending_priority_count?: number } } })?.response?.data;
       if (typeof data?.pending_priority_count === "number" && data.pending_priority_count > 0) {
@@ -579,12 +680,7 @@ export default function DormReservationManagementPage() {
     try {
       const res = await verifyReservationPriority(priorityId);
       if (detail) {
-        setDetail({
-          ...detail,
-          reservationPriorities: detail.reservationPriorities?.map((p) =>
-            p.id === priorityId ? res.priority : p
-          ),
-        });
+        await syncReservationAfterPriorityUpdate(detail, res.priority);
       }
       showToast("success", "Đã đánh dấu minh chứng hợp lệ.");
     } catch {
@@ -599,14 +695,8 @@ export default function DormReservationManagementPage() {
     try {
       const res = await rejectReservationPriority(priorityId);
       if (detail) {
-        setDetail({
-          ...detail,
-          reservationPriorities: detail.reservationPriorities?.map((p) =>
-            p.id === priorityId ? res.priority : p
-          ),
-        });
+        await syncReservationAfterPriorityUpdate(detail, res.priority);
       }
-      showToast("success", "Đã đánh dấu minh chứng không hợp lệ.");
     } catch {
       showToast("error", "Cập nhật minh chứng thất bại.");
     } finally {
@@ -652,11 +742,11 @@ export default function DormReservationManagementPage() {
     return (current + 1) % previewImages.length;
   });
 
-  const hasActiveFilters = statusFilter !== "all" || periodFilter !== "" || priorityEvidenceFilter !== "";
+  const hasActiveFilters = statusFilter !== "all" || autoDecisionFilter !== "" || priorityEvidenceFilter !== "";
 
   const resetFilters = () => {
     setStatusFilter("all");
-    setPeriodFilter("");
+    setAutoDecisionFilter("");
     setPriorityEvidenceFilter("");
   };
 
@@ -664,6 +754,105 @@ export default function DormReservationManagementPage() {
   const selectedPeriodAllowsAdmission = periodFilter
     ? Boolean(periods.find((p) => p.id === Number(periodFilter))?.allowAdmissionCandidates)
     : false;
+  const hasRankableReservations = rankableReservationCount > 0;
+  const rankDisabled =
+    !periodFilter
+    || !selectedPeriodAllowsAdmission
+    || !hasRankableReservations
+    || rankLoading
+    || rankCapacityLoading
+    || Boolean(rankCapacityError);
+  const rankButtonTitle =
+    !periodFilter || !selectedPeriodAllowsAdmission
+      ? "Không tìm thấy đợt đăng ký tân sinh viên đang mở."
+      : !hasRankableReservations
+        ? "Đợt này không còn hồ sơ chờ xử lý mới để xếp hạng."
+        : rankCapacityError
+          ? "Không thể tải sức chứa. Vui lòng làm mới trước khi xếp hạng."
+          : undefined;
+
+  const renderDecisionDropdown = (r: DormReservation, variant: "list" | "detail" = "list") => {
+    if ((r.status !== "submitted" && r.status !== "waitlisted") || hasRejectedReservationPriority(r)) return null;
+
+    const dropdownKey = `${variant}-${r.id}`;
+    const isOpen = openDecisionDropdownKey === dropdownKey;
+    const isPendingPriority = hasPendingReservationPriority(r);
+    const buttonClassName = variant === "detail"
+      ? `${secondaryBtn} h-11 min-w-[148px] px-5 text-sm`
+      : `${secondaryBtn} h-10 min-w-[132px] px-4 text-[13px]`;
+    const optionClassName =
+      "flex w-full items-center justify-between px-4 py-2.5 text-left text-sm font-semibold transition hover:bg-[#f7faff] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white";
+
+    const chooseDecision = (decision: DormReservationAutoDecision) => {
+      setOpenDecisionDropdownKey(null);
+      void handlePatchAutoDecision(r, decision);
+    };
+
+    return (
+      <div ref={isOpen ? decisionDropdownRef : undefined} className="relative">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            setOpenDecisionDropdownKey(isOpen ? null : dropdownKey);
+          }}
+          disabled={actionId === r.id}
+          className={buttonClassName}
+        >
+          {actionId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          {r.autoDecision ? "Đổi đề xuất" : "Xử lý đơn"}
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
+
+        {isOpen && (
+          <div
+            className={`absolute right-0 z-[80] w-48 overflow-hidden rounded-xl border border-[#d6e2f1] bg-white py-1 shadow-[0_18px_36px_rgba(31,49,82,0.16)] ${
+              variant === "detail" ? "bottom-full mb-2" : "top-full mt-2"
+            }`}
+          >
+            <button
+              type="button"
+              disabled={isPendingPriority || actionId === r.id}
+              title={isPendingPriority ? "Cần xác minh hoặc từ chối tất cả minh chứng trước khi đề xuất duyệt." : undefined}
+              onClick={() => chooseDecision("approve")}
+              className={`${optionClassName} text-emerald-700`}
+            >
+              Duyệt
+            </button>
+            <button
+              type="button"
+              disabled={isPendingPriority || actionId === r.id}
+              title={isPendingPriority ? "Cần xác minh hoặc từ chối tất cả minh chứng trước khi đưa vào danh sách chờ." : undefined}
+              onClick={() => chooseDecision("waitlist")}
+              className={`${optionClassName} text-sky-700`}
+            >
+              Danh sách chờ
+            </button>
+            <button
+              type="button"
+              disabled={actionId === r.id}
+              onClick={() => {
+                setOpenDecisionDropdownKey(null);
+                setProposalRejectTarget(r);
+                setProposalRejectReason(r.autoDecision === "reject" ? r.autoDecisionReason ?? "" : "");
+              }}
+              className={`${optionClassName} text-rose-600`}
+            >
+              Từ chối
+            </button>
+            <button
+              type="button"
+              disabled={actionId === r.id}
+              onClick={() => chooseDecision("review")}
+              className={`${optionClassName} text-amber-700`}
+            >
+              Cần xem lại
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <motion.section
@@ -696,7 +885,6 @@ export default function DormReservationManagementPage() {
         <div className="flex items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-[#1a2d52]">Hồ sơ giữ chỗ KTX tân sinh viên</h1>
-            <p className="mt-1 text-sm text-[#62789f]">{total} hồ sơ — Quản lý hồ sơ đăng ký tân sinh viên.</p>
           </div>
           <button type="button" onClick={() => void load(1)} disabled={loading} className={secondaryBtn}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Làm mới
@@ -704,40 +892,40 @@ export default function DormReservationManagementPage() {
         </div>
 
         {/* Filters */}
-        <div className="mt-4 flex flex-nowrap items-end gap-3 overflow-x-auto">
-          {periods.length > 0 && (
-            <label className="flex w-[190px] shrink-0 flex-col gap-1 text-[11px] font-semibold text-[#62789f]">
-              Đợt đăng ký
-              <select
-                value={periodFilter}
-                onChange={(e) => setPeriodFilter(e.target.value ? Number(e.target.value) : "")}
-                className="rounded-xl border border-[#cfdcf0] bg-white px-3 py-2 text-xs font-semibold text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
-              >
-                <option value="">Tất cả đợt đăng ký</option>
-                {periods.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </label>
-          )}
-          <label className="flex w-[190px] shrink-0 flex-col gap-1 text-[11px] font-semibold text-[#62789f]">
+        <div className="mt-4 grid grid-cols-1 items-end gap-3 lg:grid-cols-[minmax(170px,1fr)_minmax(190px,1fr)_minmax(190px,1fr)_auto]">
+          <label className="flex min-w-0 flex-col gap-1 text-[11px] font-semibold text-[#62789f]">
+            Gợi ý
+            <select
+              value={autoDecisionFilter}
+              aria-label="Gợi ý"
+              onChange={(e) => setAutoDecisionFilter(e.target.value as AutoDecisionFilter)}
+              className="w-full rounded-xl border border-[#cfdcf0] bg-white px-3 py-2 text-xs font-semibold text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
+            >
+              {AUTO_DECISION_FILTERS.map((option) => (
+                <option key={option.key || "all"} value={option.key}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex min-w-0 flex-col gap-1 text-[11px] font-semibold text-[#62789f]">
             Trạng thái
             <select
               value={statusFilter}
               aria-label="Trạng thái"
               onChange={(e) => setStatusFilter(e.target.value as ReservationStatusFilter)}
-              className="rounded-xl border border-[#cfdcf0] bg-white px-3 py-2 text-xs font-semibold text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
+              className="w-full rounded-xl border border-[#cfdcf0] bg-white px-3 py-2 text-xs font-semibold text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
             >
               {RESERVATION_STATUS_FILTERS.map((option) => (
                 <option key={option.key} value={option.key}>{option.label}</option>
               ))}
             </select>
           </label>
-          <label className="flex w-[190px] shrink-0 flex-col gap-1 text-[11px] font-semibold text-[#62789f]">
+          <label className="flex min-w-0 flex-col gap-1 text-[11px] font-semibold text-[#62789f]">
             Minh chứng ưu tiên
             <select
               value={priorityEvidenceFilter}
               aria-label="Minh chứng ưu tiên"
               onChange={(e) => setPriorityEvidenceFilter(e.target.value as typeof priorityEvidenceFilter)}
-              className="rounded-xl border border-[#cfdcf0] bg-white px-3 py-2 text-xs font-semibold text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
+              className="w-full rounded-xl border border-[#cfdcf0] bg-white px-3 py-2 text-xs font-semibold text-[#1f3152] focus:border-[#244cb8] focus:outline-none"
             >
               <option value="">Tất cả</option>
               <option value="pending">Chờ xác minh</option>
@@ -745,29 +933,35 @@ export default function DormReservationManagementPage() {
               <option value="rejected">Không hợp lệ</option>
             </select>
           </label>
-          <div className="flex shrink-0 flex-nowrap items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 lg:flex-nowrap lg:justify-end">
             <button
               type="button"
-              disabled={!periodFilter || !selectedPeriodAllowsAdmission || rankLoading || rankCapacityLoading || Boolean(rankCapacityError)}
+              disabled={rankDisabled}
               onClick={() => void handleRank()}
-              title={
-                !periodFilter || !selectedPeriodAllowsAdmission
-                  ? "Vui lòng chọn đợt đăng ký tân sinh viên cụ thể trước khi xếp hạng."
-                  : rankCapacityError
-                    ? "Không thể tải sức chứa. Vui lòng làm mới trước khi xếp hạng."
-                    : undefined
-              }
-              className={`${primaryBtn} h-[38px] gap-1.5 px-3 text-xs`}
+              title={rankButtonTitle}
+              className={`${primaryBtn} h-[38px] min-w-[118px] shrink-0 gap-1.5 whitespace-nowrap px-3 text-xs`}
             >
               {rankLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Shuffle className="h-3.5 w-3.5" />}
-              Xếp hạng & Duyệt
+              Xếp hạng
             </button>
+            {(rankResult || (rankPanelCapacity?.male.proposed_approved_count ?? 0) > 0 || (rankPanelCapacity?.female.proposed_approved_count ?? 0) > 0) && (
+              <button
+                type="button"
+                disabled={!periodFilter || confirmRankedLoading}
+                onClick={() => void handleConfirmRanked()}
+                title={!periodFilter ? "Vui lòng chọn đợt đăng ký cụ thể trước khi xác nhận đề xuất." : "Xác nhận các đề xuất đã xếp hạng trong đợt này"}
+                className={`${warningBtn} h-[38px] min-w-[112px] shrink-0 gap-1.5 whitespace-nowrap px-3 text-xs`}
+              >
+                {confirmRankedLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                Xác nhận
+              </button>
+            )}
             <button
               type="button"
               disabled={!periodFilter || rankCapacityLoading || Boolean(rankCapacityError)}
               onClick={() => setShowCapacityDetails(true)}
               title={!periodFilter ? "Vui lòng chọn đợt đăng ký cụ thể để xem sức chứa." : "Xem chi tiết sức chứa"}
-              className={`${secondaryBtn} h-[38px] gap-1.5 px-3 text-xs`}
+              className={`${secondaryBtn} h-[38px] min-w-[106px] shrink-0 gap-1.5 whitespace-nowrap px-3 text-xs`}
             >
               <Info className="h-3.5 w-3.5" />
               Sức chứa
@@ -776,7 +970,7 @@ export default function DormReservationManagementPage() {
               <button
                 type="button"
                 onClick={resetFilters}
-                className="inline-flex h-[38px] shrink-0 items-center justify-center rounded-xl border border-[#cfdcf0] bg-white px-3 py-2 text-xs font-semibold text-[#244cb8] transition hover:border-[#244cb8] hover:bg-[#f7faff]"
+                className="inline-flex h-[38px] min-w-[104px] shrink-0 items-center justify-center rounded-xl border border-[#cfdcf0] bg-white px-3 py-2 text-xs font-semibold whitespace-nowrap text-[#244cb8] transition hover:border-[#244cb8] hover:bg-[#f7faff]"
               >
                 Xóa bộ lọc
               </button>
@@ -786,13 +980,21 @@ export default function DormReservationManagementPage() {
 
         {periodFilter && !rankCapacityLoading && !rankCapacityError && rankPanelCapacity && (
           <p className="mt-2 text-xs font-semibold text-[#244cb8]">
-            Có thể duyệt thêm: {rankPanelCapacity.available_approval_slots} suất.
+            Nam —{" "}
+            {rankPanelCapacity.male.proposed_approved_count > 0
+              ? `Gợi ý duyệt: ${rankPanelCapacity.male.proposed_approved_count} — Còn lại sau xác nhận: ${rankPanelCapacity.male.remaining_after_proposals} suất.`
+              : `Suất còn lại hiện tại: ${rankPanelCapacity.male.available_approval_slots} suất.`}
+            {" · "}Nữ —{" "}
+            {rankPanelCapacity.female.proposed_approved_count > 0
+              ? `Gợi ý duyệt: ${rankPanelCapacity.female.proposed_approved_count} — Còn lại sau xác nhận: ${rankPanelCapacity.female.remaining_after_proposals} suất.`
+              : `Suất còn lại hiện tại: ${rankPanelCapacity.female.available_approval_slots} suất.`}
           </p>
         )}
 
-        {rankPanelCapacity?.capacity_exceeded && (
+        {(rankPanelCapacity?.male.capacity_exceeded || rankPanelCapacity?.female.capacity_exceeded) && (
           <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
-            Đang chọn duyệt vượt sức chứa {rankPanelCapacity.over_capacity_count} suất.
+            {rankPanelCapacity?.male.capacity_exceeded && `Đang chọn duyệt vượt sức chứa nam ${rankPanelCapacity.male.over_capacity_count} suất. `}
+            {rankPanelCapacity?.female.capacity_exceeded && `Đang chọn duyệt vượt sức chứa nữ ${rankPanelCapacity.female.over_capacity_count} suất.`}
           </div>
         )}
       </div>
@@ -811,69 +1013,66 @@ export default function DormReservationManagementPage() {
         <div className="space-y-3">
           {reservations.map((r) => (
             <motion.div key={r.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-              className="rounded-[18px] border border-[#d6e2f1] bg-white p-4 shadow-[0_8px_20px_rgba(36,76,184,0.07)]">
-              <div className="flex flex-wrap items-start justify-between gap-3">
+              className="flex min-h-[96px] flex-wrap items-center gap-4 rounded-2xl border border-[#d6e2f1] bg-white px-5 py-4 shadow-[0_8px_18px_rgba(36,76,184,0.07)]">
+              <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-4">
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-bold text-[#1a2d52]">{r.candidate?.fullName ?? "—"}</span>
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <span className="text-[18px] font-semibold leading-tight text-[#1f3152] sm:text-[20px]">{r.candidate?.fullName ?? "—"}</span>
+                    {r.period && (
+                      <span className="inline-flex rounded-full border border-[#c8d8ef] bg-[#f2f7ff] px-3 py-1.5 text-xs font-bold text-[#244cb8]">
+                        {r.period.name}
+                      </span>
+                    )}
                     {r.status !== "submitted" && (
                       <span
-                        className={`rounded-lg border px-2 py-0.5 text-xs font-semibold ${effectiveStatusClass(r)}`}
+                        className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-bold ${effectiveStatusClass(r)}`}
                         title={effectiveStatusTooltip(r)}
                       >
                         {effectiveStatusLabel(r)}
                       </span>
                     )}
-                    {(r.status === "submitted" || r.status === "waitlisted") && r.hasPriorityEvidence && r.priorityEvidenceStatus && (
-                      <span className={`rounded-lg border px-2 py-0.5 text-xs font-semibold ${PRIORITY_EVIDENCE_BADGE[r.priorityEvidenceStatus].className}`}>
+                    {(r.status === "submitted" || r.status === "waitlisted") && r.autoDecision && (
+                      <span className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-bold ${AUTO_DECISION_BADGE[r.autoDecision].className}`}>
+                        {AUTO_DECISION_BADGE[r.autoDecision].label}
+                      </span>
+                    )}
+                    {r.hasPriorityEvidence && r.priorityEvidenceStatus && r.priorityEvidenceStatus !== "verified" && (
+                      <span className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-bold ${PRIORITY_EVIDENCE_BADGE[r.priorityEvidenceStatus].className}`}>
                         {PRIORITY_EVIDENCE_BADGE[r.priorityEvidenceStatus].label}
                       </span>
                     )}
                     {r.candidate?.status === "enrolled" && (
-                      <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">
                         Đã nhập học
                       </span>
                     )}
                     {r.expirationReason === "approved_not_converted" && (
-                      <span className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
-                        Chưa hoàn tất đăng ký
+                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">
+                        Hết hạn - chưa nhập học
+                      </span>
+                    )}
+                    {r.expirationReason === "period_closed_while_waitlisted" && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-bold text-sky-700">
+                        Hết hạn - danh sách chờ
                       </span>
                     )}
                   </div>
-                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-[#7c8fb5]">
+                  <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-[13px] text-[#6b7f9f]">
                     {r.expirationReason === "approved_not_converted" && r.candidate?.admissionCode && (
                       <span>Mã trúng tuyển: <strong className="text-[#1f3152]">{r.candidate.admissionCode}</strong></span>
                     )}
                     {r.expirationReason === "approved_not_converted" && r.reservationCode && (
                       <span>Mã giữ chỗ: <strong className="text-[#1f3152]">{r.reservationCode}</strong></span>
                     )}
-                    {r.period && <span>Đợt: <strong className="text-[#1f3152]">{r.period.name}</strong></span>}
                     {r.submittedAt && <span>Nộp: <strong className="text-[#1f3152]">{formatListDate(r.submittedAt)}</strong></span>}
                     {r.expirationReason === "approved_not_converted" && r.approvedAt && (
                       <span>Duyệt giữ chỗ: <strong className="text-[#1f3152]">{formatListDate(r.approvedAt)}</strong></span>
                     )}
                   </div>
-                  {r.status === "converted" && r.convertedRegistrationId && (
-                    <Link to={`/admin/registrations/${r.convertedRegistrationId}`}
-                      className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-[#244cb8] hover:underline">
-                      Xem đơn KTX #{r.convertedRegistrationId} <ArrowRight className="h-3 w-3" />
-                    </Link>
-                  )}
                 </div>
-                <div className="flex shrink-0 flex-wrap gap-2">
-                  <button type="button" onClick={() => void handleOpenDetail(r)} className={`${secondaryBtn} h-9 px-3 text-xs`}>Chi tiết</button>
-                  {r.status === "submitted" && !hasRejectedReservationPriority(r) && (
-                    <button type="button" disabled={actionId === r.id} onClick={() => void handleWaitlist(r)} className={`${secondaryBtn} h-9 px-3 text-xs`}>
-                      {actionId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                      Chuyển vào danh sách chờ
-                    </button>
-                  )}
-                  {canCancelReservation(r) && (
-                    <button type="button" disabled={actionId === r.id} onClick={() => { setCancelTarget(r); setCancelReason(""); }} className={`${warningBtn} h-9 px-3 text-xs`}>
-                      {actionId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                      Hủy giữ chỗ
-                    </button>
-                  )}
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2.5">
+                  <button type="button" onClick={() => void handleOpenDetail(r)} className={`${secondaryBtn} h-10 min-w-[132px] px-4 text-[13px]`}>Chi tiết</button>
+                  {renderDecisionDropdown(r)}
                 </div>
               </div>
             </motion.div>
@@ -1049,29 +1248,18 @@ export default function DormReservationManagementPage() {
                 )}
 
                 {detail.rejectionReason && (
-                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4">
-                    <p className="mb-2 text-base font-semibold text-rose-600">Lý do từ chối</p>
-                    <p className="text-base font-medium leading-6 text-rose-800">{detail.rejectionReason}</p>
+                  <div className={`rounded-2xl border px-5 py-4 ${
+                    isSelfCancelledReservation(detail) ? "border-slate-200 bg-slate-50" : "border-rose-200 bg-rose-50"
+                  }`}>
+                    <p className={`mb-2 text-base font-semibold ${isSelfCancelledReservation(detail) ? "text-slate-600" : "text-rose-600"}`}>
+                      {isSelfCancelledReservation(detail) ? "Lý do tự hủy (thí sinh)" : "Lý do từ chối"}
+                    </p>
+                    <p className={`text-base font-medium leading-6 ${isSelfCancelledReservation(detail) ? "text-slate-800" : "text-rose-800"}`}>
+                      {isSelfCancelledReservation(detail)
+                        ? detail.rejectionReason.replace(SELF_CANCEL_REASON_PREFIX, "").trim()
+                        : detail.rejectionReason}
+                    </p>
                   </div>
-                )}
-                {detail.status === "cancelled" && (
-                  <section className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
-                    <p className={detailSectionTitle}>Hủy giữ chỗ</p>
-                    <dl className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2">
-                      <div className="rounded-2xl border border-amber-100 bg-white/75 px-4 py-3.5 sm:col-span-2">
-                        <dt className={detailLabel}>Lý do hủy</dt>
-                        <dd className={detailValue}>{detail.cancellationReason || "—"}</dd>
-                      </div>
-                      <div className="rounded-2xl border border-amber-100 bg-white/75 px-4 py-3.5">
-                        <dt className={detailLabel}>Thời điểm hủy</dt>
-                        <dd className={detailValue}>{detail.cancelledAt ? formatListDate(detail.cancelledAt) : "—"}</dd>
-                      </div>
-                      <div className="rounded-2xl border border-amber-100 bg-white/75 px-4 py-3.5">
-                        <dt className={detailLabel}>Người hủy</dt>
-                        <dd className={detailValue}>{detail.cancelledBy === "candidate" ? "Thí sinh/sinh viên tự hủy" : detail.cancelledBy || "—"}</dd>
-                      </div>
-                    </dl>
-                  </section>
                 )}
                 {detail.status === "converted" && detail.convertedRegistration?.status === "cancelled" && (
                   <section className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
@@ -1272,7 +1460,14 @@ export default function DormReservationManagementPage() {
                 ) : (
                 <div className="shrink-0 border-t border-[#eef3fb] bg-[#fbfdff] px-8 py-5">
                   <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#dce7f6] bg-white px-5 py-4">
-                  <p className={detailSectionTitle}>Quyết định hồ sơ</p>
+                  <div>
+                    <p className={detailSectionTitle}>Quyết định hồ sơ</p>
+                    {detail.autoDecision && (
+                      <span className={`mt-2 inline-flex rounded-lg border px-2.5 py-1 text-xs font-semibold ${AUTO_DECISION_BADGE[detail.autoDecision].className}`}>
+                        {AUTO_DECISION_BADGE[detail.autoDecision].label}
+                      </span>
+                    )}
+                  </div>
                   {hasPendingReservationPriority(detail) && (
                     <div className="flex max-w-xl items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
                       <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -1280,18 +1475,7 @@ export default function DormReservationManagementPage() {
                     </div>
                   )}
                   <div className="flex flex-wrap items-center justify-end gap-3">
-                    <button type="button" onClick={() => { setRejectTarget(detail); setRejectReason(""); }}
-                      className={`${dangerBtn} h-11 min-w-[132px] px-5 text-sm`}>
-                      Từ chối
-                    </button>
-                    <button
-                      type="button"
-                      disabled={actionId === detail.id || hasPendingReservationPriority(detail)}
-                      title={hasPendingReservationPriority(detail) ? "Cần xác minh hoặc từ chối tất cả minh chứng trước khi duyệt." : undefined}
-                      onClick={() => void handleApprove(detail)}
-                      className="inline-flex h-11 min-w-[132px] items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-5 text-sm font-semibold text-emerald-700 transition hover:-translate-y-0.5 disabled:opacity-50">
-                      {actionId === detail.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Duyệt
-                    </button>
+                    {renderDecisionDropdown(detail, "detail")}
                   </div>
                   </div>
                 </div>
@@ -1367,105 +1551,24 @@ export default function DormReservationManagementPage() {
         document.body,
       )}
 
-      {/* ── Cancel Reservation Dialog ── */}
+      {/* ── Proposal Reject Dialog ── */}
       {createPortal(
         <AnimatePresence>
-          {cancelTarget && (
-            <motion.div
-              key="cancel-reservation"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+          {proposalRejectTarget && (
+            <motion.div key="proposal-reject" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-3"
-              onClick={closeCancelDialog}
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.96, y: 16 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.96, y: 16 }}
-                className="w-full max-w-lg rounded-[24px] border border-amber-200 bg-white p-6 shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="mb-4 flex items-start gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-amber-200 bg-amber-50 text-amber-600">
-                    <AlertCircle className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-[#1a2d52]">Hủy giữ chỗ</h2>
-                    <p className="mt-2 text-sm font-medium leading-6 text-[#5d7299]">
-                      Bạn có chắc chắn muốn hủy giữ chỗ của thí sinh này?
-                    </p>
-                    <div className="mt-3 rounded-2xl border border-amber-100 bg-amber-50/70 px-4 py-3 text-sm font-medium leading-6 text-amber-800">
-                      <p>Sau khi hủy:</p>
-                      <ul className="mt-1 space-y-1">
-                        <li>• Hồ sơ giữ chỗ sẽ kết thúc.</li>
-                        <li>• Nếu đợt đăng ký vẫn còn mở, thí sinh phải tạo hồ sơ giữ chỗ mới để tiếp tục.</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-                <div className="mb-4">
-                  <label className="mb-1.5 block text-sm font-semibold text-[#324B76]">
-                    Lý do hủy <span className="text-rose-500">*</span>
-                  </label>
-                  <textarea
-                    value={cancelReason}
-                    onChange={(e) => setCancelReason(e.target.value.slice(0, 1000))}
-                    rows={4}
-                    maxLength={1000}
-                    disabled={actionId === cancelTarget.id}
-                    className={`${inputCls} resize-none`}
-                    placeholder="Nhập lý do hủy giữ chỗ..."
-                  />
-                  <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-[#7c8fb5]">
-                    <span>Lý do này sẽ được hiển thị cho thí sinh khi tra cứu trạng thái hồ sơ.</span>
-                    <span>{cancelReason.length}/1000</span>
-                  </div>
-                </div>
-                <div className="flex flex-wrap justify-end gap-3">
-                  <button
-                    type="button"
-                    disabled={actionId === cancelTarget.id}
-                    onClick={closeCancelDialog}
-                    className={`${secondaryBtn} h-10 min-w-[110px]`}
-                  >
-                    Hủy
-                  </button>
-                  <button
-                    type="button"
-                    disabled={actionId === cancelTarget.id || !cancelReason.trim()}
-                    onClick={() => void handleConfirmCancel()}
-                    className={`${dangerBtn} h-10 min-w-[180px]`}
-                  >
-                    {actionId === cancelTarget.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    Xác nhận hủy giữ chỗ
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>,
-        document.body,
-      )}
-
-      {/* ── Reject Dialog ── */}
-      {createPortal(
-        <AnimatePresence>
-          {rejectTarget && (
-            <motion.div key="reject" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-3"
-              onClick={() => setRejectTarget(null)}>
+              onClick={() => { setProposalRejectTarget(null); setProposalRejectReason(""); }}>
               <motion.div initial={{ opacity: 0, scale: 0.96, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 16 }}
                 className="w-full max-w-md rounded-[24px] border border-rose-200 bg-white p-6 shadow-[0_24px_56px_rgba(36,76,184,0.18)]"
                 onClick={(e) => e.stopPropagation()}>
-              <h2 className="mb-1 text-lg font-bold text-[#1a2d52]">Từ chối hồ sơ</h2>
-              <p className="mb-3 text-sm text-[#62789f]">{rejectTarget.candidate?.fullName} — {rejectTarget.reservationCode}</p>
-              <label className="mb-1 block text-xs font-semibold text-[#324B76]">Lý do từ chối *</label>
-              <textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} rows={3} className={`${inputCls} resize-none`} placeholder="Nhập lý do từ chối..." />
+              <h2 className="mb-1 text-xl font-bold text-[#1a2d52]">Phản hồi hồ sơ</h2>
+              <p className="mb-3 text-sm text-[#62789f]">{proposalRejectTarget.candidate?.fullName} — {proposalRejectTarget.reservationCode}</p>
+              <label className="mb-1 block text-xs font-semibold text-[#324B76]">Lý do gợi ý từ chối *</label>
+              <textarea value={proposalRejectReason} onChange={(e) => setProposalRejectReason(e.target.value)} rows={4} className={`${inputCls} resize-none`} placeholder="Nhập lý do từ chối..." />
               <div className="mt-4 flex justify-end gap-2">
-                <button type="button" onClick={() => setRejectTarget(null)} className="rounded-xl border border-[#d6e2f1] bg-white px-4 py-2 text-sm font-semibold text-[#5d7299]">Hủy</button>
-                <button type="button" disabled={rejectLoading || !rejectReason.trim()} onClick={() => void handleReject()} className={`${dangerBtn} h-9`}>
-                  {rejectLoading && <Loader2 className="h-4 w-4 animate-spin" />} Xác nhận từ chối
+                <button type="button" onClick={() => { setProposalRejectTarget(null); setProposalRejectReason(""); }} className="rounded-xl border border-[#d6e2f1] bg-white px-4 py-2 text-sm font-semibold text-[#5d7299]">Hủy</button>
+                <button type="button" disabled={actionId === proposalRejectTarget.id || !proposalRejectReason.trim()} onClick={() => void handleConfirmProposalReject()} className={`${dangerBtn} h-9`}>
+                  {actionId === proposalRejectTarget.id && <Loader2 className="h-4 w-4 animate-spin" />} Lưu gợi ý từ chối
                 </button>
               </div>
               </motion.div>
@@ -1493,7 +1596,7 @@ export default function DormReservationManagementPage() {
                     <h2 className="text-lg font-bold text-[#1a2d52]">Đợt đăng ký vẫn đang nhận hồ sơ</h2>
                     <div className="mt-2 space-y-2 text-sm leading-6 text-[#5d7299]">
                       <p>Việc xếp hạng lúc này chỉ mang tính tạm thời vì vẫn có thể có hồ sơ mới được nộp hoặc điểm ưu tiên thay đổi.</p>
-                      <p>Hành động này sẽ tính điểm ưu tiên, xếp hạng hồ sơ và tự động cập nhật trạng thái các hồ sơ đang chờ xử lý thành "Đã duyệt giữ chỗ" hoặc "Danh sách chờ" theo kết quả xếp hạng. Vui lòng kiểm tra kỹ trước khi tiếp tục.</p>
+                      <p>Hành động này sẽ tính điểm ưu tiên và tạo đề xuất "Gợi ý duyệt" hoặc "Gợi ý danh sách chờ". Trạng thái thật của hồ sơ chỉ thay đổi sau khi admin xác nhận đề xuất.</p>
                       <p>Bạn có muốn tiếp tục?</p>
                     </div>
                   </div>
