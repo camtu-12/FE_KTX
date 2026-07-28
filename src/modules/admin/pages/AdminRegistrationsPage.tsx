@@ -1311,14 +1311,6 @@ export default function AdminRegistrationsPage() {
                               <button
                                 type="button"
                                 disabled={isSubmittingThis}
-                                onClick={() => void handleVerifyPriority(p.id, verifyModalRegistration.id, "verified")}
-                                className="rounded-xl bg-[linear-gradient(135deg,#1f9a60_0%,#35bf7a_100%)] px-3 py-1.5 text-xs font-bold text-white shadow-[0_4px_10px_rgba(31,154,96,0.22)] transition hover:brightness-110 disabled:opacity-40"
-                              >
-                                {isSubmittingThis ? "..." : "✓ Xác minh"}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isSubmittingThis}
                                 onClick={() => {
                                   setPriorityRejectDialog({
                                     priorityId: p.id,
@@ -1330,6 +1322,14 @@ export default function AdminRegistrationsPage() {
                                 className="rounded-xl bg-[linear-gradient(135deg,#e25569_0%,#cc3c4f_100%)] px-3 py-1.5 text-xs font-bold text-white shadow-[0_4px_10px_rgba(204,60,79,0.18)] transition hover:brightness-105 disabled:opacity-40"
                               >
                                 {isSubmittingThis ? "..." : "✗ Từ chối"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isSubmittingThis}
+                                onClick={() => void handleVerifyPriority(p.id, verifyModalRegistration.id, "verified")}
+                                className="rounded-xl bg-[linear-gradient(135deg,#1f9a60_0%,#35bf7a_100%)] px-3 py-1.5 text-xs font-bold text-white shadow-[0_4px_10px_rgba(31,154,96,0.22)] transition hover:brightness-110 disabled:opacity-40"
+                              >
+                                {isSubmittingThis ? "..." : "✓ Xác minh"}
                               </button>
                             </div>
                           ) : null}

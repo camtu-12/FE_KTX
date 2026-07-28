@@ -1423,14 +1423,14 @@ export default function DormReservationManagementPage() {
                               {p.status === "pending" && (
                                 <>
                                   <button type="button" disabled={priorityActionId === p.id}
-                                    onClick={() => void handleVerifyPriority(p.id)}
-                                    className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50">
-                                    {priorityActionId === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Hợp lệ"}
-                                  </button>
-                                  <button type="button" disabled={priorityActionId === p.id}
                                     onClick={() => void handleRejectPriority(p.id)}
                                     className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50">
                                     Không hợp lệ
+                                  </button>
+                                  <button type="button" disabled={priorityActionId === p.id}
+                                    onClick={() => void handleVerifyPriority(p.id)}
+                                    className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50">
+                                    {priorityActionId === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Hợp lệ"}
                                   </button>
                                 </>
                               )}
