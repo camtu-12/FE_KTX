@@ -1211,7 +1211,8 @@ export default function DormReservationManagementPage() {
                   <dl className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
                     <div className={detailInfoCard}><dt className={detailLabel}>Họ tên</dt><dd className={detailValue}>{detail.candidate?.fullName}</dd></div>
                     <div className={detailInfoCard}><dt className={detailLabel}>Mã hồ sơ</dt><dd className={`${detailValue} font-mono`}>{detail.candidate?.admissionCode}</dd></div>
-                    <div className={detailInfoCard}><dt className={detailLabel}>Ngày sinh</dt><dd className={detailValue}>{detail.candidate?.dateOfBirth}</dd></div>
+                    <div className={detailInfoCard}><dt className={detailLabel}>Giới tính</dt><dd className={detailValue}>{detail.candidate?.gender === "male" ? "Nam" : detail.candidate?.gender === "female" ? "Nữ" : "—"}</dd></div>
+                    <div className={detailInfoCard}><dt className={detailLabel}>Ngày sinh</dt><dd className={detailValue}>{formatListDate(detail.candidate?.dateOfBirth)}</dd></div>
                     <div className={detailInfoCard}><dt className={detailLabel}>CCCD</dt><dd className={detailValue}>{detail.candidate?.cccd ?? "—"}</dd></div>
                     <div className={detailInfoCard}><dt className={detailLabel}>SĐT</dt><dd className={detailValue}>{detail.candidate?.phone ?? "—"}</dd></div>
                     <div className={detailInfoCard}><dt className={detailLabel}>Email</dt><dd className={detailValue}>{detail.candidate?.email ?? "—"}</dd></div>
