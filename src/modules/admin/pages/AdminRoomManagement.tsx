@@ -39,6 +39,13 @@ type BedPosition = "UPPER" | "LOWER";
 type RoomGender = "MALE" | "FEMALE";
 type BedActionMode = "detail" | "status" | "transfer";
 
+type ScheduledMaintenance = {
+  id: number;
+  reason: string | null;
+  started_at: string | null;
+  expected_end_at: string | null;
+};
+
 type Room = {
   id: number;
   building_code: string;
@@ -49,6 +56,7 @@ type Room = {
   capacity: number;
   status: RoomStatus;
   beds: Bed[];
+  scheduled_maintenance?: ScheduledMaintenance | null;
 };
 
 type Bed = {
@@ -123,6 +131,13 @@ function getEmptyBeds(room: Room) {
     return 0;
   }
   return Math.max(room.capacity - getRoomOccupiedBeds(room) - getRoomMaintenanceBeds(room), 0);
+}
+
+function formatShortDate(value: string | null | undefined): string {
+  if (!value) return "";
+  const [year, month, day] = value.split("-");
+  if (!year || !month || !day) return value;
+  return `${day}/${month}/${year}`;
 }
 
 function getRoomMaintenanceBeds(room: Room) {
@@ -1469,6 +1484,14 @@ export default function AdminRoomManagement() {
                   {statusMeta[roomDisplayStatus].label}
                 </span>
               </div>
+
+              {room.scheduled_maintenance ? (
+                <p className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">
+                  <Settings2 className="h-3.5 w-3.5" />
+                  Đã lên lịch bảo trì từ {formatShortDate(room.scheduled_maintenance.started_at)}
+                  {room.scheduled_maintenance.reason ? ` — ${room.scheduled_maintenance.reason}` : ""}
+                </p>
+              ) : null}
 
               <div className="mt-4 space-y-2 text-sm text-slate-600">
                 <p className="flex items-center gap-2">

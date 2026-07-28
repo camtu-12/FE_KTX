@@ -15,6 +15,13 @@ export type BedApi = {
   occupied: boolean;
 };
 
+export type ScheduledMaintenance = {
+  id: number;
+  reason: string | null;
+  started_at: string | null;
+  expected_end_at: string | null;
+};
+
 export type RoomApi = {
   id: number;
   floor_id: number;
@@ -28,6 +35,7 @@ export type RoomApi = {
   occupied_beds: number;
   available_beds: number;
   maintenance_beds: number;
+  scheduled_maintenance: ScheduledMaintenance | null;
   floor?: {
     id: number;
     building_code: string;
@@ -82,6 +90,7 @@ type ApiRoom = {
   occupied_beds?: number;
   available_beds?: number;
   maintenance_beds?: number;
+  scheduled_maintenance?: ScheduledMaintenance | null;
   floor?: RoomApi["floor"];
 };
 
@@ -118,6 +127,7 @@ const normalizeRoom = (room: ApiRoom): RoomApi => ({
   occupied_beds: Number(room.occupied_beds ?? 0) || 0,
   available_beds: Number(room.available_beds ?? 0) || 0,
   maintenance_beds: Number(room.maintenance_beds ?? 0) || 0,
+  scheduled_maintenance: room.scheduled_maintenance ?? null,
   floor: room.floor ?? null,
 });
 
