@@ -1,7 +1,7 @@
 import axios from "axios";
 import apiClient from "../lib/apiClient";
-import type { DormCapacitySummary } from "../types/dormCapacity";
-export type { DormCapacitySummary } from "../types/dormCapacity";
+import type { DormCapacityByGender } from "../types/dormCapacity";
+export type { DormCapacitySummary, DormCapacityByGender } from "../types/dormCapacity";
 
 const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string) ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
 
@@ -151,12 +151,16 @@ export type RegistrationPeriodData = RegistrationPeriodPayload & {
   registrations_count?: number;
   approved_count?: number;
   rejected_count?: number;
+  cancelled_count?: number;
   approve_proposal_count?: number;
+  approve_proposal_count_male?: number;
+  approve_proposal_count_female?: number;
   reject_proposal_count?: number;
   review_count?: number;
   pending_criteria_count?: number;
   admission_submitted_count?: number;
   admission_waitlisted_count?: number;
+  admission_awaiting_confirm_count?: number;
   admission_approved_count?: number;
   allow_admission_candidates?: boolean;
   requires_student_code?: boolean;
@@ -170,13 +174,17 @@ export const getRegistrationPeriods = (): Promise<RegistrationPeriodData[]> =>
 
 export const getRegistrationPeriodCapacity = (
   id: number,
-  proposedApprovedCount = 0,
-): Promise<DormCapacitySummary> =>
+  proposedApprovedCountMale = 0,
+  proposedApprovedCountFemale = 0,
+): Promise<DormCapacityByGender> =>
   apiClient
     .get(`/registration-periods/${id}/capacity`, {
-      params: { proposed_approved_count: Math.max(0, proposedApprovedCount) },
+      params: {
+        proposed_approved_count_male: Math.max(0, proposedApprovedCountMale),
+        proposed_approved_count_female: Math.max(0, proposedApprovedCountFemale),
+      },
     })
-    .then((res) => (res.data as { capacity: DormCapacitySummary }).capacity);
+    .then((res) => (res.data as { capacity: DormCapacityByGender }).capacity);
 
 export const createRegistrationPeriod = (payload: RegistrationPeriodPayload): Promise<RegistrationPeriodData> =>
   apiClient.post("/registration-periods", payload).then((res) => res.data as RegistrationPeriodData);
@@ -187,7 +195,7 @@ export const updateRegistrationPeriod = (id: number, payload: Partial<Registrati
 export const deleteRegistrationPeriod = (id: number): Promise<void> =>
   apiClient.delete(`/registration-periods/${id}`).then(() => undefined);
 
-export const processRegistrationPeriod = (id: number): Promise<{ message: string; free_beds: number; approved: number; waitlist: number; capacity?: DormCapacitySummary }> =>
+export const processRegistrationPeriod = (id: number): Promise<{ message: string; free_beds_by_gender: { male: number; female: number }; approved: number; waitlist: number; promoted_from_waitlist?: number; capacity_by_gender?: DormCapacityByGender }> =>
   apiClient.post(`/registration-periods/${id}/process`).then((res) => res.data);
 
 export const patchAutoDecision = (id: number, decision: 'approve' | 'reject' | 'review', reason?: string) =>

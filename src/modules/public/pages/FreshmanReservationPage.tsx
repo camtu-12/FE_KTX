@@ -352,9 +352,6 @@ export default function FreshmanReservationPage() {
 
     const hasMissingEvidence = Object.keys(nextEvidenceErrors).length > 0;
     if (Object.keys(errors).length > 0 || Object.keys(nextDocumentErrors).length > 0 || hasMissingEvidence) {
-      if (hasMissingEvidence && !errors.period && !errors.email && Object.keys(nextDocumentErrors).length === 0) {
-        setSubmitError("Vui lòng đính kèm ảnh minh chứng cho các tiêu chí ưu tiên đã chọn.");
-      }
       scrollToFirstInvalid(errors, nextDocumentErrors, nextEvidenceErrors);
       return;
     }

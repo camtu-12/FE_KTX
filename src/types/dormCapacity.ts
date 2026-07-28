@@ -13,3 +13,10 @@ export type DormCapacitySummary = {
   capacity_exceeded: boolean;
   over_capacity_count: number;
 };
+
+// Giường KTX tách riêng theo giới tính ở cấp Floor — suất trống/duyệt phải tính RIÊNG cho
+// từng giới (báo cáo 27/07: gộp chung khiến duyệt lố 1 giới trong khi giới kia còn dư).
+export type DormCapacityByGender = {
+  male: DormCapacitySummary;
+  female: DormCapacitySummary;
+};

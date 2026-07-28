@@ -186,8 +186,7 @@ export default function RegistrationStatusCard({ period }: Props) {
           {period.allow_admission_candidates ? (
             <Link
               to="/freshman-reservation/status"
-              className="inline-flex min-w-[150px] flex-1 items-center justify-center gap-2 rounded-full border px-5 py-2.5 text-sm font-extrabold shadow-[0_6px_16px_rgba(0,0,0,0.06)] transition-all duration-300 ease-out hover:-translate-y-0.5 sm:flex-none"
-              style={{ borderColor: cfg.accentBorder, color: cfg.accent, backgroundColor: "#fff" }}
+              className="inline-flex min-w-[150px] flex-1 items-center justify-center gap-2 rounded-full border border-[#bfdbfe] bg-white px-5 py-2.5 text-sm font-extrabold text-[#2563eb] shadow-[0_6px_16px_rgba(0,0,0,0.06)] transition-all duration-300 ease-out hover:-translate-y-0.5 sm:flex-none"
             >
               <Search size={15} />
               Tra cứu tình trạng đơn

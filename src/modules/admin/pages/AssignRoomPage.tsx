@@ -526,8 +526,9 @@ export default function AssignRoomPage() {
             ) : null}
             <button
               type="button"
-              disabled={isAutoAssigning || isConfirmingProposals}
+              disabled={isAutoAssigning || isConfirmingProposals || unassignedCount === 0}
               onClick={() => void handleAutoAssign()}
+              title={unassignedCount === 0 ? "Không còn sinh viên nào chờ phân phòng." : undefined}
               className="auth-btn-gloss inline-flex items-center gap-2 whitespace-nowrap rounded-full bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-5 py-2.5 text-[14px] font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
             >
               <span className="auth-btn-gloss__content">
