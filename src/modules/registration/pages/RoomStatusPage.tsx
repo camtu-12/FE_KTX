@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { AlertCircle, Award, CheckCircle, ChevronDown, Clock, ExternalLink, FileText, LoaderCircle, RefreshCw, User, Users } from "lucide-react";
 import { getLatestRegistrationByEmail } from "../../../api/registrationService";
 import { checkEligibility, type EligibilityResult } from "../../../api/registrationApi";
+import { getStudentPayments } from "../../../api/paymentApi";
 import type { RegistrationRequest } from "../../admin/data/registrationRequests";
 import { useAuthStore } from "../../auth/store";
 import { formatDate } from "../../../utils/dateFormat";
@@ -295,6 +296,8 @@ export default function RoomStatusPage() {
   const [eligibility, setEligibility] = useState<EligibilityResult | null>(prefetched?.eligibility ?? null);
   const [loading, setLoading] = useState(!prefetched?.registration);
   const [error, setError] = useState("");
+  const [firstBillDueDate, setFirstBillDueDate] = useState<string | null>(null);
+  const [firstBillIsOverdue, setFirstBillIsOverdue] = useState(false);
   const skipFirstFetch = useRef(!!prefetched?.registration);
 
   const loadRegistration = useCallback(
@@ -307,9 +310,13 @@ export default function RoomStatusPage() {
       try {
         setLoading(true);
         setError("");
-        const [data, eligRes] = await Promise.all([
+        // Gộp luôn việc lấy hóa đơn vào chung 1 lượt tải ban đầu (dù chưa biết chắc có
+        // cần dùng hay không) — tránh tình trạng trang hiện xong rồi mới "nhảy" thêm dòng
+        // cảnh báo quá hạn sau một nhịp tải riêng lẻ.
+        const [data, eligRes, paymentsRes] = await Promise.all([
           getLatestRegistrationByEmail(studentEmail),
           checkEligibility(studentEmail).catch(() => ({ eligible: false } as EligibilityResult)),
+          getStudentPayments().catch(() => null),
         ]);
 
         if (!isMounted()) return;
@@ -335,6 +342,14 @@ export default function RoomStatusPage() {
 
         setRegistration(data);
         setEligibility(eligRes);
+
+        if (data.occupancy_status === "PENDING_PAYMENT" && paymentsRes) {
+          const unpaidRoomFeeBills = paymentsRes.items
+            .filter((item) => item.source === "room_fee" && item.status !== "paid")
+            .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+          setFirstBillDueDate(unpaidRoomFeeBills[0]?.dueDate ?? null);
+          setFirstBillIsOverdue(unpaidRoomFeeBills[0]?.status === "overdue");
+        }
       } catch (err) {
         if (!isMounted()) return;
         setError(
@@ -456,6 +471,16 @@ export default function RoomStatusPage() {
           <p className="mt-1.5 text-sm text-amber-700">
             Vui lòng thanh toán hóa đơn tháng đầu để hoàn tất lưu trú.
           </p>
+          {firstBillDueDate ? (
+            <p className="mt-1 text-sm font-semibold text-amber-800">
+              Hạn thanh toán: {formatDate(firstBillDueDate)}
+            </p>
+          ) : null}
+          {firstBillIsOverdue ? (
+            <p className="mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+              ⚠ Đã quá hạn thanh toán — vui lòng thanh toán sớm để tránh bị nhắc nợ/xử lý theo quy định.
+            </p>
+          ) : null}
           <button
             type="button"
             onClick={() => navigate("/student/payment")}

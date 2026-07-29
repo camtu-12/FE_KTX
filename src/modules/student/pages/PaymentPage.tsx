@@ -540,6 +540,11 @@ function PaymentItemCard({
                   Đã thanh toán: {item.paidAt ? formatDate(item.paidAt) : "-"} · {item.paymentMethod || "-"} {item.transactionCode ? `· ${item.transactionCode}` : ""}
                 </p>
               ) : null}
+              {item.status === "overdue" ? (
+                <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+                  ⚠ Đã quá hạn thanh toán — vui lòng thanh toán sớm để tránh bị nhắc nợ/xử lý theo quy định.
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -637,6 +642,11 @@ function ElectricityPaymentItemCard({
           {item.status === "paid" ? (
             <p className="text-sm font-semibold text-[#6f84ad]">
               Đã thanh toán: {item.paidAt ? formatDate(item.paidAt) : "-"} · {item.paymentMethod || "-"} {item.transactionCode ? `· ${item.transactionCode}` : ""}
+            </p>
+          ) : null}
+          {item.status === "overdue" ? (
+            <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+              ⚠ Đã quá hạn thanh toán — vui lòng thanh toán sớm để tránh bị nhắc nợ/xử lý theo quy định.
             </p>
           ) : null}
         </div>
