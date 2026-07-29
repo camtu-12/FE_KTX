@@ -17,7 +17,6 @@ export type MaintenanceWizardState =
       reason: string;
       startedAt: string;
       expectedEndAt: string;
-      note: string;
     };
 
 type MaintenanceWizardModalProps = {
@@ -186,7 +185,6 @@ export default function MaintenanceWizardModal({
                 <p><span className="font-semibold">Lý do bảo trì:</span> {state.reason || "--"}</p>
                 <p><span className="font-semibold">Ngày bắt đầu:</span> {formatDate(state.startedAt)}</p>
                 <p><span className="font-semibold">Ngày dự kiến hoàn thành:</span> {formatDate(state.expectedEndAt)}</p>
-                {state.note ? <p><span className="font-semibold">Ghi chú:</span> {state.note}</p> : null}
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 {state.plan.affected.map((item) => (
@@ -313,7 +311,6 @@ export default function MaintenanceWizardModal({
                   <p><span className="font-semibold">Lý do bảo trì:</span> {state.reason || "--"}</p>
                   <p><span className="font-semibold">Ngày bắt đầu:</span> {formatDate(state.startedAt)}</p>
                   <p><span className="font-semibold">Ngày dự kiến hoàn thành:</span> {formatDate(state.expectedEndAt)}</p>
-                  {state.note ? <p><span className="font-semibold">Ghi chú:</span> {state.note}</p> : null}
                 </div>
                 {state.plan.affected.map((item) => {
                   const selectedOption = state.plan.options.find((option) => String(option.id) === state.assignments[item.occupancy_id]) ?? null;

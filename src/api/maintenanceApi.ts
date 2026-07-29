@@ -78,7 +78,6 @@ export type StartRoomMaintenancePayload = {
   reason: string;
   started_at: string;
   expected_end_at: string;
-  note?: string;
   maintenance_reason?: string;
   maintenance_start_date?: string;
   maintenance_expected_end_date?: string;
