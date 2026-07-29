@@ -101,7 +101,19 @@ export default function RegistrationStatusCard({ period }: Props) {
     );
   }
 
-  const status = period.status ?? "closed";
+  // "processing" chỉ là nhãn nội bộ cho admin (đã xếp hạng ít nhất 1 lần) — với sinh viên,
+  // đợt vẫn coi là đang mở y như "active" cho tới khi qua đúng 17:00 ngày end_date (khớp
+  // RegistrationController::findOpenSubmissionPeriod() ở BE). Qua hạn mà admin chưa xác
+  // nhận thì mới thật sự hết hạn, hiển thị như bình thường ("Đang xử lý hồ sơ").
+  const admissionDeadline = (() => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(period.end_date ?? "");
+    if (!match) return null;
+    const [, y, m, d] = match;
+    return new Date(Number(y), Number(m) - 1, Number(d), 17, 0, 0);
+  })();
+  const isProcessingStillOpen =
+    period.status === "processing" && (!admissionDeadline || new Date() <= admissionDeadline);
+  const status = isProcessingStillOpen ? "active" : (period.status ?? "closed");
   const cfg = STATUS_CONFIG[status];
   const channelLabel =
     period.channel === "main"

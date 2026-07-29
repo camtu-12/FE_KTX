@@ -323,10 +323,22 @@ export default function HomePage() {
   const activeIntroContent = introTabs.find((tab) => tab.id === activeIntroTab) ?? introTabs[0];
 
   useEffect(() => {
+    // "processing" (đã xếp hạng ít nhất 1 lần) vẫn coi như đang mở nhận đơn cho tới khi qua
+    // đúng 17:00 ngày end_date — khớp RegistrationController::findOpenSubmissionPeriod() ở
+    // BE, tránh trang chủ "vớt nhầm" đợt khác khi có nhiều đợt cùng lúc.
+    const isOpenProcessing = (p: RegistrationPeriodData) => {
+      if (p.status !== "processing") return false;
+      const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(p.end_date ?? "");
+      if (!match) return true;
+      const [, y, m, d] = match;
+      const deadline = new Date(Number(y), Number(m) - 1, Number(d), 17, 0, 0);
+      return new Date() <= deadline;
+    };
+
     getRegistrationPeriods()
       .then((periods) => {
         const found =
-          periods.find((p) => p.status === "active") ??
+          periods.find((p) => p.status === "active" || isOpenProcessing(p)) ??
           periods.find((p) => p.status === "pending") ??
           periods[0] ??
           null;

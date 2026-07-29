@@ -418,6 +418,8 @@ export default function MyRoomPage() {
   const [expectedLeaveDate, setExpectedLeaveDate] = useState("");
   const [leaveErrors, setLeaveErrors] = useState<{ reason?: string; expectedLeaveDate?: string }>({});
   const [pendingDebtAmount, setPendingDebtAmount] = useState<number | null>(null);
+  const [firstBillDueDate, setFirstBillDueDate] = useState<string | null>(null);
+  const [firstBillIsOverdue, setFirstBillIsOverdue] = useState(false);
   const [isCancellingLeaveRequest, setIsCancellingLeaveRequest] = useState(false);
   const [cancelLeaveError, setCancelLeaveError] = useState("");
   const [roomChangeHistory, setRoomChangeHistory] = useState<OccupancyRoomChangeHistory[]>([]);
@@ -467,14 +469,26 @@ export default function MyRoomPage() {
       setLoadError("");
 
       try {
-        const [reg, nextOccupancy] = await Promise.all([
+        // Gộp luôn việc lấy hóa đơn vào chung 1 lượt tải ban đầu (dù chưa biết chắc có
+        // cần dùng hay không) — tránh tình trạng trang hiện xong rồi mới "nhảy" thêm dòng
+        // cảnh báo quá hạn sau một nhịp tải riêng lẻ.
+        const [reg, nextOccupancy, paymentsRes] = await Promise.all([
           getMyRegistration(studentEmail) as Promise<RegistrationRequest | null>,
           getMyOccupancyFromBackend(studentEmail),
+          getStudentPayments().catch(() => null),
         ]);
 
         if (isActive) {
           setRegistration(reg);
           setOccupancy(nextOccupancy);
+
+          if (reg?.occupancy_status === "PENDING_PAYMENT" && paymentsRes) {
+            const unpaidRoomFeeBills = paymentsRes.items
+              .filter((item) => item.source === "room_fee" && item.status !== "paid")
+              .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+            setFirstBillDueDate(unpaidRoomFeeBills[0]?.dueDate ?? null);
+            setFirstBillIsOverdue(unpaidRoomFeeBills[0]?.status === "overdue");
+          }
 
           if (reg?.assigned_room_id && !nextOccupancy) {
             const rooms = await getRooms();
@@ -596,6 +610,16 @@ export default function MyRoomPage() {
             ) : "giường"}.{" "}
             Vui lòng thanh toán hóa đơn tháng đầu để hoàn tất đăng ký lưu trú.
           </p>
+          {firstBillDueDate ? (
+            <p className="mt-1 text-sm font-semibold text-amber-900">
+              Hạn thanh toán: {formatDate(firstBillDueDate)}
+            </p>
+          ) : null}
+          {firstBillIsOverdue ? (
+            <p className="mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+              ⚠ Đã quá hạn thanh toán — vui lòng thanh toán sớm để tránh bị nhắc nợ/xử lý theo quy định.
+            </p>
+          ) : null}
           <div className="mt-4 flex justify-end">
             <Link
               to="/student/payment"

@@ -142,9 +142,19 @@ export default function FreshmanReservationPage() {
     if (step === "form") {
       setPeriodsLoading(true);
       getRegistrationPeriods()
-        .then((data: Array<{ id: number; name: string; school_year?: string; semester?: string; allow_admission_candidates?: boolean; status?: string }>) => {
+        .then((data: Array<{ id: number; name: string; school_year?: string; semester?: string; allow_admission_candidates?: boolean; status?: string; end_date?: string }>) => {
+          // 'processing' (đã xếp hạng ít nhất 1 lần) vẫn coi là đang mở cho tới khi qua đúng
+          // 17:00 ngày end_date — khớp DormReservationController::findActiveAdmissionPeriod() ở BE.
+          const isOpen = (p: (typeof data)[number]) => {
+            if (p.status === "active") return true;
+            if (p.status !== "processing") return false;
+            const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(p.end_date ?? "");
+            if (!match) return true;
+            const [, y, m, d] = match;
+            return new Date() <= new Date(Number(y), Number(m) - 1, Number(d), 17, 0, 0);
+          };
           const available = data
-            .filter((p) => p.allow_admission_candidates && p.status === "active")
+            .filter((p) => p.allow_admission_candidates && isOpen(p))
             .map((p) => ({
               id: p.id,
               name: p.name,
