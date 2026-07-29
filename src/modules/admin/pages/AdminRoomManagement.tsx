@@ -80,7 +80,6 @@ type RoomFormState = {
   maintenance_reason: string;
   maintenance_start_date: string;
   maintenance_expected_end_date: string;
-  maintenance_note: string;
 };
 
 const statusMeta: Record<RoomStatus, { label: string; className: string }> = {
@@ -112,7 +111,6 @@ const initialFormState: RoomFormState = {
   maintenance_reason: "",
   maintenance_start_date: "",
   maintenance_expected_end_date: "",
-  maintenance_note: "",
 };
 
 function isBedEffectivelyOccupied(bed: Pick<Bed, "id" | "occupied">) {
@@ -273,11 +271,40 @@ function createBunkBedGroups(beds: BedDetail[]): BunkBedGroup[] {
 }
 
 function InputField(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  if (props.type === "date") {
+    return <DateField {...props} />;
+  }
+
   return (
     <input
       {...props}
       className={`h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none transition focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10 ${props.className ?? ""}`}
     />
+  );
+}
+
+/**
+ * <input type="date"> hiện chữ theo ngôn ngữ hiển thị của trình duyệt (không theo lang
+ * của trang/element) — trên Chrome mặc định tiếng Anh sẽ luôn ra mm/dd/yyyy dù trang
+ * là tiếng Việt. Đè một lớp text tự định dạng dd/mm/yyyy lên trên (ẩn chữ gốc bằng
+ * color:transparent, lớp đè có pointer-events-none nên không chặn click/gõ vào input
+ * gốc bên dưới) để luôn hiển thị đúng dd/mm/yyyy bất kể ngôn ngữ trình duyệt.
+ */
+function DateField(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  const raw = typeof props.value === "string" ? props.value : "";
+  const display = formatShortDate(raw);
+
+  return (
+    <div className="relative">
+      <input
+        {...props}
+        type="date"
+        className={`h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-transparent shadow-sm outline-none transition focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10 ${props.className ?? ""}`}
+      />
+      <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-sm">
+        {display ? <span className="text-slate-700">{display}</span> : <span className="text-slate-400">dd/mm/yyyy</span>}
+      </span>
+    </div>
   );
 }
 
@@ -763,7 +790,6 @@ export default function AdminRoomManagement() {
       maintenance_reason: "",
       maintenance_start_date: getLocalDateValue(),
       maintenance_expected_end_date: "",
-      maintenance_note: "",
     });
     setRoomFormError("");
     setRoomValidationErrors({});
@@ -880,7 +906,6 @@ export default function AdminRoomManagement() {
           reason: roomForm.maintenance_reason.trim(),
           startedAt: roomForm.maintenance_start_date,
           expectedEndAt: roomForm.maintenance_expected_end_date,
-          note: roomForm.maintenance_note.trim(),
         });
         closeRoomModal();
         return;
@@ -1111,7 +1136,7 @@ export default function AdminRoomManagement() {
 
   async function openRoomMaintenanceWizard(
     roomId: number,
-    meta?: { reason: string; startedAt: string; expectedEndAt: string; note: string },
+    meta?: { reason: string; startedAt: string; expectedEndAt: string },
   ) {
     setMaintenanceWizardError("");
     const plan = await getRoomMaintenancePlan(roomId);
@@ -1129,7 +1154,6 @@ export default function AdminRoomManagement() {
       reason: meta?.reason ?? "",
       startedAt: meta?.startedAt ?? getLocalDateValue(),
       expectedEndAt: meta?.expectedEndAt ?? "",
-      note: meta?.note ?? "",
     });
   }
 
@@ -1162,7 +1186,6 @@ export default function AdminRoomManagement() {
                 maintenance_start_date: maintenanceWizard.startedAt,
                 maintenance_expected_end_date: maintenanceWizard.expectedEndAt,
                 is_temporary_relocation: true,
-                note: maintenanceWizard.note.trim() || undefined,
                 assignments: maintenanceWizard.plan.affected.map((item) => ({
                   occupancy_id: item.occupancy_id,
                   target_bed_id: Number(maintenanceWizard.assignments[item.occupancy_id]),
@@ -1179,6 +1202,9 @@ export default function AdminRoomManagement() {
         setSelectedRoom(updatedRoom as unknown as RoomWithBeds);
         await fetchBedDetails(updatedRoom.id);
       }
+      // Giường/phòng đích nhận sinh viên tạm không nằm trong response ở trên — bắn sự
+      // kiện để tự tải lại toàn bộ danh sách phòng, tránh phải F5 mới thấy đúng.
+      window.dispatchEvent(new Event("ktx-rooms-updated"));
       closeMaintenanceWizard();
     } catch (error) {
       setMaintenanceWizardError(getApiErrorMessage(error, "Lỗi khi xác nhận bảo trì"));
@@ -1196,6 +1222,7 @@ export default function AdminRoomManagement() {
         setSelectedRoom(updatedRoom as unknown as RoomWithBeds);
         await fetchBedDetails(updatedRoom.id);
       }
+      window.dispatchEvent(new Event("ktx-rooms-updated"));
       closeEditBed();
     } catch (error) {
       setEditingBedError(getApiErrorMessage(error, "Lỗi khi hoàn tất bảo trì giường"));
@@ -1216,6 +1243,7 @@ export default function AdminRoomManagement() {
           setSelectedRoom(updatedRoom as unknown as RoomWithBeds);
           await fetchBedDetails(updatedRoom.id);
         }
+        window.dispatchEvent(new Event("ktx-rooms-updated"));
         setRoomReturnModal(null);
         return;
       }
@@ -1236,6 +1264,7 @@ export default function AdminRoomManagement() {
         setSelectedRoom(updatedRoom as unknown as RoomWithBeds);
         await fetchBedDetails(updatedRoom.id);
       }
+      window.dispatchEvent(new Event("ktx-rooms-updated"));
       setRoomReturnModal(null);
     } catch (error) {
       setRoomReturnError(getApiErrorMessage(error, "Lỗi khi hoàn nguyên tất cả sinh viên"));
@@ -1255,6 +1284,7 @@ export default function AdminRoomManagement() {
         setSelectedRoom(updatedRoom as unknown as RoomWithBeds);
         await fetchBedDetails(updatedRoom.id);
       }
+      window.dispatchEvent(new Event("ktx-rooms-updated"));
       const data = await getRoomBeds(roomReturnModal.room.id);
       const hasPending = data.beds.some((bed) => Boolean(bed.maintenance_assignment?.occupancy_id));
       if (hasPending) {
@@ -2251,15 +2281,14 @@ export default function AdminRoomManagement() {
                   {isTemporaryMaintenanceTransfer ? (
                     <div className="mt-4 rounded-2xl border border-orange-200 bg-orange-50 p-4 shadow-sm">
                       <label className="block text-sm font-semibold text-orange-700">Ngày dự kiến hoàn tất bảo trì *</label>
-                      <input
-                        type="date"
+                      <DateField
                         value={transferExpectedReturnDate}
                         min={getLocalDateValue()}
                         onChange={(event) => {
                           setTransferExpectedReturnDate(event.target.value);
                           setTransferBedError("");
                         }}
-                        className="mt-2 h-10 w-full rounded-xl border border-orange-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+                        className="mt-2 h-10 border-orange-200 focus:border-orange-400 focus:ring-orange-100"
                         required
                       />
                       <label className="mt-3 block text-sm font-semibold text-orange-700">Lý do bảo trì *</label>
@@ -2519,16 +2548,6 @@ export default function AdminRoomManagement() {
                                 setRoomForm((prev) => ({ ...prev, maintenance_expected_end_date: event.target.value }));
                                 setRoomFormError("");
                               }}
-                            />
-                          </div>
-                          <div className="sm:col-span-2">
-                            <label className="text-sm font-medium text-amber-950">Ghi chú</label>
-                            <textarea
-                              value={roomForm.maintenance_note}
-                              onChange={(event) => setRoomForm((prev) => ({ ...prev, maintenance_note: event.target.value }))}
-                              rows={2}
-                              className="mt-2 w-full rounded-2xl border border-amber-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-amber-400 focus:ring-4 focus:ring-amber-100"
-                              placeholder="Ghi chú nội bộ cho admin"
                             />
                           </div>
                         </div>
