@@ -1338,9 +1338,9 @@ export default function AdminRegistrationPeriodsPage() {
                   <span className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700">
                     Cần xem lại: <strong className="text-base">{period.review_count ?? 0}</strong>
                   </span>
-                  {((period.approved_count ?? 0) + (period.rejected_count ?? 0)) > 0 && (
+                  {((period.approved_count ?? 0) + (period.rejected_count ?? 0) + (period.cancelled_count ?? 0)) > 0 && (
                     <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600">
-                      Đã xử lý xong: <strong className="text-base">{(period.approved_count ?? 0) + (period.rejected_count ?? 0)}</strong>
+                      Đã xử lý: <strong className="text-base">{(period.approved_count ?? 0) + (period.rejected_count ?? 0) + (period.cancelled_count ?? 0)}</strong>
                     </span>
                   )}
                 </div>
@@ -1356,9 +1356,9 @@ export default function AdminRegistrationPeriodsPage() {
                   <span className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-rose-600">
                     Đã từ chối: <strong className="text-base">{period.rejected_count ?? 0}</strong>
                   </span>
-                  {(period.cancelled_count ?? 0) > 0 && (
+                  {((period.approved_count ?? 0) + (period.rejected_count ?? 0) + (period.cancelled_count ?? 0)) > 0 && (
                     <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600">
-                      SV tự hủy: <strong className="text-base">{period.cancelled_count}</strong>
+                      Đã xử lý: <strong className="text-base">{(period.approved_count ?? 0) + (period.rejected_count ?? 0) + (period.cancelled_count ?? 0)}</strong>
                     </span>
                   )}
                   {(period.review_count ?? 0) > 0 && (
