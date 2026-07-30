@@ -26,6 +26,7 @@ import StudentResultList from "./StudentResultList";
 import PeriodResultList from "./PeriodResultList";
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import {
   getAdminNotifications,
@@ -405,6 +406,7 @@ export default function Header({
   const badgeCount = Math.min(unreadCount, 99);
 
   return (
+    <>
     <motion.header
       initial={{ opacity: 0, y: -14 }}
       animate={{ opacity: 1, y: 0 }}
@@ -723,10 +725,14 @@ export default function Header({
           </AnimatePresence>
         </div>
       </div>
+    </motion.header>
+    {createPortal(
       <SystemAnnouncementDetailModal
         announcementId={systemAnnouncementId}
         onClose={() => setSystemAnnouncementId(null)}
-      />
-    </motion.header>
+      />,
+      document.body,
+    )}
+    </>
   );
 }
