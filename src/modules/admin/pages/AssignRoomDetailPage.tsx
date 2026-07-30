@@ -3,7 +3,7 @@ import { ArrowLeft, ArrowUp, CheckCircle2, DoorOpen, Home, Star, UserRound, XCir
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
-import { assignRoomToRegistration, getRegistrations } from "../../../api/registrationService";
+import { assignRoomToRegistration, getRegistrationById } from "../../../api/registrationService";
 import { listBuildings } from "../../../api/buildingApi";
 import { listRooms, type RoomApi } from "../../../api/roomApi";
 import type { Building } from "../../../types/building";
@@ -137,8 +137,8 @@ export default function AssignRoomDetailPage() {
       }
 
       try {
-        const [requests, roomData, buildingData] = await Promise.all([
-          getRegistrations(),
+        const [requestData, roomData, buildingData] = await Promise.all([
+          getRegistrationById(numericRequestId),
           listRooms(),
           listBuildings(),
         ]);
@@ -146,7 +146,7 @@ export default function AssignRoomDetailPage() {
           return;
         }
 
-        setRequest(requests.find((item) => item.id === numericRequestId) ?? null);
+        setRequest(requestData);
         setRooms(roomData.map(mapRoomFromApi));
         setBuildings(buildingData);
       } catch {
