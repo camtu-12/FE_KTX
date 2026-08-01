@@ -110,9 +110,9 @@ export default function FaceSearchModal({ onClose, onSelectStudent }: FaceSearch
       <div className="relative flex max-h-[92vh] w-full max-w-[560px] flex-col overflow-hidden rounded-[28px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f9fcff_0%,#eef5ff_72%,#e7f0ff_100%)] shadow-[0_28px_70px_rgba(27,56,122,0.28)]">
         <div className="flex flex-shrink-0 items-start justify-between gap-4 px-6 pt-6 pb-4">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7d90b5]">
+            <h2 className="text-2xl font-bold text-[#1a2d52]">
               Tìm kiếm bằng khuôn mặt
-            </p>
+            </h2>
             <p className="mt-1 text-xs text-[#8aa4cc]">
               Chụp ảnh hoặc tải ảnh của người cần tìm để hệ thống gợi ý sinh viên khớp nhất.
             </p>

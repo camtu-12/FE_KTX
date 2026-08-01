@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
-  AlertCircle,
   ArrowRight,
   BadgeCheck,
   BedDouble,
-  Bell,
   BookOpen,
   Building2,
   CalendarDays,
@@ -14,7 +12,6 @@ import {
   ClipboardCheck,
   CreditCard,
   Droplets,
-  FileCheck2,
   FileText,
   Flame,
   Home,
@@ -41,15 +38,6 @@ type InfoCard = {
   detailPath?: string;
 };
 
-type Announcement = {
-  title: string;
-  date: string;
-  category: string;
-  description: string;
-  icon: LucideIcon;
-};
-
-
 type ContactItem = {
   icon: LucideIcon;
   label: string;
@@ -70,49 +58,6 @@ type IntroStat = {
   value: string;
   label: string;
 };
-
-const announcements: Announcement[] = [
-  {
-    title: "Mở đợt đăng ký nội trú học kỳ mới",
-    date: "22/06/2026",
-    category: "Đăng ký nội trú",
-    description:
-      "Sinh viên STU có nhu cầu lưu trú có thể nộp hồ sơ trực tuyến và theo dõi trạng thái xét duyệt.",
-    icon: CalendarDays,
-  },
-  {
-    title: "Gia hạn lưu trú dành cho sinh viên đang ở KTX",
-    date: "18/06/2026",
-    category: "Gia hạn lưu trú",
-    description:
-      "Sinh viên đủ điều kiện thực hiện gia hạn trên hệ thống trước khi kết thúc kỳ lưu trú hiện tại.",
-    icon: FileCheck2,
-  },
-  {
-    title: "Cập nhật quy định sử dụng khu sinh hoạt chung",
-    date: "15/06/2026",
-    category: "Quy định mới",
-    description:
-      "Ban quản lý bổ sung hướng dẫn về giờ sinh hoạt, vệ sinh chung và trách nhiệm bảo quản tài sản.",
-    icon: AlertCircle,
-  },
-  {
-    title: "Nhắc lịch thanh toán phí nội trú",
-    date: "10/06/2026",
-    category: "Thanh toán",
-    description:
-      "Sinh viên kiểm tra hóa đơn phòng ở, điện nước và hoàn tất thanh toán theo thời hạn được thông báo.",
-    icon: CreditCard,
-  },
-  {
-    title: "Thông báo kiểm tra an toàn PCCC định kỳ",
-    date: "05/06/2026",
-    category: "An toàn",
-    description:
-      "KTX tổ chức rà soát thiết bị PCCC, lối thoát hiểm và hệ thống camera tại các khu vực lưu trú.",
-    icon: Flame,
-  },
-];
 
 const registrationGuides: InfoCard[] = [
   {
@@ -595,54 +540,6 @@ export default function HomePage() {
             </div>
           </article>
         </section>
-
-        <section
-          id="thong-bao"
-          data-reveal
-          className={`auth-reveal is-visible ${surfaceClassName} p-6 lg:p-8`}
-          style={revealStyle(120)}
-        >
-          <SectionHeading
-            icon={Bell}
-            iconColor="#d97706"
-            title="Thông báo"
-          />
-
-          <div className="mt-7 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {announcements.map((item, index) => {
-              const Icon = item.icon;
-
-              return (
-                <article
-                  key={item.title}
-                  data-reveal
-                  style={revealStyle(180 + index * 70)}
-                  className="group rounded-[26px] border border-[#d9e4f4] bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(246,249,255,0.96)_100%)] p-5 shadow-[0_12px_26px_rgba(17,40,97,0.06)] transition-all duration-300 ease-out hover:-translate-y-1.5 hover:border-[#c8d8f0] hover:shadow-[0_24px_48px_rgba(17,40,97,0.14)]"
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] bg-[linear-gradient(135deg,#eef3ff_0%,#f7fbff_100%)] text-[var(--color-primary)] shadow-[0_10px_20px_rgba(36,76,184,0.08)] transition-transform duration-300 ease-out group-hover:scale-110">
-                      <Icon size={21} strokeWidth={2.1} />
-                    </div>
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.12em] text-[#6c7b9c]">
-                        <span>{item.category}</span>
-                        <span className="h-1 w-1 rounded-full bg-[#a9b8d3]" />
-                        <span>{item.date}</span>
-                      </div>
-                      <h3 className="mt-2 text-[1.05rem] font-extrabold leading-6 text-[var(--color-title)]">
-                        {item.title}
-                      </h3>
-                      <p className="mt-3 text-sm leading-7 text-[var(--color-content)]">
-                        {item.description}
-                      </p>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </section>
-
 
         <section
           data-reveal

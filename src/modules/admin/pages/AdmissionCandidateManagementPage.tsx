@@ -1007,7 +1007,7 @@ export default function AdmissionCandidateManagementPage() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex shrink-0 items-center justify-between border-b border-[#eef3fb] px-5 py-3">
-                <h2 className="text-lg font-bold text-[#1a2d52]">{getDetailTitle(detailStatus)}</h2>
+                <h2 className="text-[30px] font-bold leading-tight text-[#1a2d52]">{getDetailTitle(detailStatus)}</h2>
                 <div className="flex items-center gap-3">
                   <CandidateStatusBadge
                     status={detailStatus}

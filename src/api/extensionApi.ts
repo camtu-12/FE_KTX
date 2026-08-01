@@ -22,7 +22,7 @@ export type OccupancyExtension = {
     status: string;
     check_in_date: string | null;
     check_out_date: string | null;
-    room: { id: number; room_number: string; floor_number?: number | null; building_name?: string | null } | null;
+    room: { id: number; room_number: string; floor_number?: number | null; building_code?: string | null; building_name?: string | null } | null;
     bed: { id: number; bed_number: number } | null;
   } | null;
   student?: {

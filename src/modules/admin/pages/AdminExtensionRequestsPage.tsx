@@ -1,12 +1,9 @@
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
-  CalendarRange,
   CheckCircle2,
-  Clock3,
   ShieldAlert,
   X,
-  XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
@@ -186,7 +183,10 @@ export default function AdminExtensionRequestsPage() {
         <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[13px] text-[#6b7f9f]">
           <span>MSSV: {ext.student?.student_code ?? "—"}</span>
           {ext.occupancy?.room?.room_number && (
-            <span>Phòng: {ext.occupancy.room.room_number} / G{ext.occupancy.bed?.bed_number ?? "?"}</span>
+            <span>
+              Phòng: {ext.occupancy.room.building_code ?? ""}
+              {ext.occupancy.room.room_number} / #{ext.occupancy.bed?.bed_number ?? "?"}
+            </span>
           )}
           <span>Gửi: {formatDate(ext.requested_at)}</span>
           {ext.approved_at && (
@@ -261,13 +261,9 @@ export default function AdminExtensionRequestsPage() {
         <div className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)] sm:px-8">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="min-w-0">
-              <h1 className="flex items-center gap-2 text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">
-                <CalendarRange className="h-7 w-7 text-blue-600" />
+              <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">
                 Quản lý yêu cầu gia hạn lưu trú
               </h1>
-              <p className="mt-1 text-[13px] leading-6 text-[#62789f] sm:text-sm">
-                Xem xét và xử lý các yêu cầu gia hạn của sinh viên.
-              </p>
               {stats?.active_extension_period && (
                 <p className="mt-1.5 text-xs font-medium text-[#315b9e]">
                   Đợt đang mở:{" "}
@@ -409,9 +405,6 @@ export default function AdminExtensionRequestsPage() {
               </div>
 
               <div className="flex items-center gap-2 px-6 pb-4">
-                {selected.status === "pending" && <Clock3 className="h-4 w-4 text-amber-500" />}
-                {selected.status === "approved" && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-                {selected.status === "rejected" && <XCircle className="h-4 w-4 text-red-500" />}
                 <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[selected.status]}`}>
                   {STATUS_LABELS[selected.status]}
                 </span>
@@ -430,12 +423,12 @@ export default function AdminExtensionRequestsPage() {
                 <section className="space-y-2 rounded-2xl border border-[#d3e0f2] bg-white/65 p-4">
                   <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-[#5570a0]">Lưu trú hiện tại</h3>
                   <InfoRow
-                    label="Tòa"
-                    value={selected.occupancy?.room?.building_name ?? "—"}
-                  />
-                  <InfoRow
                     label="Phòng"
-                    value={selected.occupancy?.room?.room_number ?? "—"}
+                    value={
+                      selected.occupancy?.room?.room_number
+                        ? `${selected.occupancy.room.building_code ?? ""}${selected.occupancy.room.room_number}`
+                        : "—"
+                    }
                   />
                   <InfoRow
                     label="Giường"

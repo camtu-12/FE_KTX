@@ -86,6 +86,10 @@ const adminMenu: MenuItem[] = [
         label: "Tiền điện",
         to: "/admin/payments/electricity",
       },
+      {
+        label: "Giảm phí theo ưu tiên",
+        to: "/admin/payments/fee-discounts",
+      },
     ],
   },
   {

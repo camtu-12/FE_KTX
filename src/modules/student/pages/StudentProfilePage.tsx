@@ -259,8 +259,10 @@ export default function StudentProfilePage() {
       </motion.div>
 
       <SectionCard icon={BadgeCheck} title="Thông tin lưu trú hiện tại" delay={0.12}>
-        <InfoRow label="Phòng" value={residence?.room_number} />
-        <InfoRow label="Tòa" value={residence?.building_code} />
+        <InfoRow
+          label="Phòng"
+          value={residence?.room_number ? `${residence.building_code ?? ""}${residence.room_number}` : null}
+        />
         <InfoRow label="Tầng" value={residence?.floor_number} />
         <InfoRow label="Giường" value={residence?.bed_number} />
         <InfoRow

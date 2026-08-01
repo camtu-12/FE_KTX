@@ -111,9 +111,9 @@ export default function OccupancyDetailModal({
       >
         {/* Header */}
         <div className="flex flex-shrink-0 items-start justify-between gap-4 px-6 pt-6 pb-4">
-          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7d90b5]">
-            CHI TIẾT LƯU TRÚ
-          </p>
+          <h2 className="text-2xl font-bold text-[#1a2d52]">
+            Chi tiết lưu trú
+          </h2>
           <button
             type="button"
             onClick={onClose}
