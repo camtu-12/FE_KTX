@@ -1653,8 +1653,8 @@ export default function AdminRoomManagement() {
                     ) : (
                       <div className="mt-5 space-y-4">
                         <div className="rounded-[22px] border border-[#c7d8f2] bg-[linear-gradient(180deg,#f8fbff_0%,#eef5ff_100%)] px-5 py-3 text-center shadow-[0_12px_28px_rgba(36,76,184,0.08)]">
-                          <p className="inline-flex items-center justify-center gap-2 text-base font-extrabold uppercase tracking-[0.16em] text-[#6f86b2]">
-                            <DoorOpen className="h-4 w-4" />
+                          <p className="inline-flex items-center justify-center gap-2 text-2xl font-bold text-[#1a2d52]">
+                            <DoorOpen className="h-5 w-5" />
                             Cửa phòng
                           </p>
                         </div>
@@ -1681,7 +1681,7 @@ export default function AdminRoomManagement() {
                                 ))}
                               </div>
                               <div className="rounded-[22px] border border-[#bfd6f7] bg-[linear-gradient(180deg,#edf5ff_0%,#e5f0ff_100%)] px-5 py-3 text-center shadow-[0_12px_28px_rgba(36,76,184,0.08)]">
-                                <p className="text-sm font-extrabold uppercase tracking-[0.14em] text-[#6f86b2]">
+                                <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">
                                   {column.label}
                                 </p>
                               </div>
@@ -1933,7 +1933,6 @@ export default function AdminRoomManagement() {
 
                   <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${editingBedDetail?.student ? "mt-4" : ""}`}>
                     {[
-                      ["Tòa", selectedRoom?.building_code],
                       ["Tầng", selectedRoom ? getRoomFloor(selectedRoom) : null],
                       ["Phòng", selectedRoom ? getRoomCode(selectedRoom) : null],
                       ["Giường", `Giường ${editingBed.bed.bed_number}`],

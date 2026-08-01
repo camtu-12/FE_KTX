@@ -988,8 +988,8 @@ function ExtensionDetailModal({
     <ModalShell onClose={onClose} maxWidth="max-w-xl">
       <div className="flex items-start justify-between gap-4 border-b border-[#dbe6f5] px-6 py-5">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#7d90b5]">Chi tiết yêu cầu</p>
-          <h3 className="mt-1 text-2xl font-bold text-[#1a2d52]">{extension.occupancy_period?.name ?? "Yêu cầu gia hạn"}</h3>
+          <h3 className="text-2xl font-bold text-[#1a2d52]">Chi tiết yêu cầu</h3>
+          <p className="mt-1 text-sm text-[#5570a0]">{extension.occupancy_period?.name ?? "Yêu cầu gia hạn"}</p>
         </div>
         <CloseButton onClick={onClose} />
       </div>

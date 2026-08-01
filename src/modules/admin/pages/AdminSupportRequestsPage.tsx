@@ -492,8 +492,8 @@ function DetailModal({ item, onClose }: { item: StudentSupportRequest; onClose: 
       >
         <div className="flex items-start justify-between gap-4 border-b border-[#e3ebf7] px-6 py-5">
           <div className="min-w-0">
-            <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Chi tiết yêu cầu</p>
-            <h2 className="mt-2 text-xl font-extrabold uppercase text-[#1a2d52]">{item.title || "Yêu cầu hỗ trợ"}</h2>
+            <h2 className="text-2xl font-bold text-[#1a2d52]">Chi tiết yêu cầu</h2>
+            <p className="mt-1 text-sm text-[#5570a0]">{item.title || "Yêu cầu hỗ trợ"}</p>
           </div>
           <CloseButton onClick={onClose} />
         </div>

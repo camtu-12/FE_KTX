@@ -28,6 +28,7 @@ import AdminExtensionRequestsPage from "../modules/admin/pages/AdminExtensionReq
 import AdminOccupancyPeriodsPage from "../modules/admin/pages/AdminOccupancyPeriodsPage";
 import AdminElectricityPage from "../modules/admin/pages/AdminElectricityPage";
 import AdminRoomFeePage from "../modules/admin/pages/AdminRoomFeePage";
+import AdminFeeDiscountPage from "../modules/admin/pages/AdminFeeDiscountPage";
 import LoginPage from "../modules/auth/pages/LoginPage";
 import RegisterPage from "../modules/auth/pages/RegisterPage";
 import AboutPage from "../modules/public/pages/AboutPage";
@@ -101,6 +102,7 @@ export default function AppRoutes() {
           <Route path="payments" element={<Navigate to="/admin/payments/room-fees" replace />} />
           <Route path="payments/room-fees" element={<AdminRoomFeePage />} />
           <Route path="payments/electricity" element={<AdminElectricityPage />} />
+          <Route path="payments/fee-discounts" element={<AdminFeeDiscountPage />} />
           <Route path="students" element={<AdminStudentsPage />} />
           <Route path="rooms" element={<AdminRoomManagement />} />
           <Route path="buildings" element={<AdminBuildingManagement />} />
