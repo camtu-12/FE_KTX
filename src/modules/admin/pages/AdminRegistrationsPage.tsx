@@ -8,6 +8,7 @@ import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import {
   getRegistrations,
   patchAutoDecision,
+  previewManualApprove,
   confirmSingleRegistration,
   confirmBatchRegistrations,
   verifyStudentPriority,
@@ -69,11 +70,30 @@ export default function AdminRegistrationsPage() {
   const [requestModalTab, setRequestModalTab] = useState<"info" | "history">(routeState?.requestModalTab ?? "info");
 
   // Reject dialog
-  const [rejectDialog, setRejectDialog] = useState<{ id: number; fromReview: boolean } | null>(null);
+  const [rejectDialog, setRejectDialog] = useState<{ id: number } | null>(null);
   const [rejectionInput, setRejectionInput] = useState("");
+
+  // Duyệt tay dialog — ghim đơn ngoài top N, có thể đẩy 1 người khác xuống waitlist khi xếp
+  // hạng lại (xem PriorityRankingService::splitBucketWithManualPins()). Preview lấy tên người
+  // có thể bị ảnh hưởng để cảnh báo admin trước khi bắt buộc nhập lý do.
+  const [approveDialog, setApproveDialog] = useState<{
+    id: number;
+    bumpedStudent: { full_name: string | null; student_code: string | null } | null;
+  } | null>(null);
+  const [approveReasonInput, setApproveReasonInput] = useState("");
 
   // Confirm single dialog
   const [confirmSingleId, setConfirmSingleId] = useState<number | null>(null);
+
+  // Toast báo lỗi — trước đây các thao tác Duyệt/Từ chối/Xác nhận không có nơi hiện lỗi, nên
+  // khi request thất bại (vd. hết suất do người khác vừa duyệt), dialog vẫn tự đóng như thành
+  // công, người dùng tưởng đã xong nhưng dữ liệu không hề đổi.
+  const [errorToast, setErrorToast] = useState<string | null>(null);
+  const showErrorToast = (err: unknown, fallback: string) => {
+    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+    setErrorToast(msg || fallback);
+    setTimeout(() => setErrorToast(null), 4000);
+  };
 
   // Confirm batch dialog (main tab)
   const [confirmBatchInfo, setConfirmBatchInfo] = useState<{
@@ -108,6 +128,9 @@ export default function AdminRegistrationsPage() {
 
   // "Đổi đề xuất" dropdown
   const [openDropdownId, setOpenDropdownId] = useState<number | null>(null);
+  // Card cuối danh sách mở dropdown xuống dưới sẽ bị khuất mép màn hình — tự lật lên trên
+  // khi không đủ chỗ bên dưới.
+  const [openDropdownDirection, setOpenDropdownDirection] = useState<"down" | "up">("down");
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const subFilterMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -302,14 +325,33 @@ export default function AdminRegistrationsPage() {
     setRequests((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
   };
 
-  const handlePatchAutoDecision = async (id: number, decision: "approve" | "reject" | "review", reason?: string) => {
+  // Chờ preview tải xong rồi mới mở dialog 1 lần — tránh dialog mở ra với nội dung "Đang kiểm
+  // tra..." rồi nhảy sang nội dung thật ngay sau đó.
+  const handleOpenApproveDialog = async (id: number) => {
+    setApproveReasonInput("");
     setIsSubmitting(true);
     try {
-      const updated = await patchAutoDecision(id, decision, reason);
-      updateLocalRequest(updated);
+      const preview = await previewManualApprove(id);
+      setApproveDialog({ id, bumpedStudent: preview.bumped_student });
+    } catch (err) {
+      showErrorToast(err, "Không kiểm tra được ảnh hưởng, vui lòng thử lại.");
     } finally {
       setIsSubmitting(false);
-      setOpenDropdownId(null);
+    }
+  };
+
+  const handleConfirmApprove = async () => {
+    if (!approveDialog || !approveReasonInput.trim()) return;
+    setIsSubmitting(true);
+    try {
+      const updated = await patchAutoDecision(approveDialog.id, "approve", approveReasonInput.trim());
+      updateLocalRequest(updated);
+      setApproveDialog(null);
+      setApproveReasonInput("");
+    } catch (err) {
+      showErrorToast(err, "Duyệt tay thất bại, vui lòng thử lại.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -318,38 +360,28 @@ export default function AdminRegistrationsPage() {
     try {
       const updated = await confirmSingleRegistration(id);
       updateLocalRequest(updated);
-    } finally {
-      setIsSubmitting(false);
       setConfirmSingleId(null);
-    }
-  };
-
-  const handleApproveFromReview = async (id: number) => {
-    setIsSubmitting(true);
-    try {
-      await patchAutoDecision(id, "approve");
-      const updated = await confirmSingleRegistration(id);
-      updateLocalRequest(updated);
+    } catch (err) {
+      showErrorToast(err, "Xác nhận thất bại, vui lòng thử lại.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // "Từ chối" từ dropdown "Đổi đề xuất" giờ chốt thật ngay trong patchAutoDecision(reject) —
+  // không cần gọi thêm confirmSingleRegistration() nữa.
   const handleConfirmRejectFromReview = async () => {
     if (!rejectDialog || !rejectionInput.trim()) return;
     setIsSubmitting(true);
     try {
       const updatedDecision = await patchAutoDecision(rejectDialog.id, "reject", rejectionInput.trim());
-      if (rejectDialog.fromReview) {
-        const updated = await confirmSingleRegistration(rejectDialog.id);
-        updateLocalRequest(updated);
-      } else {
-        updateLocalRequest(updatedDecision);
-      }
-    } finally {
-      setIsSubmitting(false);
+      updateLocalRequest(updatedDecision);
       setRejectDialog(null);
       setRejectionInput("");
+    } catch (err) {
+      showErrorToast(err, "Từ chối thất bại, vui lòng thử lại.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -556,10 +588,18 @@ export default function AdminRegistrationsPage() {
   const renderProposalBadge = (r: RegistrationRequest) => {
     const b = proposalBadge(r.auto_decision);
     return (
-      <div>
+      <div className="flex items-center gap-1.5">
         <span className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-bold ${b.cls}`}>
           {b.label}
         </span>
+        {r.decision_source === "manual" ? (
+          <span
+            title={r.manual_decision_reason ?? undefined}
+            className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700"
+          >
+            Đã ghi đè tay
+          </span>
+        ) : null}
       </div>
     );
   };
@@ -584,31 +624,47 @@ export default function AdminRegistrationsPage() {
         <button
           type="button"
           disabled={isSubmitting}
-          onClick={() => setOpenDropdownId(openDropdownId === r.id ? null : r.id)}
+          onClick={(e) => {
+            if (openDropdownId === r.id) {
+              setOpenDropdownId(null);
+              return;
+            }
+            const rect = e.currentTarget.getBoundingClientRect();
+            const estimatedMenuHeight = 88; // 2 mục ~44px/mục
+            setOpenDropdownDirection(window.innerHeight - rect.bottom < estimatedMenuHeight ? "up" : "down");
+            setOpenDropdownId(r.id);
+          }}
           className="inline-flex h-10 min-w-[132px] items-center justify-center gap-2 rounded-xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-4 text-[13px] font-semibold text-[#244cb8] shadow-[0_8px_18px_rgba(36,76,184,0.09)] transition hover:-translate-y-0.5 hover:border-[#9eb9e6] hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
         >
           {r.auto_decision ? "Đổi đề xuất" : "Xử lý đơn"} <ChevronDown className="h-3.5 w-3.5" />
         </button>
         {openDropdownId === r.id ? (
-          <div className="absolute right-0 top-full z-50 mt-1 w-36 overflow-hidden rounded-xl border border-[#d7e2f2] bg-white shadow-[0_12px_28px_rgba(15,23,42,0.16)]">
-            {(["approve", "reject", "review"] as const).map((opt) => (
+          <div
+            className={`absolute right-0 z-50 w-36 overflow-hidden rounded-xl border border-[#d7e2f2] bg-white shadow-[0_12px_28px_rgba(15,23,42,0.16)] ${
+              openDropdownDirection === "up" ? "bottom-full mb-1" : "top-full mt-1"
+            }`}
+          >
+            {(["approve", "reject"] as const)
+              .filter((opt) => opt !== r.auto_decision)
+              .map((opt) => (
               <button
                 key={opt}
                 type="button"
                 onClick={() => {
                   if (opt === "reject") {
-                    setRejectDialog({ id: r.id, fromReview: false });
+                    setRejectDialog({ id: r.id });
                     setRejectionInput(r.auto_decision === "reject" ? r.auto_decision_reason ?? "" : "");
                     setOpenDropdownId(null);
                     return;
                   }
-                  void handlePatchAutoDecision(r.id, opt);
+                  setOpenDropdownId(null);
+                  void handleOpenApproveDialog(r.id);
                 }}
                 className={`flex w-full items-center px-3 py-2 text-left text-xs font-medium transition hover:bg-[#f5f9ff] ${
-                  opt === "approve" ? "text-emerald-700" : opt === "reject" ? "text-rose-700" : "text-amber-700"
+                  opt === "approve" ? "text-emerald-700" : "text-rose-700"
                 }`}
               >
-                {opt === "approve" ? "Duyệt" : opt === "reject" ? "Từ chối" : "Cần xem lại"}
+                {opt === "approve" ? "Duyệt" : "Từ chối"}
               </button>
             ))}
           </div>
@@ -760,7 +816,11 @@ export default function AdminRegistrationsPage() {
           </div>
         )}
 
-        {/* Nhóm 2: Chờ duyệt thủ công */}
+        {/* Nhóm 2: Chờ duyệt thủ công — dữ liệu cũ (auto_decision='review' còn sót lại từ
+            trước khi bỏ tùy chọn "Cần xem lại" khỏi dropdown "Đổi đề xuất"). Không còn nút
+            Duyệt/Từ chối nhanh ở đây nữa — 2 nút đó approve/reject thẳng cả đơn mà không qua
+            xác minh minh chứng hay xếp hạng, gây bug "đơn đã duyệt sẵn vẫn chiếm lại suất khi
+            xếp hạng lại". Muốn xử lý minh chứng thì bấm "Xem đơn" để xác minh đúng chỗ. */}
         {manualGroup.length > 0 && (
           <div className="space-y-3">
             <p className="text-[13px] font-bold uppercase tracking-[0.12em] text-amber-600">
@@ -775,25 +835,7 @@ export default function AdminRegistrationsPage() {
                     Cần xem lại
                   </span>
                 </>,
-                <>
-                  {renderViewButton(r)}
-                  <button
-                    type="button"
-                    disabled={isSubmitting}
-                    onClick={() => void handleApproveFromReview(r.id)}
-                    className="rounded-xl bg-[linear-gradient(135deg,#1f9a60_0%,#35bf7a_100%)] px-3.5 py-2 text-[13px] font-semibold text-white shadow-[0_6px_14px_rgba(31,154,96,0.22)] transition hover:brightness-110 disabled:opacity-40"
-                  >
-                    Duyệt
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isSubmitting}
-                    onClick={() => { setRejectDialog({ id: r.id, fromReview: true }); setRejectionInput(""); }}
-                    className="rounded-xl bg-[linear-gradient(135deg,#e25569_0%,#cc3c4f_100%)] px-3.5 py-2 text-[13px] font-semibold text-white shadow-[0_6px_14px_rgba(204,60,79,0.20)] transition hover:brightness-105 disabled:opacity-40"
-                  >
-                    Từ chối
-                  </button>
-                </>,
+                renderViewButton(r),
                 <>
                   {r.auto_decision_reason ? <div className="text-[#9b6b00]">Lý do: {r.auto_decision_reason}</div> : null}
                   {renderDateNote(r)}
@@ -965,6 +1007,13 @@ export default function AdminRegistrationsPage() {
 
   return (
     <>
+      {errorToast &&
+        createPortal(
+          <div className="fixed top-5 right-5 z-[9999] max-w-sm rounded-xl bg-red-500 px-5 py-3 text-sm font-medium text-white shadow-lg">
+            {errorToast}
+          </div>,
+          document.body,
+        )}
       <motion.section
         initial={shouldSkipAnim ? false : { opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1178,6 +1227,67 @@ export default function AdminRegistrationsPage() {
                   onClick={() => void handleConfirmRejectFromReview()}
                   className="rounded-2xl bg-[linear-gradient(135deg,#e25569_0%,#cc3c4f_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_20px_rgba(204,60,79,0.22)] transition hover:brightness-105 disabled:opacity-40">
                   Xác nhận từ chối
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+
+        {/* Approve (ghim tay) dialog */}
+        {approveDialog ? (
+          <motion.div key="approve-dialog"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.22 }}
+            className="fixed inset-0 z-[74] flex items-center justify-center bg-[rgba(14,25,48,0.52)] px-4 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 16, scale: 0.98 }}
+              transition={{ duration: 0.3 }}
+              className="w-full max-w-xl rounded-[28px] border border-[#d5e1f2] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-6 shadow-[0_28px_70px_rgba(15,23,42,0.24)]"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-2xl font-bold text-[#1a2d52]">Duyệt tay (ghim ưu tiên)</p>
+                </div>
+                <button type="button" onClick={() => setApproveDialog(null)}
+                  className="rounded-xl border border-[#d5e1f2] bg-white p-2 text-[#6c80a8] transition hover:text-[#244cb8]">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="mt-4">
+                {approveDialog.bumpedStudent ? (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    Chỉ tiêu hiện đã đủ người, không còn chỗ trống — duyệt tay đơn này sẽ chiếm 1 suất trước, khiến{" "}
+                    <span className="font-bold">
+                      {approveDialog.bumpedStudent.full_name ?? "1 sinh viên khác"}
+                      {approveDialog.bumpedStudent.student_code ? ` (${approveDialog.bumpedStudent.student_code})` : ""}
+                    </span>{" "}
+                    — người đang xếp hạng đủ điều kiện tự nhiên — bị chuyển xuống danh sách chờ khi bấm "Xếp hạng lại" tiếp theo.
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-[#d6e2f1] bg-[#f8fbff] px-4 py-3 text-sm text-[#4b6494]">
+                    Chỉ tiêu hiện vẫn còn chỗ trống hoặc đơn này đã tự nhiên đủ điều kiện — duyệt tay không làm ai bị đẩy khỏi danh sách duyệt khi xếp hạng lại.
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-5">
+                <label className="mb-2 block text-xs font-bold uppercase tracking-[0.16em] text-[#667ca8]">Lý do duyệt tay</label>
+                <textarea value={approveReasonInput} onChange={(e) => setApproveReasonInput(e.target.value)}
+                  placeholder="Ví dụ: Trường hợp đặc cách theo quyết định của Ban quản lý KTX..." rows={4}
+                  className="w-full rounded-2xl border border-[#d6e2f1] bg-[#f8fbff] px-4 py-3 text-sm text-[#1f3152] outline-none transition placeholder:text-[#8ea1c0] focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/12" />
+              </div>
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button type="button" onClick={() => setApproveDialog(null)}
+                  className="rounded-2xl border border-[#c9d8ef] bg-white px-5 py-2.5 text-sm font-semibold text-[#4b6494] transition hover:text-[#244cb8]">
+                  Hủy
+                </button>
+                <button type="button" disabled={!approveReasonInput.trim() || isSubmitting}
+                  onClick={() => void handleConfirmApprove()}
+                  className="rounded-2xl bg-[linear-gradient(135deg,#1f9a60_0%,#35bf7a_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_20px_rgba(31,154,96,0.22)] transition hover:brightness-105 disabled:opacity-40">
+                  Xác nhận duyệt
                 </button>
               </div>
             </motion.div>

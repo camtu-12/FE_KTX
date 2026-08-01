@@ -306,11 +306,10 @@ export default function Header({
     ) {
       return "/student/select-bed";
     }
-    if (item.type === "registration_approved") {
+    if (item.type === "registration_approved" || item.type === "registration_rejected") {
       return "/student/room-status";
     }
     if (
-      item.type === "registration_rejected" ||
       item.type === "registration_pending_confirmation" ||
       item.type === "bed_selection_expired" ||
       item.type === "initial_payment_expired"

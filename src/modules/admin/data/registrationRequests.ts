@@ -85,6 +85,9 @@ export type RegistrationRequest = {
   }>;
   auto_decision?: AutoDecision;
   auto_decision_reason?: string | null;
+  /** 'manual' = admin đã tự tay đổi đề xuất (Duyệt tay/ghim), khác với máy tự tính. */
+  decision_source?: "manual" | null;
+  manual_decision_reason?: string | null;
   source_dorm_reservation_id?: number | null;
   registration_period_id?: number | null;
   bed_selection_days?: number | null;
