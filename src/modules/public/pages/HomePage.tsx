@@ -18,7 +18,6 @@ import {
   Mail,
   MapPin,
   Phone,
-  ShieldCheck,
   Users,
   Utensils,
   X,
@@ -26,6 +25,7 @@ import {
 import { Link } from "react-router-dom";
 import heroBanner from "../../../assets/tuade.png";
 import {
+  getPublicDormStats,
   getRegistrationPeriods,
   type RegistrationPeriodData,
 } from "../../../api/registrationApi";
@@ -203,11 +203,8 @@ const introTabs: IntroTab[] = [
   },
 ];
 
-const introStats: IntroStat[] = [
-  { icon: Building2, value: "01", label: "Tòa nhà" },
-  { icon: BedDouble, value: "42", label: "Giường" },
+const staticIntroStats: IntroStat[] = [
   { icon: Droplets, value: "Miễn phí", label: "Nước sinh hoạt" },
-  { icon: ShieldCheck, value: "24/24", label: "Bảo vệ" },
 ];
 
 const surfaceClassName =
@@ -266,6 +263,32 @@ export default function HomePage() {
   const [isIntroModalOpen, setIsIntroModalOpen] = useState(false);
   const [activeIntroTab, setActiveIntroTab] = useState<IntroTabKey>("overview");
   const activeIntroContent = introTabs.find((tab) => tab.id === activeIntroTab) ?? introTabs[0];
+  const [dormStats, setDormStats] = useState<{ buildings: number; rooms: number; beds: number } | null>(null);
+
+  useEffect(() => {
+    getPublicDormStats()
+      .then((stats) => setDormStats(stats))
+      .catch(() => {});
+  }, []);
+
+  const introStats: IntroStat[] = [
+    {
+      icon: Building2,
+      value: dormStats ? String(dormStats.buildings).padStart(2, "0") : "—",
+      label: "Tòa nhà",
+    },
+    {
+      icon: Home,
+      value: dormStats ? String(dormStats.rooms) : "—",
+      label: "Phòng",
+    },
+    {
+      icon: BedDouble,
+      value: dormStats ? String(dormStats.beds) : "—",
+      label: "Giường",
+    },
+    ...staticIntroStats,
+  ];
 
   useEffect(() => {
     // "processing" (đã xếp hạng ít nhất 1 lần) vẫn coi như đang mở nhận đơn cho tới khi qua

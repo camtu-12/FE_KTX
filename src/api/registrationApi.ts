@@ -172,6 +172,15 @@ export type RegistrationPeriodData = RegistrationPeriodPayload & {
 export const getRegistrationPeriods = (): Promise<RegistrationPeriodData[]> =>
   API.get("/registration-periods").then((res) => res.data as RegistrationPeriodData[]);
 
+export type PublicDormStats = {
+  buildings: number;
+  rooms: number;
+  beds: number;
+};
+
+export const getPublicDormStats = (): Promise<PublicDormStats> =>
+  API.get("/buildings/public-stats").then((res) => res.data as PublicDormStats);
+
 export const getRegistrationPeriodCapacity = (
   id: number,
   proposedApprovedCountMale = 0,
