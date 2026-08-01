@@ -201,6 +201,13 @@ export const processRegistrationPeriod = (id: number): Promise<{ message: string
 export const patchAutoDecision = (id: number, decision: 'approve' | 'reject' | 'review', reason?: string) =>
   apiClient.patch(`/admin/registrations/${id}/auto-decision`, { decision, reason }).then((res) => res.data);
 
+export type ManualApprovePreview = {
+  bumped_student: { full_name: string | null; student_code: string | null } | null;
+};
+
+export const previewManualApprove = (id: number): Promise<ManualApprovePreview> =>
+  apiClient.get(`/admin/registrations/${id}/preview-manual-approve`).then((res) => res.data);
+
 export const confirmSingle = (id: number) =>
   apiClient.post(`/admin/registrations/${id}/confirm`).then((res) => res.data);
 

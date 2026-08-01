@@ -342,6 +342,8 @@ const normalizeRegistrationRequest = (raw: unknown): RegistrationRequest | null 
       : [],
     auto_decision: (registration.auto_decision ?? null) as RegistrationRequest["auto_decision"],
     auto_decision_reason: firstDefinedString(registration.auto_decision_reason) || null,
+    decision_source: (registration.decision_source ?? null) as RegistrationRequest["decision_source"],
+    manual_decision_reason: firstDefinedString(registration.manual_decision_reason) || null,
     source_dorm_reservation_id: toNumberOrNull(registration.source_dorm_reservation_id) ?? null,
     registration_period_id: toNumberOrNull(registration.registration_period_id) ?? null,
     bed_selection_days: toNumberOrNull(registration.bed_selection_days ?? registrationPeriod.bed_selection_days) ?? null,
@@ -657,8 +659,13 @@ export const patchAutoDecision = async (
   reason?: string,
 ): Promise<RegistrationRequest | null> => {
   const updated = normalizeRegistrationResponse(await regApi.patchAutoDecision(id, decision, reason));
+  // Duyệt/Từ chối tay giờ có thể kéo theo xếp hạng lại tự động, ảnh hưởng tới NHIỀU đơn khác
+  // cùng lúc (không chỉ đơn vừa bấm) — bắn sự kiện để toàn bộ danh sách tự tải lại mới nhất.
+  dispatchRegistrationRequestsUpdated();
   return updated;
 };
+
+export const previewManualApprove = (id: number) => regApi.previewManualApprove(id);
 
 export const confirmSingleRegistration = async (id: number): Promise<RegistrationRequest | null> => {
   const updated = normalizeRegistrationResponse(await regApi.confirmSingle(id));
