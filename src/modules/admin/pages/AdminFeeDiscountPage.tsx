@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
-import { Plus, Trash2, X } from "lucide-react";
+import { Check, Loader2, Plus, Trash2, X } from "lucide-react";
 import {
   createPriorityCriteria,
   deletePriorityCriteria,
@@ -300,19 +300,18 @@ export default function AdminFeeDiscountPage() {
               <th className="px-5 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">% giảm phí</th>
               <th className="px-5 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Áp dụng</th>
               <th className="px-5 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Hành động</th>
-              <th className="px-5 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]"></th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-5 py-10 text-center text-sm text-[#7c8fb5]">
+                <td colSpan={7} className="px-5 py-10 text-center text-sm text-[#7c8fb5]">
                   Đang tải...
                 </td>
               </tr>
             ) : policies.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-5 py-10 text-center text-sm text-[#7c8fb5]">
+                <td colSpan={7} className="px-5 py-10 text-center text-sm text-[#7c8fb5]">
                   Chưa có tiêu chí ưu tiên nào.
                 </td>
               </tr>
@@ -373,26 +372,27 @@ export default function AdminFeeDiscountPage() {
                         />
                       </button>
                     </td>
-                    <td className="px-5 py-4 text-center">
-                      <button
-                        type="button"
-                        disabled={!dirty || saving}
-                        onClick={() => handleSave(item)}
-                        className="rounded-xl border border-[#244cb8] bg-[#244cb8] px-4 py-2 text-xs font-bold text-white transition disabled:cursor-not-allowed disabled:border-[#c8d8ef] disabled:bg-[#c8d8ef] disabled:text-white"
-                      >
-                        {saving ? "Đang lưu..." : "Lưu"}
-                      </button>
-                    </td>
-                    <td className="px-5 py-4 text-center">
-                      <button
-                        type="button"
-                        disabled={deletingId === item.priorityCriteriaId}
-                        onClick={() => handleDelete(item)}
-                        title="Xóa tiêu chí"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-rose-500 transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          disabled={!dirty || saving}
+                          onClick={() => handleSave(item)}
+                          title="Lưu thay đổi"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-[#244cb8] transition hover:bg-[#eef3ff] disabled:cursor-not-allowed disabled:text-[#c3d2ea] disabled:hover:bg-transparent"
+                        >
+                          {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deletingId === item.priorityCriteriaId}
+                          onClick={() => handleDelete(item)}
+                          title="Xóa tiêu chí"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-rose-500 transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
