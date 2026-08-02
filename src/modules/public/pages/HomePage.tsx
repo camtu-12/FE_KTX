@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
+  AlarmClock,
   ArrowRight,
   BadgeCheck,
   BedDouble,
@@ -18,8 +19,11 @@ import {
   Mail,
   MapPin,
   Phone,
+  PhoneCall,
+  ShieldCheck,
   Users,
   Utensils,
+  Wifi,
   X,
 } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -29,6 +33,7 @@ import {
   getRegistrationPeriods,
   type RegistrationPeriodData,
 } from "../../../api/registrationApi";
+import { fetchStaticPage, type PageItem, type PageItemIcon } from "../../../api/staticPageApi";
 import RegistrationStatusCard from "./RegistrationStatusCard";
 
 type InfoCard = {
@@ -37,6 +42,37 @@ type InfoCard = {
   icon: LucideIcon;
   detailPath?: string;
 };
+
+// Khớp đúng StaticPageController::ALLOWED_ITEM_ICONS — tra icon component từ tên lưu trong DB.
+const PAGE_ITEM_ICON_MAP: Record<PageItemIcon, LucideIcon> = {
+  BadgeCheck,
+  FileText,
+  ClipboardCheck,
+  CreditCard,
+  Home,
+  Utensils,
+  Car,
+  BookOpen,
+  Users,
+  Camera,
+  Flame,
+  ShieldCheck,
+  Wifi,
+  Droplets,
+  Building2,
+  BedDouble,
+  AlarmClock,
+  PhoneCall,
+};
+
+function toInfoCards(items: PageItem[]): InfoCard[] {
+  return items.map((item) => ({
+    title: item.title,
+    description: item.description,
+    icon: PAGE_ITEM_ICON_MAP[item.icon] ?? BadgeCheck,
+    detailPath: item.detail_path ?? undefined,
+  }));
+}
 
 type ContactItem = {
   icon: LucideIcon;
@@ -58,75 +94,6 @@ type IntroStat = {
   value: string;
   label: string;
 };
-
-const registrationGuides: InfoCard[] = [
-  {
-    title: "Điều kiện đăng ký",
-    description:
-      "Sinh viên STU đang theo học, có nhu cầu lưu trú và đáp ứng quy định xét duyệt của ký túc xá.",
-    icon: BadgeCheck,
-    detailPath: "/dieu-kien-noi-tru",
-  },
-  {
-    title: "Hồ sơ cần chuẩn bị",
-    description:
-      "Thông tin cá nhân, minh chứng ưu tiên nếu có và các giấy tờ cần thiết theo yêu cầu từng đợt.",
-    icon: FileText,
-    detailPath: "/ho-so-can-chuan-bi",
-  },
-  {
-    title: "Quy trình xét duyệt",
-    description:
-      "Hồ sơ được kiểm tra, xếp thứ tự ưu tiên và cập nhật kết quả trực tiếp trên tài khoản sinh viên.",
-    icon: ClipboardCheck,
-    detailPath: "/quy-trinh-xet-duyet",
-  },
-  {
-    title: "Hướng dẫn thanh toán",
-    description:
-      "Sinh viên thanh toán phí nội trú theo hóa đơn được phát hành sau khi được phân phòng hoặc chọn giường.",
-    icon: CreditCard,
-  },
-];
-
-
-const facilities: InfoCard[] = [
-  {
-    title: "Phòng ở",
-    description: "Không gian lưu trú được quản lý theo phòng, tầng và khu.",
-    icon: Home,
-  },
-  {
-    title: "Căn tin",
-    description: "Hỗ trợ bữa ăn và nhu cầu sinh hoạt hằng ngày.",
-    icon: Utensils,
-  },
-  {
-    title: "Bãi xe",
-    description: "Khu vực gửi xe thuận tiện cho sinh viên nội trú.",
-    icon: Car,
-  },
-  {
-    title: "Khu tự học",
-    description: "Không gian yên tĩnh phục vụ học tập và làm việc nhóm.",
-    icon: BookOpen,
-  },
-  {
-    title: "Khu sinh hoạt",
-    description: "Khu vực sinh hoạt chung dành cho các hoạt động tập thể.",
-    icon: Users,
-  },
-  {
-    title: "Camera an ninh",
-    description: "Theo dõi khu vực chung, hỗ trợ đảm bảo an toàn lưu trú.",
-    icon: Camera,
-  },
-  {
-    title: "PCCC",
-    description: "Trang bị thiết bị và quy trình kiểm tra an toàn định kỳ.",
-    icon: Flame,
-  },
-];
 
 const contacts: ContactItem[] = [
   {
@@ -264,10 +231,29 @@ export default function HomePage() {
   const [activeIntroTab, setActiveIntroTab] = useState<IntroTabKey>("overview");
   const activeIntroContent = introTabs.find((tab) => tab.id === activeIntroTab) ?? introTabs[0];
   const [dormStats, setDormStats] = useState<{ buildings: number; rooms: number; beds: number } | null>(null);
+  const [registrationGuides, setRegistrationGuides] = useState<InfoCard[]>([]);
+  const [registrationGuideTitle, setRegistrationGuideTitle] = useState("Những điều cần biết trước khi đăng ký");
+  const [facilities, setFacilities] = useState<InfoCard[]>([]);
+  const [facilitiesTitle, setFacilitiesTitle] = useState("Cơ sở vật chất");
 
   useEffect(() => {
     getPublicDormStats()
       .then((stats) => setDormStats(stats))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetchStaticPage("quy-dinh-dang-ky")
+      .then((page) => {
+        setRegistrationGuides(toInfoCards(page.items));
+        if (page.title) setRegistrationGuideTitle(page.title);
+      })
+      .catch(() => {});
+    fetchStaticPage("co-so-vat-chat")
+      .then((page) => {
+        setFacilities(toInfoCards(page.items));
+        if (page.title) setFacilitiesTitle(page.title);
+      })
       .catch(() => {});
   }, []);
 
@@ -529,7 +515,7 @@ export default function HomePage() {
             <SectionHeading
               icon={ClipboardCheck}
               iconColor="#2563eb"
-              title="Những điều cần biết trước khi đăng ký"
+              title={registrationGuideTitle}
             />
 
             <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -572,7 +558,7 @@ export default function HomePage() {
           <SectionHeading
             icon={Building2}
             iconColor="#0d8d83"
-            title="Cơ sở vật chất"
+            title={facilitiesTitle}
           />
 
           <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

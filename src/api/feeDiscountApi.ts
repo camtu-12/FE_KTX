@@ -45,3 +45,19 @@ export const updateFeeDiscountPolicy = async (
   );
   return normalize(response.data);
 };
+
+export const createPriorityCriteria = async (payload: {
+  code: string;
+  name: string;
+  tier: number;
+  priority_score: number;
+  discount_percent?: number;
+  is_active?: boolean;
+}): Promise<FeeDiscountPolicy> => {
+  const response = await apiClient.post<ApiFeeDiscountPolicy>("/fee-discount-policies", payload);
+  return normalize(response.data);
+};
+
+export const deletePriorityCriteria = async (priorityCriteriaId: number): Promise<void> => {
+  await apiClient.delete(`/fee-discount-policies/${priorityCriteriaId}`);
+};

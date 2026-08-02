@@ -33,16 +33,16 @@ import LoginPage from "../modules/auth/pages/LoginPage";
 import RegisterPage from "../modules/auth/pages/RegisterPage";
 import AboutPage from "../modules/public/pages/AboutPage";
 import AdminContentAboutPage from "../modules/admin/pages/AdminContentAboutPage";
+import AdminContentCardsPage from "../modules/admin/pages/AdminContentCardsPage";
+import AdminContentSectionsPage from "../modules/admin/pages/AdminContentSectionsPage";
 import AdminSystemAnnouncementsPage from "../modules/admin/pages/AdminSystemAnnouncementsPage";
 import AdmissionCandidateManagementPage from "../modules/admin/pages/AdmissionCandidateManagementPage";
 import DormReservationManagementPage from "../modules/admin/pages/DormReservationManagementPage";
 import FreshmanReservationPage from "../modules/public/pages/FreshmanReservationPage";
 import FreshmanReservationStatusPage from "../modules/public/pages/FreshmanReservationStatusPage";
-import ApplicationDocumentsPage from "../modules/public/pages/ApplicationDocumentsPage";
 import ContactPage from "../modules/public/pages/ContactPage";
-import EligibilityPage from "../modules/public/pages/EligibilityPage";
 import HomePage from "../modules/public/pages/HomePage";
-import RegistrationProcessPage from "../modules/public/pages/RegistrationProcessPage";
+import DetailContentPage from "../modules/public/pages/DetailContentPage";
 import RegistrationPage from "../modules/registration/pages/RegistrationPage";
 import RoomStatusPage from "../modules/registration/pages/RoomStatusPage";
 import StudentDashboardPage from "../modules/student/pages/StudentDashboardPage";
@@ -68,9 +68,11 @@ export default function AppRoutes() {
           <Route index element={<HomePage />} />
           <Route path="about" element={<AboutPage />} />
           <Route path="contact" element={<ContactPage />} />
-          <Route path="dieu-kien-noi-tru" element={<EligibilityPage />} />
-          <Route path="ho-so-can-chuan-bi" element={<ApplicationDocumentsPage />} />
-          <Route path="quy-trinh-xet-duyet" element={<RegistrationProcessPage />} />
+          <Route path="dieu-kien-noi-tru" element={<DetailContentPage slug="ct-dieu-kien-dang-ky" />} />
+          <Route path="ho-so-can-chuan-bi" element={<DetailContentPage slug="ct-ho-so-can-chuan-bi" />} />
+          <Route path="quy-trinh-xet-duyet" element={<DetailContentPage slug="ct-quy-trinh-xet-duyet" />} />
+          <Route path="quy-dinh-thanh-toan" element={<DetailContentPage slug="ct-quy-dinh-thanh-toan" />} />
+          <Route path="noi-quy-ktx" element={<DetailContentPage slug="ct-noi-quy-ktx" />} />
           <Route path="freshman-reservation" element={<FreshmanReservationPage />} />
           <Route path="freshman-reservation/status" element={<FreshmanReservationStatusPage />} />
         </Route>
@@ -108,6 +110,27 @@ export default function AppRoutes() {
           <Route path="buildings" element={<AdminBuildingManagement />} />
           <Route path="buildings/:buildingCode" element={<AdminBuildingDetailPage />} />
           <Route path="content/about" element={<AdminContentAboutPage />} />
+          <Route
+            path="content/registration-guide"
+            element={
+              <AdminContentCardsPage
+                slug="quy-dinh-dang-ky"
+                heading="Quản lý nội dung — Quy định về đăng ký và thanh toán"
+                description="Chỉnh sửa danh sách thẻ hiển thị ở khối &quot;Những điều cần biết trước khi đăng ký&quot; trên trang chủ."
+              />
+            }
+          />
+          <Route
+            path="content/facilities"
+            element={
+              <AdminContentCardsPage
+                slug="co-so-vat-chat"
+                heading="Quản lý nội dung — Cơ sở vật chất"
+                description="Chỉnh sửa danh sách thẻ hiển thị ở khối &quot;Cơ sở vật chất&quot; trên trang chủ."
+              />
+            }
+          />
+          <Route path="content/detail-pages" element={<AdminContentSectionsPage />} />
           <Route path="content/announcements" element={<AdminSystemAnnouncementsPage />} />
           <Route path="content/announcements/create" element={<AdminSystemAnnouncementsPage />} />
           <Route path="content/announcements/:id" element={<AdminSystemAnnouncementsPage />} />
