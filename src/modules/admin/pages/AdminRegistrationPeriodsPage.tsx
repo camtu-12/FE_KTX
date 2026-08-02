@@ -1297,11 +1297,10 @@ export default function AdminRegistrationPeriodsPage() {
               })()}
               {period.status === "active" && (() => {
                 const now = new Date();
-                const end = new Date(period.end_date);
-                // Nếu backend trả date-only (UTC midnight), treat là cuối ngày giờ local
-                if (end.getUTCHours() === 0 && end.getUTCMinutes() === 0 && end.getUTCSeconds() === 0) {
-                  end.setHours(23, 59, 59, 999);
-                }
+                // Hạn thật là 17:00 ngày kết thúc, dùng chung công thức với các chỗ khác
+                // trong trang này — trước đây tự tính riêng theo 23:59:59 (cuối ngày), lệch
+                // với hạn 17:00 thật của hệ thống, khiến badge hiện sai "còn bao nhiêu phút".
+                const end = admissionDeadline(period.end_date) ?? new Date(period.end_date);
                 const diffMs = end.getTime() - now.getTime();
                 if (diffMs > 0) {
                   const totalHours = Math.floor(diffMs / 3600000);
