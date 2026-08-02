@@ -436,6 +436,11 @@ export default function RoomStatusPage() {
           <p className="mt-1.5 text-sm text-emerald-700">
             Vui lòng vào chọn giường để hoàn tất thủ tục lưu trú.
           </p>
+          {registration.bed_selection_deadline ? (
+            <p className="mt-1 text-sm font-semibold text-emerald-800">
+              Hạn chọn giường: 17:00 ngày {formatDate(registration.bed_selection_deadline)}
+            </p>
+          ) : null}
           <button
             type="button"
             onClick={() => navigate("/student/room")}
