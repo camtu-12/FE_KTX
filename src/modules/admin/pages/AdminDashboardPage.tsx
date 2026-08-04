@@ -31,10 +31,14 @@ import {
 } from "recharts";
 import type { DashboardData, DashboardRevenueTrendItem } from "../../../api/dashboardApi";
 import {
+  exportDashboardExcel,
+  exportDashboardPdf,
   fetchDashboard,
   fetchDashboardFinance,
   fetchDashboardRevenueTrend,
 } from "../../../api/dashboardApi";
+import ExportPdfButton from "../../../components/ExportPdfButton";
+import ExportExcelButton from "../../../components/ExportExcelButton";
 
 const CARD_CLASS =
   "rounded-[20px] border border-[#e2e8f0] bg-white p-6 shadow-[0_12px_28px_rgba(15,23,42,0.06)]";
@@ -533,13 +537,17 @@ export default function AdminDashboardPage() {
               Tổng quan hệ thống ký túc xá STU
             </p>
           </div>
-          <button
-            type="button"
-            onClick={load}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#fff_0%,#f5f9ff_100%)] px-4 py-2.5 text-sm font-semibold text-[#2563eb] shadow-[0_8px_18px_rgba(37,99,235,0.09)] transition hover:-translate-y-0.5 hover:border-[#9eb9e6] hover:bg-white"
-          >
-            <RefreshCw size={16} /> Làm mới
-          </button>
+          <div className="flex items-center gap-2">
+            <ExportPdfButton fetcher={() => exportDashboardPdf(selectedMonth, selectedYear)} />
+            <ExportExcelButton fetcher={() => exportDashboardExcel(selectedMonth, selectedYear)} />
+            <button
+              type="button"
+              onClick={load}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#fff_0%,#f5f9ff_100%)] px-4 py-2.5 text-sm font-semibold text-[#2563eb] shadow-[0_8px_18px_rgba(37,99,235,0.09)] transition hover:-translate-y-0.5 hover:border-[#9eb9e6] hover:bg-white"
+            >
+              <RefreshCw size={16} /> Làm mới
+            </button>
+          </div>
         </div>
       </div>
 

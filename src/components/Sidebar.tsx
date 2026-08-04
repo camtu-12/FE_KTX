@@ -1,5 +1,6 @@
 import {
   BedSingle,
+  Bell,
   Building2,
   CalendarRange,
   ChevronDown,
@@ -136,8 +137,15 @@ const adminMenu: MenuItem[] = [
     icon: FileText,
     children: [
       { label: "Trang giới thiệu", to: "/admin/content/about" },
-      { label: "Thông báo", to: "/admin/content/announcements" },
+      { label: "Quy định đăng ký", to: "/admin/content/registration-guide" },
+      { label: "Cơ sở vật chất", to: "/admin/content/facilities" },
+      { label: "Trang chi tiết", to: "/admin/content/detail-pages" },
     ],
+  },
+  {
+    label: "Thông báo",
+    to: "/admin/content/announcements",
+    icon: Bell,
   },
 ];
 

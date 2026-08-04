@@ -122,3 +122,19 @@ export async function fetchDashboardRevenueTrend(
   });
   return data;
 }
+
+export async function exportDashboardPdf(month?: number, year?: number): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.get("/admin/dashboard/pdf", {
+    params: { month, year },
+    responseType: "blob",
+  });
+  return { blob: response.data as Blob, filename: "bao_cao_thong_ke.pdf" };
+}
+
+export async function exportDashboardExcel(month?: number, year?: number): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.get("/admin/dashboard/excel", {
+    params: { month, year },
+    responseType: "blob",
+  });
+  return { blob: response.data as Blob, filename: "bao_cao_thong_ke.xlsx" };
+}

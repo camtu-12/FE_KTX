@@ -7,7 +7,7 @@ export type FeeDiscountPolicy = {
   tier: number;
   priorityScore: number;
   discountPercent: number;
-  isActive: boolean;
+  inUse: boolean;
 };
 
 type ApiFeeDiscountPolicy = {
@@ -17,7 +17,7 @@ type ApiFeeDiscountPolicy = {
   tier: number;
   priority_score: number;
   discount_percent: number;
-  is_active: boolean;
+  in_use?: boolean;
 };
 
 const normalize = (item: ApiFeeDiscountPolicy): FeeDiscountPolicy => ({
@@ -27,7 +27,7 @@ const normalize = (item: ApiFeeDiscountPolicy): FeeDiscountPolicy => ({
   tier: item.tier,
   priorityScore: item.priority_score,
   discountPercent: Number(item.discount_percent) || 0,
-  isActive: item.is_active,
+  inUse: item.in_use ?? false,
 });
 
 export const getFeeDiscountPolicies = async (): Promise<FeeDiscountPolicy[]> => {
@@ -35,12 +35,33 @@ export const getFeeDiscountPolicies = async (): Promise<FeeDiscountPolicy[]> => 
   return response.data.map(normalize);
 };
 
-export const updateFeeDiscountPolicy = async (
+export const createPriorityCriteria = async (payload: {
+  code: string;
+  name: string;
+  tier: number;
+  priority_score: number;
+  discount_percent?: number;
+}): Promise<FeeDiscountPolicy> => {
+  const response = await apiClient.post<ApiFeeDiscountPolicy>("/fee-discount-policies", payload);
+  return normalize(response.data);
+};
+
+export const deletePriorityCriteria = async (priorityCriteriaId: number): Promise<void> => {
+  await apiClient.delete(`/fee-discount-policies/${priorityCriteriaId}`);
+};
+
+export const updatePriorityCriteria = async (
   priorityCriteriaId: number,
-  payload: { discount_percent: number; is_active: boolean },
+  payload: {
+    code: string;
+    name: string;
+    tier: number;
+    priority_score: number;
+    discount_percent: number;
+  },
 ): Promise<FeeDiscountPolicy> => {
   const response = await apiClient.put<ApiFeeDiscountPolicy>(
-    `/fee-discount-policies/${priorityCriteriaId}`,
+    `/priority-criteria/${priorityCriteriaId}`,
     payload,
   );
   return normalize(response.data);

@@ -420,30 +420,43 @@ export default function RoomStatusPage() {
       </div>
       <div className="flex flex-1 flex-col items-center gap-4 px-0 pb-8 pt-3 sm:pb-12 sm:pt-4">
         {registration.status === "rejected" ? (
-        <div className="w-full max-w-3xl rounded-2xl border border-red-200 bg-red-50/95 p-6 text-center shadow-[0_12px_24px_rgba(239,68,68,0.16)]">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 ring-1 ring-inset ring-red-200">
-            <AlertCircle className="h-3.5 w-3.5" />
-            Bị từ chối
-          </span>
-          <StatusTimeline status={registration.status} />
-          <p className="mt-3 font-semibold text-red-900">Đơn đăng ký bị từ chối</p>
-          <p className="mt-1.5 text-sm text-red-700">
-            Lý do: {registration.rejectionReason || "Chưa có lý do cụ thể."}
-          </p>
-          {eligibility?.eligible ? (
-            <button
-              type="button"
-              onClick={() => navigate("/student/registration?resubmit=true")}
-              className="auth-btn-gloss mx-auto mt-4 rounded-xl bg-[linear-gradient(135deg,#e25569_0%,#cc3c4f_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_18px_rgba(204,60,79,0.20)] transition-all duration-200 hover:-translate-y-0.5 hover:brightness-105 active:scale-[0.98]"
-            >
-              <span className="auth-btn-gloss__content">Gửi lại đơn</span>
-            </button>
+        <>
+          <div className="w-full max-w-3xl rounded-2xl border border-red-200 bg-red-50/95 p-6 text-center shadow-[0_12px_24px_rgba(239,68,68,0.16)]">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 ring-1 ring-inset ring-red-200">
+              <AlertCircle className="h-3.5 w-3.5" />
+              Bị từ chối
+            </span>
+            <StatusTimeline status={registration.status} />
+            <p className="mt-3 font-semibold text-red-900">Đơn đăng ký bị từ chối</p>
+            <p className="mt-1.5 text-sm text-red-700">
+              Lý do: {registration.rejectionReason || "Chưa có lý do cụ thể."}
+            </p>
+          </div>
+          {eligibility?.eligible && eligibility.channel_info ? (
+            <>
+              <div className="mx-auto max-w-lg rounded-2xl border border-red-200 bg-white px-6 py-5 text-left">
+                <p className="text-base font-bold text-[#1b3766]">
+                  {eligibility.channel_info.channel === "rolling" ? "Đang có đợt đăng ký quanh năm mở" : "Đang có đợt đăng ký mở"}
+                  {eligibility.channel_info.period_name ? `: ${eligibility.channel_info.period_name}` : ""}
+                </p>
+                <p className="mt-1.5 text-sm text-[#6d7fa6]">
+                  Thời gian nhận hồ sơ: {formatDate(eligibility.channel_info.start_date)} – {formatDate(eligibility.channel_info.end_date)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate("/student/registration")}
+                className="auth-btn-gloss mx-auto rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#31b7d4_100%)] px-6 py-3 text-base font-semibold text-white shadow-[0_10px_18px_rgba(36,76,184,0.24)] transition-all duration-200 hover:-translate-y-0.5 hover:brightness-105 active:scale-[0.98]"
+              >
+                <span className="auth-btn-gloss__content">Đăng ký ngay</span>
+              </button>
+            </>
           ) : (
-            <p className="mt-3 text-sm text-red-500">
-              Hiện chưa có đợt đăng ký nào đang mở.
+            <p className="text-sm text-red-500">
+              {eligibility?.reason_message || "Hiện chưa có đợt đăng ký nào đang mở."}
             </p>
           )}
-        </div>
+        </>
       ) : registration.status === "approved" && occupancyStatus === "ROOM_CONFIRMED" ? (
         <div className="w-full max-w-3xl rounded-2xl border border-emerald-200 bg-emerald-50/95 p-6 text-center shadow-[0_12px_24px_rgba(16,185,129,0.14)]">
           <StatusTimeline status={registration.status} />

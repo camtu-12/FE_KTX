@@ -7,6 +7,8 @@ import { useOutletContext } from "react-router-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import {
   confirmElectricityPayment,
+  exportElectricityBillsExcel,
+  exportElectricityBillsPdf,
   generateElectricityBills,
   getPaymentSettings,
   listElectricityBills,
@@ -16,6 +18,8 @@ import {
   type PaymentStatus,
   updatePaymentSettings,
 } from "../../../api/paymentApi";
+import ExportPdfButton from "../../../components/ExportPdfButton";
+import ExportExcelButton from "../../../components/ExportExcelButton";
 import { getRooms } from "../../../api/registrationService";
 import type { DormRoom } from "../../../types/dormRoom";
 import { formatDate, getLocalDateValue } from "../../../utils/dateFormat";
@@ -738,7 +742,13 @@ export default function AdminElectricityPage() {
         <div className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)] sm:px-8">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div>
-              <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">Tiền điện</h1>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">Tiền điện</h1>
+                <div className="flex items-center gap-2">
+                  <ExportPdfButton fetcher={exportElectricityBillsPdf} />
+                  <ExportExcelButton fetcher={exportElectricityBillsExcel} />
+                </div>
+              </div>
               <p className="mt-3 max-w-3xl text-[13px] leading-6 text-[#62789f] sm:text-sm">
                 Quản lý chỉ số điện phòng và hóa đơn điện phân bổ cho từng sinh viên.
               </p>

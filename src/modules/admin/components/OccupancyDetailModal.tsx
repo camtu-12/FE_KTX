@@ -2,8 +2,15 @@ import { motion } from "framer-motion";
 import { Ban, CheckCircle2, Clock3, CircleAlert, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { fetchOccupancyDetail, type OccupancyDetail } from "../../../api/occupancyDetailApi";
+import {
+  exportOccupancyDetailExcel,
+  exportOccupancyDetailPdf,
+  fetchOccupancyDetail,
+  type OccupancyDetail,
+} from "../../../api/occupancyDetailApi";
 import { formatDate, formatDateTime } from "../../../utils/dateFormat";
+import ExportPdfButton from "../../../components/ExportPdfButton";
+import ExportExcelButton from "../../../components/ExportExcelButton";
 
 const emptyValue = "-";
 
@@ -114,13 +121,17 @@ export default function OccupancyDetailModal({
           <h2 className="text-2xl font-bold text-[#1a2d52]">
             Chi tiết lưu trú
           </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl border border-[#bfd2ee] bg-[linear-gradient(180deg,#ffffff_0%,#edf4ff_100%)] p-2 text-[#6681b1] transition hover:border-[#97b8e8] hover:text-[#244cb8]"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <ExportPdfButton fetcher={() => exportOccupancyDetailPdf(occupancyId)} />
+            <ExportExcelButton fetcher={() => exportOccupancyDetailExcel(occupancyId)} />
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl border border-[#bfd2ee] bg-[linear-gradient(180deg,#ffffff_0%,#edf4ff_100%)] p-2 text-[#6681b1] transition hover:border-[#97b8e8] hover:text-[#244cb8]"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Scrollable content */}

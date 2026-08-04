@@ -12,7 +12,9 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useOutletContext } from "react-router-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
-import { listViolations, type ViolationRecord } from "../../../api/violationApi";
+import { exportViolationsExcel, exportViolationsPdf, listViolations, type ViolationRecord } from "../../../api/violationApi";
+import ExportPdfButton from "../../../components/ExportPdfButton";
+import ExportExcelButton from "../../../components/ExportExcelButton";
 import type { ActivityCategory, ViolationLevel } from "../../../api/violationTypeApi";
 import { formatDate } from "../../../utils/dateFormat";
 
@@ -292,13 +294,19 @@ export default function ViolationManagementPage() {
           transition={{ duration: 0.42, ease: "easeOut" }}
           className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)] sm:px-8"
         >
-          <div className="flex flex-col gap-2">
-            <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">
-              Lịch sử hoạt động
-            </h1>
-            <p className="max-w-3xl text-[13px] leading-6 text-[#62789f] sm:text-sm">
-              Theo dõi hoạt động tích cực, vi phạm và kết quả xử lý của sinh viên nội trú.
-            </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex flex-col gap-2">
+              <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">
+                Lịch sử hoạt động
+              </h1>
+              <p className="max-w-3xl text-[13px] leading-6 text-[#62789f] sm:text-sm">
+                Theo dõi hoạt động tích cực, vi phạm và kết quả xử lý của sinh viên nội trú.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <ExportPdfButton fetcher={exportViolationsPdf} />
+              <ExportExcelButton fetcher={exportViolationsExcel} />
+            </div>
           </div>
 
           <div className="mt-5 grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
