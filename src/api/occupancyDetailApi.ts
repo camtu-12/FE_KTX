@@ -88,3 +88,23 @@ export const fetchOccupancyDetail = async (occupancyId: number): Promise<Occupan
   const res = await apiClient.get<OccupancyDetail>(`/admin/occupancies/${occupancyId}/detail`);
   return res.data;
 };
+
+export const exportOccupancyDetailPdf = async (occupancyId: number): Promise<{ blob: Blob; filename: string }> => {
+  const res = await apiClient.get(`/admin/occupancies/${occupancyId}/detail/pdf`, { responseType: "blob" });
+  return { blob: res.data as Blob, filename: `ho_so_luu_tru_${occupancyId}.pdf` };
+};
+
+export const exportOccupancyDetailExcel = async (occupancyId: number): Promise<{ blob: Blob; filename: string }> => {
+  const res = await apiClient.get(`/admin/occupancies/${occupancyId}/detail/excel`, { responseType: "blob" });
+  return { blob: res.data as Blob, filename: `ho_so_luu_tru_${occupancyId}.xlsx` };
+};
+
+export const exportOccupanciesPdf = async (): Promise<{ blob: Blob; filename: string }> => {
+  const res = await apiClient.get("/admin/occupancies/pdf", { responseType: "blob" });
+  return { blob: res.data as Blob, filename: "danh_sach_luu_tru.pdf" };
+};
+
+export const exportOccupanciesExcel = async (): Promise<{ blob: Blob; filename: string }> => {
+  const res = await apiClient.get("/admin/occupancies/excel", { responseType: "blob" });
+  return { blob: res.data as Blob, filename: "danh_sach_luu_tru.xlsx" };
+};

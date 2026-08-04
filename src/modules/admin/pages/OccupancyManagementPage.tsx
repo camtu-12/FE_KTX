@@ -20,6 +20,9 @@ import { createViolation } from "../../../api/violationApi";
 import OccupancyDetailModal, { type OccupancyDetailModalStatus } from "../components/OccupancyDetailModal";
 import { searchStudentsForOccupancy } from "../../../api/studentSearchApi";
 import FaceSearchModal from "../components/FaceSearchModal";
+import { exportOccupanciesExcel, exportOccupanciesPdf } from "../../../api/occupancyDetailApi";
+import ExportPdfButton from "../../../components/ExportPdfButton";
+import ExportExcelButton from "../../../components/ExportExcelButton";
 
 type OccupancyStatusFilter = OccupancyStatus | "ALL";
 
@@ -679,13 +682,19 @@ export default function OccupancyManagementPage() {
           className="auth-reveal is-visible rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)] backdrop-blur-sm transition-all duration-300 ease-out hover:shadow-[0_24px_56px_rgba(36,76,184,0.14)] sm:px-8"
         >
           <div className="space-y-4">
-            <div>
-              <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">
-                Quản lý lưu trú
-              </h1>
-              <p className="mt-1 max-w-3xl text-[13px] leading-6 text-[#62789f] sm:text-sm">
-                Theo dõi danh sách sinh viên đang lưu trú, trạng thái thôi ở và thông tin phòng giường.
-              </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h1 className="text-[24px] font-bold tracking-tight text-[#1a2d52] sm:text-[28px]">
+                  Quản lý lưu trú
+                </h1>
+                <p className="mt-1 max-w-3xl text-[13px] leading-6 text-[#62789f] sm:text-sm">
+                  Theo dõi danh sách sinh viên đang lưu trú, trạng thái thôi ở và thông tin phòng giường.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <ExportPdfButton fetcher={exportOccupanciesPdf} />
+                <ExportExcelButton fetcher={exportOccupanciesExcel} />
+              </div>
             </div>
 
             {/* Filter selects */}

@@ -126,3 +126,13 @@ export const approveExtension = (id: number, payload?: ProcessExtensionPayload):
 
 export const rejectExtension = (id: number, payload?: ProcessExtensionPayload): Promise<OccupancyExtension> =>
   apiClient.put(`/admin/extensions/${id}/reject`, payload ?? {}).then((res) => res.data as OccupancyExtension);
+
+export const exportApprovedExtensionsPdf = async (): Promise<{ blob: Blob; filename: string }> => {
+  const res = await apiClient.get("/admin/extensions/approved/pdf", { responseType: "blob" });
+  return { blob: res.data as Blob, filename: "don_gia_han_da_duyet.pdf" };
+};
+
+export const exportApprovedExtensionsExcel = async (): Promise<{ blob: Blob; filename: string }> => {
+  const res = await apiClient.get("/admin/extensions/approved/excel", { responseType: "blob" });
+  return { blob: res.data as Blob, filename: "don_gia_han_da_duyet.xlsx" };
+};

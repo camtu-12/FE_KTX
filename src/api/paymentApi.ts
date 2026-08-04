@@ -331,6 +331,16 @@ export const listRoomFeeBills = async (): Promise<RoomFeeBill[]> => {
   return Array.isArray(response.data) ? response.data.map(normalizeRoomFeeBill) : [];
 };
 
+export const exportRoomFeeBillsPdf = async (): Promise<{ blob: Blob; filename: string }> => {
+  const response = await apiClient.get("/room-fee-bills/pdf", { responseType: "blob" });
+  return { blob: response.data as Blob, filename: "danh_sach_hoa_don_tien_phong.pdf" };
+};
+
+export const exportRoomFeeBillsExcel = async (): Promise<{ blob: Blob; filename: string }> => {
+  const response = await apiClient.get("/room-fee-bills/excel", { responseType: "blob" });
+  return { blob: response.data as Blob, filename: "danh_sach_hoa_don_tien_phong.xlsx" };
+};
+
 export const generateRoomFeeBills = async (payload: {
   month: number;
   year: number;
@@ -448,6 +458,16 @@ export const confirmFreeRoomFeeBill = async (id: number): Promise<StudentPayment
 export const listElectricityBills = async (): Promise<ElectricityBill[]> => {
   const response = await apiClient.get<ApiElectricityBill[]>("/electricity-bills");
   return Array.isArray(response.data) ? response.data.map(normalizeElectricityBill) : [];
+};
+
+export const exportElectricityBillsPdf = async (): Promise<{ blob: Blob; filename: string }> => {
+  const response = await apiClient.get("/electricity-bills/pdf", { responseType: "blob" });
+  return { blob: response.data as Blob, filename: "danh_sach_hoa_don_tien_dien.pdf" };
+};
+
+export const exportElectricityBillsExcel = async (): Promise<{ blob: Blob; filename: string }> => {
+  const response = await apiClient.get("/electricity-bills/excel", { responseType: "blob" });
+  return { blob: response.data as Blob, filename: "danh_sach_hoa_don_tien_dien.xlsx" };
 };
 
 export const listElectricityRecords = async (): Promise<ElectricityRecord[]> => {

@@ -9,8 +9,17 @@ import {
   type FloorGender,
   type FloorStatus,
 } from "../../../mocks/buildings";
-import { createFloor as createFloorApi, deleteFloor as deleteFloorApi, getBuilding, updateFloor as updateFloorApi } from "../../../api/buildingApi";
+import {
+  createFloor as createFloorApi,
+  deleteFloor as deleteFloorApi,
+  exportBuildingDetailExcel,
+  exportBuildingDetailPdf,
+  getBuilding,
+  updateFloor as updateFloorApi,
+} from "../../../api/buildingApi";
 import { listRooms, type RoomApi } from "../../../api/roomApi";
+import ExportPdfButton from "../../../components/ExportPdfButton";
+import ExportExcelButton from "../../../components/ExportExcelButton";
 
 type RoomRecord = RoomApi;
 
@@ -731,7 +740,9 @@ export default function AdminBuildingDetailPage() {
               <p className="mt-1 text-sm text-[#62789f]">Địa chỉ: {building.address ?? "-"}</p>
             </div>
 
-            <div className="shrink-0 lg:pt-1">
+            <div className="flex shrink-0 items-center gap-2 lg:pt-1">
+              <ExportPdfButton fetcher={() => exportBuildingDetailPdf(building.building_code)} />
+              <ExportExcelButton fetcher={() => exportBuildingDetailExcel(building.building_code)} />
               <button
                 type="button"
                 onClick={openAddFloor}
