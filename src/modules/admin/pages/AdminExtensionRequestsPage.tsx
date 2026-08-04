@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   ShieldAlert,
   X,
+  XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
@@ -247,15 +248,27 @@ export default function AdminExtensionRequestsPage() {
         className="flex min-h-[calc(100vh-8rem)] flex-col space-y-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
       >
         {/* Toast */}
-        {toast &&
-          createPortal(
-            <div className={`fixed top-5 right-5 z-[9999] px-5 py-3 rounded-xl shadow-lg text-sm font-medium ${
-              toast.type === "success" ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
-            }`}>
-              {toast.message}
-            </div>,
-            document.body,
-          )}
+        {createPortal(
+          <AnimatePresence>
+            {toast && (
+              <div className="fixed inset-0 z-90 flex items-center justify-center bg-[rgba(14,25,48,0.35)] px-4">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, y: 12 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, y: 12 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                  className={`flex items-center gap-3 rounded-[20px] border bg-white px-6 py-4 text-sm font-semibold shadow-[0_24px_60px_rgba(15,23,42,0.25)] ${
+                    toast.type === "success" ? "border-emerald-200 text-emerald-700" : "border-rose-200 text-rose-700"
+                  }`}
+                >
+                  {toast.type === "success" ? <CheckCircle2 className="h-5 w-5 shrink-0" /> : <XCircle className="h-5 w-5 shrink-0" />}
+                  {toast.message}
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>,
+          document.body,
+        )}
 
         {/* Header */}
         <div className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)] sm:px-8">

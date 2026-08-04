@@ -1,22 +1,17 @@
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
-import { Check, Loader2, Plus, Trash2, X } from "lucide-react";
+import { CheckCircle2, Pencil, Plus, Trash2, X, XCircle } from "lucide-react";
 import {
   createPriorityCriteria,
   deletePriorityCriteria,
   getFeeDiscountPolicies,
-  updateFeeDiscountPolicy,
+  updatePriorityCriteria,
   type FeeDiscountPolicy,
 } from "../../../api/feeDiscountApi";
 
 type ToastState = { type: "success" | "error"; message: string };
-
-type RowDraft = {
-  discountPercent: string;
-  isActive: boolean;
-};
 
 const TIER_LABELS: Record<number, string> = {
   1: "Bậc 1",
@@ -26,9 +21,7 @@ const TIER_LABELS: Record<number, string> = {
 
 export default function AdminFeeDiscountPage() {
   const [policies, setPolicies] = useState<FeeDiscountPolicy[]>([]);
-  const [drafts, setDrafts] = useState<Record<number, RowDraft>>({});
   const [loading, setLoading] = useState(true);
-  const [savingId, setSavingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -39,10 +32,21 @@ export default function AdminFeeDiscountPage() {
     tier: "2",
     priorityScore: "0",
     discountPercent: "0",
-    isActive: true,
   });
   const emptyFieldErrors = { code: "", name: "", tier: "", priorityScore: "", discountPercent: "" };
   const [fieldErrors, setFieldErrors] = useState(emptyFieldErrors);
+
+  const [editingItem, setEditingItem] = useState<FeeDiscountPolicy | null>(null);
+  const [editForm, setEditForm] = useState({
+    code: "",
+    name: "",
+    tier: "2",
+    priorityScore: "0",
+    discountPercent: "0",
+  });
+  const [editFieldErrors, setEditFieldErrors] = useState(emptyFieldErrors);
+  const [updating, setUpdating] = useState(false);
+
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [confirmMessage, setConfirmMessage] = useState("");
   const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
@@ -68,23 +72,11 @@ export default function AdminFeeDiscountPage() {
     setTimeout(() => setToast(null), 3500);
   };
 
-  const syncDrafts = (items: FeeDiscountPolicy[]) => {
-    setDrafts(
-      Object.fromEntries(
-        items.map((item) => [
-          item.priorityCriteriaId,
-          { discountPercent: String(item.discountPercent), isActive: item.isActive },
-        ]),
-      ),
-    );
-  };
-
   const loadPolicies = async () => {
     setLoading(true);
     try {
       const items = await getFeeDiscountPolicies();
       setPolicies(items);
-      syncDrafts(items);
     } catch {
       showToast("error", "Không thể tải danh sách chính sách giảm phí.");
     } finally {
@@ -164,9 +156,8 @@ export default function AdminFeeDiscountPage() {
         tier,
         priority_score: priorityScore,
         discount_percent: discountPercent,
-        is_active: newCriteria.isActive,
       });
-      setNewCriteria({ code: "", name: "", tier: "2", priorityScore: "0", discountPercent: "0", isActive: true });
+      setNewCriteria({ code: "", name: "", tier: "2", priorityScore: "0", discountPercent: "0" });
       setIsAddModalOpen(false);
       showToast("success", `Đã thêm tiêu chí "${name}".`);
       await loadPolicies();
@@ -185,6 +176,91 @@ export default function AdminFeeDiscountPage() {
       }
     } finally {
       setCreating(false);
+    }
+  };
+
+  const openEditModal = (item: FeeDiscountPolicy) => {
+    setEditingItem(item);
+    setEditForm({
+      code: item.code,
+      name: item.name,
+      tier: String(item.tier),
+      priorityScore: String(item.priorityScore),
+      discountPercent: String(item.discountPercent),
+    });
+    setEditFieldErrors(emptyFieldErrors);
+  };
+
+  const closeEditModal = () => {
+    setEditingItem(null);
+    setEditFieldErrors(emptyFieldErrors);
+  };
+
+  const handleUpdate = async () => {
+    if (!editingItem) return;
+
+    const code = editForm.code.trim();
+    const name = editForm.name.trim();
+    const tier = Number(editForm.tier);
+    const priorityScore = Number(editForm.priorityScore);
+    const discountPercent = Number(editForm.discountPercent);
+
+    const errors = { ...emptyFieldErrors };
+    if (!code) {
+      errors.code = "Vui lòng nhập mã tiêu chí.";
+    } else if (!CODE_FORMAT.test(code)) {
+      errors.code = "Mã tiêu chí phải có định dạng UT + số (VD: UT07).";
+    }
+    if (!name) {
+      errors.name = "Vui lòng nhập tên tiêu chí.";
+    }
+    if (!Number.isInteger(tier) || tier < 1 || tier > 3) {
+      errors.tier = "Vui lòng chọn bậc hợp lệ (1 - 3).";
+    }
+    if (editForm.priorityScore.trim() === "") {
+      errors.priorityScore = "Vui lòng nhập điểm ưu tiên.";
+    } else if (!Number.isInteger(priorityScore) || priorityScore < 0 || priorityScore > 100) {
+      errors.priorityScore = "Điểm ưu tiên phải là số nguyên từ 0 đến 100.";
+    }
+    if (editForm.discountPercent.trim() === "") {
+      errors.discountPercent = "Vui lòng nhập % giảm phí.";
+    } else if (Number.isNaN(discountPercent) || discountPercent < 0 || discountPercent > 100) {
+      errors.discountPercent = "% giảm phí phải nằm trong khoảng 0 - 100.";
+    }
+
+    if (errors.code || errors.name || errors.tier || errors.priorityScore || errors.discountPercent) {
+      setEditFieldErrors(errors);
+      return;
+    }
+    setEditFieldErrors(emptyFieldErrors);
+
+    setUpdating(true);
+    try {
+      const updated = await updatePriorityCriteria(editingItem.priorityCriteriaId, {
+        code,
+        name,
+        tier,
+        priority_score: priorityScore,
+        discount_percent: discountPercent,
+      });
+      showToast("success", `Đã cập nhật tiêu chí "${updated.name}".`);
+      closeEditModal();
+      await loadPolicies();
+    } catch (error) {
+      const codeFieldError = extractFieldError(error, "code");
+      if (codeFieldError) {
+        setEditFieldErrors((prev) => ({
+          ...prev,
+          code:
+            codeFieldError === "The code has already been taken."
+              ? "Mã tiêu chí này đã tồn tại, vui lòng chọn mã khác."
+              : codeFieldError,
+        }));
+      } else {
+        showToast("error", extractErrorMessage(error, "Cập nhật thất bại. Vui lòng thử lại."));
+      }
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -207,49 +283,6 @@ export default function AdminFeeDiscountPage() {
     setIsConfirmOpen(true);
   };
 
-  const isRowDirty = (item: FeeDiscountPolicy) => {
-    const draft = drafts[item.priorityCriteriaId];
-    if (!draft) return false;
-    return (
-      draft.discountPercent !== String(item.discountPercent) ||
-      draft.isActive !== item.isActive
-    );
-  };
-
-  const handleSave = async (item: FeeDiscountPolicy) => {
-    const draft = drafts[item.priorityCriteriaId];
-    if (!draft) return;
-
-    const percent = Number(draft.discountPercent);
-    if (Number.isNaN(percent) || percent < 0 || percent > 100) {
-      showToast("error", "Phần trăm giảm phải nằm trong khoảng 0 - 100.");
-      return;
-    }
-
-    setSavingId(item.priorityCriteriaId);
-    try {
-      const updated = await updateFeeDiscountPolicy(item.priorityCriteriaId, {
-        discount_percent: percent,
-        is_active: draft.isActive,
-      });
-      setPolicies((prev) =>
-        prev.map((p) => (p.priorityCriteriaId === updated.priorityCriteriaId ? updated : p)),
-      );
-      setDrafts((prev) => ({
-        ...prev,
-        [updated.priorityCriteriaId]: {
-          discountPercent: String(updated.discountPercent),
-          isActive: updated.isActive,
-        },
-      }));
-      showToast("success", `Đã lưu chính sách giảm phí cho "${updated.name}".`);
-    } catch {
-      showToast("error", "Lưu thất bại, vui lòng thử lại.");
-    } finally {
-      setSavingId(null);
-    }
-  };
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -257,17 +290,27 @@ export default function AdminFeeDiscountPage() {
       transition={{ duration: 0.4, ease: "easeOut" }}
       className="flex min-h-[calc(100vh-8rem)] flex-col space-y-5 rounded-[24px] bg-[radial-gradient(circle_at_top_left,#eaf3ff_0%,#dbe9fb_38%,#d2e3f8_100%)] p-4 sm:p-6"
     >
-      {toast &&
-        createPortal(
-          <div
-            className={`fixed top-5 right-5 z-[9999] rounded-xl px-5 py-3 text-sm font-medium shadow-lg ${
-              toast.type === "success" ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
-            }`}
-          >
-            {toast.message}
-          </div>,
-          document.body,
-        )}
+      {createPortal(
+        <AnimatePresence>
+          {toast && (
+            <div className="fixed inset-0 z-90 flex items-center justify-center bg-[rgba(14,25,48,0.35)] px-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 12 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className={`flex items-center gap-3 rounded-[20px] border bg-white px-6 py-4 text-sm font-semibold shadow-[0_24px_60px_rgba(15,23,42,0.25)] ${
+                  toast.type === "success" ? "border-emerald-200 text-emerald-700" : "border-rose-200 text-rose-700"
+                }`}
+              >
+                {toast.type === "success" ? <CheckCircle2 className="h-5 w-5 shrink-0" /> : <XCircle className="h-5 w-5 shrink-0" />}
+                {toast.message}
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
 
       <div className="rounded-[20px] border border-[#c1d6f4] bg-[linear-gradient(180deg,#f8fbff_0%,#eaf3ff_72%,#dfebff_100%)] px-6 py-6 shadow-[0_18px_44px_rgba(15,23,42,0.10)] sm:px-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -298,32 +341,24 @@ export default function AdminFeeDiscountPage() {
               <th className="px-5 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Bậc</th>
               <th className="px-5 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Điểm ưu tiên</th>
               <th className="px-5 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">% giảm phí</th>
-              <th className="px-5 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Áp dụng</th>
               <th className="px-5 py-4 text-center text-xs font-bold uppercase tracking-[0.12em] text-[#6f84ad]">Hành động</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7} className="px-5 py-10 text-center text-sm text-[#7c8fb5]">
+                <td colSpan={6} className="px-5 py-10 text-center text-sm text-[#7c8fb5]">
                   Đang tải...
                 </td>
               </tr>
             ) : policies.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-5 py-10 text-center text-sm text-[#7c8fb5]">
+                <td colSpan={6} className="px-5 py-10 text-center text-sm text-[#7c8fb5]">
                   Chưa có tiêu chí ưu tiên nào.
                 </td>
               </tr>
             ) : (
               policies.map((item) => {
-                const draft = drafts[item.priorityCriteriaId] ?? {
-                  discountPercent: String(item.discountPercent),
-                  isActive: item.isActive,
-                };
-                const dirty = isRowDirty(item);
-                const saving = savingId === item.priorityCriteriaId;
-
                 return (
                   <tr key={item.priorityCriteriaId} className="border-t border-[#eef3fb]">
                     <td className="px-5 py-4 text-sm font-semibold text-[#1f3152]">{item.code}</td>
@@ -332,56 +367,18 @@ export default function AdminFeeDiscountPage() {
                       {TIER_LABELS[item.tier] ?? item.tier}
                     </td>
                     <td className="px-5 py-4 text-center text-sm text-[#61779d]">{item.priorityScore}</td>
-                    <td className="px-5 py-4">
-                      <div className="mx-auto flex w-24 items-center gap-1 rounded-xl border border-[#c8d8ef] bg-[#f8fbff] px-3 py-2">
-                        <input
-                          type="number"
-                          min={0}
-                          max={100}
-                          step={0.5}
-                          value={draft.discountPercent}
-                          onChange={(e) =>
-                            setDrafts((prev) => ({
-                              ...prev,
-                              [item.priorityCriteriaId]: { ...draft, discountPercent: e.target.value },
-                            }))
-                          }
-                          className="w-full bg-transparent text-right text-sm font-bold text-[#1a2d52] outline-none"
-                        />
-                        <span className="text-sm text-[#7c8fb5]">%</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4 text-center">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setDrafts((prev) => ({
-                            ...prev,
-                            [item.priorityCriteriaId]: { ...draft, isActive: !draft.isActive },
-                          }))
-                        }
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
-                          draft.isActive ? "bg-emerald-500" : "bg-slate-300"
-                        }`}
-                        aria-pressed={draft.isActive}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${
-                            draft.isActive ? "translate-x-6" : "translate-x-1"
-                          }`}
-                        />
-                      </button>
+                    <td className="px-5 py-4 text-center text-sm font-bold text-[#1a2d52]">
+                      {item.discountPercent}%
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center justify-center gap-2">
                         <button
                           type="button"
-                          disabled={!dirty || saving}
-                          onClick={() => handleSave(item)}
-                          title="Lưu thay đổi"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-[#244cb8] transition hover:bg-[#eef3ff] disabled:cursor-not-allowed disabled:text-[#c3d2ea] disabled:hover:bg-transparent"
+                          onClick={() => openEditModal(item)}
+                          title="Sửa tiêu chí"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-[#6f84ad] transition hover:bg-[#eef3ff] hover:text-[#244cb8]"
                         >
-                          {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                          <Pencil size={16} />
                         </button>
                         <button
                           type="button"
@@ -499,54 +496,32 @@ export default function AdminFeeDiscountPage() {
                     </label>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <label className="block">
-                      <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">% giảm phí *</span>
-                      <div
-                        className={`mt-2 flex items-center gap-1 rounded-xl border bg-[#f8fbff] px-3 py-2.5 ${
-                          fieldErrors.discountPercent ? "border-rose-400" : "border-[#c8d8ef]"
-                        }`}
-                      >
-                        <input
-                          type="number"
-                          min={0}
-                          max={100}
-                          step={0.5}
-                          value={newCriteria.discountPercent}
-                          onChange={(e) => {
-                            setNewCriteria((v) => ({ ...v, discountPercent: e.target.value }));
-                            setFieldErrors((prev) => ({ ...prev, discountPercent: "" }));
-                          }}
-                          placeholder="0"
-                          className="w-full bg-transparent text-sm font-semibold text-[#1f3152] outline-none"
-                        />
-                        <span className="text-sm text-[#7c8fb5]">%</span>
-                      </div>
-                      {fieldErrors.discountPercent ? (
-                        <p className="mt-1.5 text-xs font-semibold text-rose-500">{fieldErrors.discountPercent}</p>
-                      ) : null}
-                    </label>
-
-                    <div className="block">
-                      <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Áp dụng</span>
-                      <div className="mt-2 flex h-[46px] items-center">
-                        <button
-                          type="button"
-                          onClick={() => setNewCriteria((v) => ({ ...v, isActive: !v.isActive }))}
-                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
-                            newCriteria.isActive ? "bg-emerald-500" : "bg-slate-300"
-                          }`}
-                          aria-pressed={newCriteria.isActive}
-                        >
-                          <span
-                            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${
-                              newCriteria.isActive ? "translate-x-6" : "translate-x-1"
-                            }`}
-                          />
-                        </button>
-                      </div>
+                  <label className="block">
+                    <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">% giảm phí *</span>
+                    <div
+                      className={`mt-2 flex items-center gap-1 rounded-xl border bg-[#f8fbff] px-3 py-2.5 ${
+                        fieldErrors.discountPercent ? "border-rose-400" : "border-[#c8d8ef]"
+                      }`}
+                    >
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={0.5}
+                        value={newCriteria.discountPercent}
+                        onChange={(e) => {
+                          setNewCriteria((v) => ({ ...v, discountPercent: e.target.value }));
+                          setFieldErrors((prev) => ({ ...prev, discountPercent: "" }));
+                        }}
+                        placeholder="0"
+                        className="w-full bg-transparent text-sm font-semibold text-[#1f3152] outline-none"
+                      />
+                      <span className="text-sm text-[#7c8fb5]">%</span>
                     </div>
-                  </div>
+                    {fieldErrors.discountPercent ? (
+                      <p className="mt-1.5 text-xs font-semibold text-rose-500">{fieldErrors.discountPercent}</p>
+                    ) : null}
+                  </label>
                 </div>
 
                 <div className="mt-6 flex flex-wrap justify-end gap-3">
@@ -564,6 +539,156 @@ export default function AdminFeeDiscountPage() {
                     className="auth-btn-gloss rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(36,76,184,0.24)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <span className="auth-btn-gloss__content">{creating ? "Đang thêm..." : "Lưu tiêu chí mới"}</span>
+                  </button>
+                </div>
+              </motion.div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {editingItem
+        ? createPortal(
+            <div className="fixed inset-0 z-[72] flex items-center justify-center bg-[rgba(14,25,48,0.52)] px-4 backdrop-blur-sm">
+              <motion.div
+                initial={{ opacity: 0, y: 18, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.26, ease: "easeOut" }}
+                className="w-full max-w-[560px] rounded-[26px] border border-[#bfd4f2] bg-[linear-gradient(180deg,#f9fcff_0%,#eef5ff_100%)] p-6 shadow-[0_24px_62px_rgba(27,56,122,0.26)]"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <h2 className="text-xl font-bold uppercase text-[#1a2d52]">Sửa tiêu chí ưu tiên</h2>
+                  <button
+                    type="button"
+                    onClick={closeEditModal}
+                    className="rounded-xl border border-[#bfd2ee] bg-[linear-gradient(180deg,#ffffff_0%,#edf4ff_100%)] p-2 text-[#6681b1] transition hover:border-[#97b8e8] hover:text-[#244cb8]"
+                    aria-label="Đóng"
+                    title="Đóng"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="mt-5 space-y-4">
+                  <label className="block">
+                    <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Mã tiêu chí *</span>
+                    <input
+                      value={editForm.code}
+                      readOnly={editingItem?.inUse}
+                      onChange={(e) => {
+                        if (editingItem?.inUse) return;
+                        setEditForm((v) => ({ ...v, code: e.target.value }));
+                        setEditFieldErrors((prev) => ({ ...prev, code: "" }));
+                      }}
+                      placeholder="VD: UT07"
+                      className={`mt-2 w-full rounded-xl border bg-[#f8fbff] px-3 py-2.5 text-sm font-semibold text-[#1f3152] outline-none focus:border-[#244cb8] ${
+                        editingItem?.inUse ? "cursor-not-allowed opacity-70" : ""
+                      } ${editFieldErrors.code ? "border-rose-400" : "border-[#c8d8ef]"}`}
+                    />
+                    {editFieldErrors.code ? <p className="mt-1.5 text-xs font-semibold text-rose-500">{editFieldErrors.code}</p> : null}
+                  </label>
+
+                  <label className="block">
+                    <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Tên tiêu chí *</span>
+                    <input
+                      value={editForm.name}
+                      onChange={(e) => {
+                        setEditForm((v) => ({ ...v, name: e.target.value }));
+                        setEditFieldErrors((prev) => ({ ...prev, name: "" }));
+                      }}
+                      placeholder="Tên tiêu chí ưu tiên"
+                      className={`mt-2 w-full rounded-xl border bg-[#f8fbff] px-3 py-2.5 text-sm font-semibold text-[#1f3152] outline-none focus:border-[#244cb8] ${
+                        editFieldErrors.name ? "border-rose-400" : "border-[#c8d8ef]"
+                      }`}
+                    />
+                    {editFieldErrors.name ? <p className="mt-1.5 text-xs font-semibold text-rose-500">{editFieldErrors.name}</p> : null}
+                  </label>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <label className="block">
+                      <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Bậc *</span>
+                      <select
+                        value={editForm.tier}
+                        onChange={(e) => {
+                          setEditForm((v) => ({ ...v, tier: e.target.value }));
+                          setEditFieldErrors((prev) => ({ ...prev, tier: "" }));
+                        }}
+                        className={`mt-2 w-full rounded-xl border bg-[#f8fbff] px-3 py-2.5 text-sm font-semibold text-[#1f3152] outline-none focus:border-[#244cb8] ${
+                          editFieldErrors.tier ? "border-rose-400" : "border-[#c8d8ef]"
+                        }`}
+                      >
+                        <option value="1">Bậc 1</option>
+                        <option value="2">Bậc 2</option>
+                        <option value="3">Bậc 3</option>
+                      </select>
+                      {editFieldErrors.tier ? <p className="mt-1.5 text-xs font-semibold text-rose-500">{editFieldErrors.tier}</p> : null}
+                    </label>
+
+                    <label className="block">
+                      <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Điểm ưu tiên *</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={editForm.priorityScore}
+                        onChange={(e) => {
+                          setEditForm((v) => ({ ...v, priorityScore: e.target.value }));
+                          setEditFieldErrors((prev) => ({ ...prev, priorityScore: "" }));
+                        }}
+                        placeholder="0"
+                        className={`mt-2 w-full rounded-xl border bg-[#f8fbff] px-3 py-2.5 text-sm font-semibold text-[#1f3152] outline-none focus:border-[#244cb8] ${
+                          editFieldErrors.priorityScore ? "border-rose-400" : "border-[#c8d8ef]"
+                        }`}
+                      />
+                      {editFieldErrors.priorityScore ? (
+                        <p className="mt-1.5 text-xs font-semibold text-rose-500">{editFieldErrors.priorityScore}</p>
+                      ) : null}
+                    </label>
+                  </div>
+
+                  <label className="block">
+                    <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">% giảm phí *</span>
+                    <div
+                      className={`mt-2 flex items-center gap-1 rounded-xl border bg-[#f8fbff] px-3 py-2.5 ${
+                        editFieldErrors.discountPercent ? "border-rose-400" : "border-[#c8d8ef]"
+                      }`}
+                    >
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={0.5}
+                        value={editForm.discountPercent}
+                        onChange={(e) => {
+                          setEditForm((v) => ({ ...v, discountPercent: e.target.value }));
+                          setEditFieldErrors((prev) => ({ ...prev, discountPercent: "" }));
+                        }}
+                        placeholder="0"
+                        className="w-full bg-transparent text-sm font-semibold text-[#1f3152] outline-none"
+                      />
+                      <span className="text-sm text-[#7c8fb5]">%</span>
+                    </div>
+                    {editFieldErrors.discountPercent ? (
+                      <p className="mt-1.5 text-xs font-semibold text-rose-500">{editFieldErrors.discountPercent}</p>
+                    ) : null}
+                  </label>
+                </div>
+
+                <div className="mt-6 flex flex-wrap justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={closeEditModal}
+                    className="rounded-2xl border border-[#c8d8ef] bg-[linear-gradient(180deg,#ffffff_0%,#f5f9ff_100%)] px-5 py-2.5 text-sm font-semibold text-[#24407f] shadow-[0_8px_18px_rgba(36,76,184,0.10)] transition duration-200 hover:-translate-y-0.5 hover:border-[#aac2ea] hover:bg-white"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    disabled={updating}
+                    onClick={handleUpdate}
+                    className="auth-btn-gloss rounded-2xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(36,76,184,0.24)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <span className="auth-btn-gloss__content">{updating ? "Đang lưu..." : "Lưu thay đổi"}</span>
                   </button>
                 </div>
               </motion.div>

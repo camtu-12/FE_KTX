@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowUp, ChevronDown, Filter, LoaderCircle, X } from "lucide-react";
+import { ArrowUp, ChevronDown, Filter, LoaderCircle, X, XCircle } from "lucide-react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
@@ -1007,13 +1007,25 @@ export default function AdminRegistrationsPage() {
 
   return (
     <>
-      {errorToast &&
-        createPortal(
-          <div className="fixed top-5 right-5 z-[9999] max-w-sm rounded-xl bg-red-500 px-5 py-3 text-sm font-medium text-white shadow-lg">
-            {errorToast}
-          </div>,
-          document.body,
-        )}
+      {createPortal(
+        <AnimatePresence>
+          {errorToast && (
+            <div className="fixed inset-0 z-90 flex items-center justify-center bg-[rgba(14,25,48,0.35)] px-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 12 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className="flex items-center gap-3 rounded-[20px] border border-rose-200 bg-white px-6 py-4 text-sm font-semibold text-rose-700 shadow-[0_24px_60px_rgba(15,23,42,0.25)]"
+              >
+                <XCircle className="h-5 w-5 shrink-0" />
+                {errorToast}
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
       <motion.section
         initial={shouldSkipAnim ? false : { opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
