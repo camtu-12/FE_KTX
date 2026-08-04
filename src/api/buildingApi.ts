@@ -77,6 +77,16 @@ export const getBuilding = async (buildingCode: string): Promise<Building> => {
   return normalizeBuilding(response.data);
 };
 
+export const exportBuildingDetailPdf = async (buildingCode: string): Promise<{ blob: Blob; filename: string }> => {
+  const response = await apiClient.get(`/buildings/${encodeURIComponent(buildingCode)}/pdf`, { responseType: "blob" });
+  return { blob: response.data as Blob, filename: `danh_sach_phong_giuong_${buildingCode}.pdf` };
+};
+
+export const exportBuildingDetailExcel = async (buildingCode: string): Promise<{ blob: Blob; filename: string }> => {
+  const response = await apiClient.get(`/buildings/${encodeURIComponent(buildingCode)}/excel`, { responseType: "blob" });
+  return { blob: response.data as Blob, filename: `danh_sach_phong_giuong_${buildingCode}.xlsx` };
+};
+
 export const createBuilding = async (payload: BuildingPayload): Promise<Building> => {
   const response = await apiClient.post<ApiBuilding>("/buildings", payload);
   return normalizeBuilding(response.data);

@@ -11,6 +11,8 @@ import { createPortal } from "react-dom";
 import { useOutletContext } from "react-router-dom";
 import {
   approveExtension,
+  exportApprovedExtensionsExcel,
+  exportApprovedExtensionsPdf,
   getAdminExtensions,
   getExtensionStats,
   rejectExtension,
@@ -28,6 +30,8 @@ import {
 } from "../../../api/occupancyPeriodApi";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
 import { formatDate } from "../../../utils/dateFormat";
+import ExportPdfButton from "../../../components/ExportPdfButton";
+import ExportExcelButton from "../../../components/ExportExcelButton";
 
 type StatusTab = "pending" | "done";
 type DoneFilter = "all" | "approved" | "rejected";
@@ -348,32 +352,38 @@ export default function AdminExtensionRequestsPage() {
           ) : (
             <>
               {/* Done sub-filter */}
-              <div className="inline-flex flex-wrap gap-1 rounded-2xl border border-[#c6d8f0] bg-[#f2f7ff] p-1">
-                {doneFilterOptions.map((opt) => {
-                  const count =
-                    opt.value === "all"
-                      ? doneItems.length
-                      : doneItems.filter((e) => e.status === opt.value).length;
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setDoneFilter(opt.value)}
-                      className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                        doneFilter === opt.value
-                          ? "bg-white text-[#244cb8] shadow-[0_8px_16px_rgba(36,76,184,0.16)]"
-                          : "text-[#6a81aa] hover:text-[#244cb8]"
-                      }`}
-                    >
-                      {opt.label}
-                      <span className={`ml-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-bold ${
-                        doneFilter === opt.value ? "bg-[#244cb8] text-white" : "bg-[#dce8f7] text-[#4d6ea3]"
-                      }`}>
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="inline-flex flex-wrap gap-1 rounded-2xl border border-[#c6d8f0] bg-[#f2f7ff] p-1">
+                  {doneFilterOptions.map((opt) => {
+                    const count =
+                      opt.value === "all"
+                        ? doneItems.length
+                        : doneItems.filter((e) => e.status === opt.value).length;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setDoneFilter(opt.value)}
+                        className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                          doneFilter === opt.value
+                            ? "bg-white text-[#244cb8] shadow-[0_8px_16px_rgba(36,76,184,0.16)]"
+                            : "text-[#6a81aa] hover:text-[#244cb8]"
+                        }`}
+                      >
+                        {opt.label}
+                        <span className={`ml-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-bold ${
+                          doneFilter === opt.value ? "bg-[#244cb8] text-white" : "bg-[#dce8f7] text-[#4d6ea3]"
+                        }`}>
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center gap-2">
+                  <ExportPdfButton fetcher={exportApprovedExtensionsPdf} label="Xuất PDF đã duyệt" />
+                  <ExportExcelButton fetcher={exportApprovedExtensionsExcel} label="Xuất Excel đã duyệt" />
+                </div>
               </div>
               {filteredDoneItems.length === 0
                 ? renderEmpty("Không có yêu cầu nào.")

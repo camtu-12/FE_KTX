@@ -136,6 +136,26 @@ export const listRooms = async (): Promise<RoomApi[]> => {
   return Array.isArray(response.data) ? response.data.map(normalizeRoom) : [];
 };
 
+export const exportRoomsPdf = async (params?: {
+  building?: string;
+  floor?: string;
+  gender?: string;
+  status?: string;
+}): Promise<{ blob: Blob; filename: string }> => {
+  const response = await apiClient.get("/rooms/pdf", { params, responseType: "blob" });
+  return { blob: response.data as Blob, filename: "danh_sach_phong.pdf" };
+};
+
+export const exportRoomsExcel = async (params?: {
+  building?: string;
+  floor?: string;
+  gender?: string;
+  status?: string;
+}): Promise<{ blob: Blob; filename: string }> => {
+  const response = await apiClient.get("/rooms/excel", { params, responseType: "blob" });
+  return { blob: response.data as Blob, filename: "danh_sach_phong.xlsx" };
+};
+
 export const createRoom = async (payload: RoomPayload): Promise<RoomApi> => {
   const response = await apiClient.post<ApiRoom>('/rooms', payload);
   return normalizeRoom(response.data);

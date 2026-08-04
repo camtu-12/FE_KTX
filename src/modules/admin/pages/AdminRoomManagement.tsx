@@ -16,7 +16,9 @@ import {
 import { useLocation, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 import { createPortal } from "react-dom";
 import type { AdminLayoutOutletContext } from "../../../layouts/AdminLayout";
-import { listRooms, createRoom, updateRoom, deleteRoom, updateBedStatus, transferBedOccupancy, getRoomBeds, type BedPayload, type RoomPayload, type BedDetail, type BedStudent } from "../../../api/roomApi";
+import { listRooms, createRoom, updateRoom, deleteRoom, updateBedStatus, transferBedOccupancy, getRoomBeds, exportRoomsExcel, exportRoomsPdf, type BedPayload, type RoomPayload, type BedDetail, type BedStudent } from "../../../api/roomApi";
+import ExportPdfButton from "../../../components/ExportPdfButton";
+import ExportExcelButton from "../../../components/ExportExcelButton";
 import { getBuilding, listBuildings } from "../../../api/buildingApi";
 import {
   completeBedMaintenance,
@@ -1373,14 +1375,36 @@ export default function AdminRoomManagement() {
             <p className="mt-1 text-sm text-[#62789f]">Quản lý phòng, giường và trạng thái lưu trú trong ký túc xá.</p>
           </div>
 
-          <button
-            type="button"
-            onClick={openAddRoomModal}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(36,76,184,0.28)] transition hover:-translate-y-0.5 hover:brightness-110"
-          >
-            <Plus className="h-4 w-4" />
-            Thêm phòng
-          </button>
+          <div className="flex items-center gap-2">
+            <ExportPdfButton
+              fetcher={() =>
+                exportRoomsPdf({
+                  building: filterBuilding === "all" ? undefined : filterBuilding,
+                  floor: filterFloor === "all" ? undefined : filterFloor,
+                  gender: filterGender === "all" ? undefined : filterGender,
+                  status: filterStatus === "all" ? undefined : filterStatus,
+                })
+              }
+            />
+            <ExportExcelButton
+              fetcher={() =>
+                exportRoomsExcel({
+                  building: filterBuilding === "all" ? undefined : filterBuilding,
+                  floor: filterFloor === "all" ? undefined : filterFloor,
+                  gender: filterGender === "all" ? undefined : filterGender,
+                  status: filterStatus === "all" ? undefined : filterStatus,
+                })
+              }
+            />
+            <button
+              type="button"
+              onClick={openAddRoomModal}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(36,76,184,0.28)] transition hover:-translate-y-0.5 hover:brightness-110"
+            >
+              <Plus className="h-4 w-4" />
+              Thêm phòng
+            </button>
+          </div>
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto]">

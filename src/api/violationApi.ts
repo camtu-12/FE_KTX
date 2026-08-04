@@ -181,3 +181,13 @@ export const processViolation = async (
 export const deleteViolation = async (id: number): Promise<void> => {
   await apiClient.delete(`/violations/${id}`);
 };
+
+export const exportViolationsPdf = async (): Promise<{ blob: Blob; filename: string }> => {
+  const response = await apiClient.get("/violations/pdf", { responseType: "blob" });
+  return { blob: response.data as Blob, filename: "danh_sach_vi_pham.pdf" };
+};
+
+export const exportViolationsExcel = async (): Promise<{ blob: Blob; filename: string }> => {
+  const response = await apiClient.get("/violations/excel", { responseType: "blob" });
+  return { blob: response.data as Blob, filename: "danh_sach_vi_pham.xlsx" };
+};

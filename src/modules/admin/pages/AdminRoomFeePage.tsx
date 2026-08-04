@@ -9,6 +9,8 @@ import {
   applyOneTimeDiscount,
   confirmRoomFeePayment,
   exemptRoomFeeBill,
+  exportRoomFeeBillsExcel,
+  exportRoomFeeBillsPdf,
   generateRoomFeeBills,
   getPaymentSettings,
   listRoomFeeBills,
@@ -18,6 +20,8 @@ import {
 } from "../../../api/paymentApi";
 import { formatDate, getLocalDateValue } from "../../../utils/dateFormat";
 import StudentPaymentPlanModal from "../components/StudentPaymentPlanModal";
+import ExportPdfButton from "../../../components/ExportPdfButton";
+import ExportExcelButton from "../../../components/ExportExcelButton";
 
 type StatusFilter = PaymentStatus | "all";
 type FilterMenuType = "room" | "quarter" | "year" | "status";
@@ -475,6 +479,14 @@ export default function AdminRoomFeePage() {
                 <button type="button" onClick={openFeeModal} className="inline-flex h-9 items-center rounded-full border border-[#c8daf4] bg-white px-3.5 text-sm font-semibold text-[#244cb8] transition duration-200 hover:border-[#aac7ef] hover:bg-[#e4f0ff]">
                   Cập nhật đơn giá
                 </button>
+                <ExportPdfButton
+                  fetcher={exportRoomFeeBillsPdf}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-full border border-[#c8daf4] bg-white px-3.5 text-sm font-semibold text-[#244cb8] transition duration-200 hover:border-[#aac7ef] hover:bg-[#e4f0ff] disabled:cursor-not-allowed disabled:opacity-60"
+                />
+                <ExportExcelButton
+                  fetcher={exportRoomFeeBillsExcel}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-full border border-[#bfe3d0] bg-white px-3.5 text-sm font-semibold text-[#0f7a4f] transition duration-200 hover:border-[#9ed3b5] hover:bg-[#eefbf3] disabled:cursor-not-allowed disabled:opacity-60"
+                />
               </div>
             </div>
           </div>
