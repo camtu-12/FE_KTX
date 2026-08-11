@@ -84,6 +84,25 @@ export const login = async (data: LoginRequest) => {
   return json;
 };
 
+// Xác minh lại danh tính/vai trò thật của token đang giữ, đối chiếu với dữ liệu
+// đang lưu ở localStorage — vì role trong localStorage do client tự lưu nên có thể
+// bị sửa tay qua DevTools, còn kết quả từ endpoint này luôn đọc thẳng từ CSDL.
+export const fetchMe = async (token: string) => {
+  const res = await fetch(`${API}/me`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!res.ok) {
+    throw new ApiHttpError("Không xác minh được tài khoản.", res.status);
+  }
+
+  return res.json();
+};
+
 export const checkEmailExists = async (email: string) => {
   const res = await fetch(`${API}/check-email`, {
     method: "POST",
