@@ -345,7 +345,6 @@ export const generateRoomFeeBills = async (payload: {
   month: number;
   year: number;
   amount: number;
-  due_date: string;
 }): Promise<{ createdCount: number; skippedCount: number; items: RoomFeeBill[] }> => {
   const response = await apiClient.post<{ created_count?: number; skipped_count?: number; items?: ApiRoomFeeBill[] }>(
     "/room-fee-bills/generate",

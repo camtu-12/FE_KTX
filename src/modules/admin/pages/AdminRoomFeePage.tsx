@@ -29,7 +29,6 @@ type FilterMenuType = "room" | "quarter" | "year" | "status";
 type RoomFeeForm = {
   quarter: string;
   year: string;
-  dueDate: string;
 };
 
 type RoomFeeBill = {
@@ -185,7 +184,6 @@ export default function AdminRoomFeePage() {
   const [form, setForm] = useState<RoomFeeForm>({
     quarter: String(currentQuarter),
     year: String(currentYear),
-    dueDate: getTodayValue(),
   });
 
   const years = useMemo(
@@ -260,7 +258,7 @@ export default function AdminRoomFeePage() {
 
   const closeCreateModal = () => { setIsCreateOpen(false); setFormError(""); };
   const openCreateModal = () => {
-    setForm({ quarter: String(currentQuarter), year: String(currentYear), dueDate: getTodayValue() });
+    setForm({ quarter: String(currentQuarter), year: String(currentYear) });
     setFormError("");
     setIsCreateOpen(true);
   };
@@ -333,14 +331,13 @@ export default function AdminRoomFeePage() {
     const firstMonth = months[0];
     if (!firstMonth) { setFormError("Vui lòng chọn quý hợp lệ."); return; }
     if (!Number.isInteger(year) || year < 2020) { setFormError("Vui lòng nhập năm hợp lệ."); return; }
-    if (!form.dueDate) { setFormError("Vui lòng chọn hạn thanh toán."); return; }
     try {
-      // Tạo 1 hóa đơn duy nhất mỗi quý, số tiền = phí tháng × 3
+      // Tạo 1 hóa đơn duy nhất mỗi quý, số tiền = phí tháng × 3. Hạn thanh toán do
+      // backend tự tính = ngày tạo + 7 ngày, không gửi due_date từ client nữa.
       const result = await generateRoomFeeBills({
         month: firstMonth,
         year,
         amount: monthlyRoomFee * 3,
-        due_date: form.dueDate,
       });
       setCreateResult({ createdCount: result.createdCount, skippedCount: result.skippedCount });
       await loadBills();
@@ -637,7 +634,10 @@ export default function AdminRoomFeePage() {
                   </label>
                   <label className="block">
                     <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Hạn thanh toán</span>
-                    <input type="date" value={form.dueDate} onChange={(e) => setForm((cur) => ({ ...cur, dueDate: e.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10" />
+                    <div className="mt-2 h-11 w-full cursor-not-allowed rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm font-semibold text-[#1b3766] shadow-sm outline-none flex items-center">
+                      {formatDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))}
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-500">Tự động = ngày tạo hóa đơn + 7 ngày.</p>
                   </label>
                   <label className="block">
                     <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Mức phí hiện tại</span>

@@ -235,11 +235,11 @@ export default function PaymentManagementPage() {
       const firstMonth = months[0];
       if (firstMonth) {
         // 1 hóa đơn duy nhất mỗi quý, số tiền nhập vào là số tiền/quý
+        // due_date do backend tự tính (ngày tạo + 7 ngày), không còn nhận từ FE.
         await generateRoomFeeBills({
           month: firstMonth,
           year: Number(roomForm.year),
           amount,
-          due_date: roomForm.dueDate,
         });
       }
       await loadData();

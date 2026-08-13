@@ -709,6 +709,36 @@ export default function AdminRegistrationPeriodsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.channel, form.school_year, periods]);
 
+  // Ngày kết thúc lưu trú lớn nhất trong TOÀN BỘ đợt hiện có — khớp đúng cách backend tính
+  // RegistrationPeriod::currentStayEndDate() (MAX(stay_end_date), không lọc theo kênh/năm học).
+  const previousStayEndDate = periods.reduce<string | null>((max, p) => {
+    const v = toDateInputValue(p.stay_end_date) || null;
+    if (!v) return max;
+    return !max || v > max ? v : max;
+  }, null);
+
+  // Giá trị SẼ bị Rule 4b backend ép cho đợt "chính" MỚI — tính trực tiếp từ previousStayEndDate
+  // (không đợi qua useEffect + re-render) để ô hiển thị đúng ngay từ lần vẽ đầu tiên, không bị
+  // trống 1 nhịp do effect chạy sau render (báo cáo 14/08).
+  const forcedMainStayStartDate = (() => {
+    const previousStayEndAsDate = dateInputToDate(previousStayEndDate);
+    return previousStayEndAsDate ? dateToInputValue(addDays(previousStayEndAsDate, 1)) : "";
+  })();
+
+  // Đợt "chính" MỚI (đang tạo, không phải đang sửa) luôn nối tiếp ngay sau ngày kết thúc
+  // lưu trú của lứa gần nhất — khớp đúng Rule 4b backend (RegistrationPeriodController::store()).
+  // Đồng bộ lại vào form.stay_start_date để các chỗ khác (validate, payload gửi lên) dùng đúng
+  // giá trị này; phần HIỂN THỊ dùng thẳng forcedMainStayStartDate ở trên, không phụ thuộc state.
+  useEffect(() => {
+    if (form.channel !== "main" || editingId !== null) return;
+    if (!forcedMainStayStartDate) return;
+    if (forcedMainStayStartDate !== (toDateInputValue(form.stay_start_date) || "")) {
+      setForm((prev) => ({ ...prev, stay_start_date: forcedMainStayStartDate }));
+      setFormErrors((prev) => ({ ...prev, stay_start_date: undefined }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.channel, editingId, forcedMainStayStartDate]);
+
   // Báo lỗi kênh/năm học NGAY khi đổi dropdown "Kênh" hoặc gõ "Năm học" — không cần đợi
   // bấm "Tạo đợt" mới thấy (VD chọn "Quanh năm" cho năm học chưa có Đợt chính).
   useEffect(() => {
@@ -766,7 +796,17 @@ export default function AdminRegistrationPeriodsPage() {
   };
 
   const handleSave = async () => {
-    const errors = validate(form, periods, editingId);
+    // Đợt "chính" MỚI: dùng thẳng forcedMainStayStartDate (tính trực tiếp, luôn đúng ngay từ
+    // lần vẽ đầu) làm giá trị thật để validate/gửi lên — không dựa vào form.stay_start_date,
+    // vì state đó chỉ được đồng bộ qua useEffect SAU render nên có thể chưa kịp cập nhật lúc
+    // bấm lưu ngay khi vừa mở form (báo cáo 14/08: bấm "Tạo đợt" không phản ứng gì).
+    const effectiveStayStartDate =
+      form.channel === "main" && editingId === null && forcedMainStayStartDate
+        ? forcedMainStayStartDate
+        : form.stay_start_date;
+    const effectiveForm = { ...form, stay_start_date: effectiveStayStartDate };
+
+    const errors = validate(effectiveForm, periods, editingId);
     if (Object.keys(errors).length > 0) {
       setApiError(null);
       setFormErrors(errors);
@@ -778,11 +818,11 @@ export default function AdminRegistrationPeriodsPage() {
     setFormErrors({});
     try {
       const payload: RegistrationPeriodPayload = {
-        ...form,
-        start_date: normalizePeriodDate(form.start_date) || "",
-        end_date: normalizePeriodDate(form.end_date) || "",
-        stay_start_date: normalizePeriodDate(form.stay_start_date) || null,
-        stay_end_date: normalizePeriodDate(form.stay_end_date) || null,
+        ...effectiveForm,
+        start_date: normalizePeriodDate(effectiveForm.start_date) || "",
+        end_date: normalizePeriodDate(effectiveForm.end_date) || "",
+        stay_start_date: normalizePeriodDate(effectiveForm.stay_start_date) || null,
+        stay_end_date: normalizePeriodDate(effectiveForm.stay_end_date) || null,
       };
       if (editingId !== null) {
         const updated = await updateRegistrationPeriod(editingId, payload);
@@ -1701,7 +1741,20 @@ export default function AdminRegistrationPeriodsPage() {
                     <div className="rounded-xl border border-[#cfdcf0] bg-[#f7faff] p-2.5">
                       <p className="mb-2 text-xs font-semibold text-[#324B76]">Thời gian lưu trú</p>
                       <div className="grid grid-cols-2 gap-2.5">
-                        {field("stay_start_date", "Bắt đầu lưu trú", "date", undefined, stayStartMinDate)}
+                        {form.channel === "main" && editingId === null && forcedMainStayStartDate ? (
+                          <div ref={setFieldRef("stay_start_date")}>
+                            <label className="mb-1 block text-xs font-semibold text-[#324B76]">Bắt đầu lưu trú</label>
+                            <div className="w-full cursor-not-allowed rounded-xl border border-[#cfdcf0] bg-[#eef2f8] px-3 py-1.5 text-sm text-[#5d7299]">
+                              {getDateFieldText(forcedMainStayStartDate)}
+                            </div>
+                            <p className="mt-1 text-[11px] text-[#8598bd]">
+                              Tự động nối tiếp ngay sau ngày kết thúc lưu trú của năm trước ({formatDate(previousStayEndDate)}).
+                            </p>
+                            {formErrors.stay_start_date && <p className="mt-1 text-xs text-rose-600">{formErrors.stay_start_date}</p>}
+                          </div>
+                        ) : (
+                          field("stay_start_date", "Bắt đầu lưu trú", "date", undefined, stayStartMinDate)
+                        )}
                         {form.channel === "rolling" ? (
                           <div ref={setFieldRef("stay_end_date")}>
                             <label className="mb-1 block text-xs font-semibold text-[#324B76]">Kết thúc lưu trú</label>
