@@ -74,10 +74,6 @@ function validateForm(form: FormState, suggestion?: OccupancyPeriodSuggestion | 
   if (!form.end_date) errors.end_date = "Vui lòng chọn ngày kết thúc nhận đơn.";
   if (form.start_date && form.end_date && form.end_date < form.start_date)
     errors.end_date = "Ngày kết thúc phải sau ngày bắt đầu.";
-  if (suggestion?.suggested_start_date && form.start_date && form.start_date !== suggestion.suggested_start_date)
-    errors.start_date = `Phải đúng ${formatDate(suggestion.suggested_start_date)} (1 tháng trước ngày kết thúc lưu trú hiện tại).`;
-  if (suggestion?.suggested_end_date && form.end_date && form.end_date !== suggestion.suggested_end_date)
-    errors.end_date = `Phải đúng ${formatDate(suggestion.suggested_end_date)} (7 ngày sau ngày bắt đầu nhận đơn).`;
   if (form.extension_until_date && suggestion?.extension_until_date && form.extension_until_date < suggestion.extension_until_date)
     errors.extension_until_date = `Phải đủ 1 năm kể từ ngày kết thúc lưu trú hiện tại (tối thiểu ${formatDate(suggestion.extension_until_date)}).`;
   return errors;
@@ -405,7 +401,10 @@ export default function AdminOccupancyPeriodsPage() {
                 </button>
               </div>
               {openDateField === key ? (
-                <div className="absolute z-[90] top-full mt-2 w-[18rem] rounded-2xl border border-[#cfdcf0] bg-white p-3 shadow-[0_18px_36px_rgba(15,23,42,0.16)]">
+                // Không dùng "absolute" — cố tình để lịch đẩy các trường bên dưới xuống
+                // (chiếm chỗ thật trong layout) thay vì nổi đè lên che mất, vì modal này có
+                // nhiều trường ngay sát bên dưới ô ngày (khác với các trang chỉ có 1-2 trường).
+                <div className="relative z-[90] mt-2 w-full max-w-[18rem] rounded-2xl border border-[#cfdcf0] bg-white p-3 shadow-[0_18px_36px_rgba(15,23,42,0.16)]">
                   <div className="mb-2 flex items-center justify-between">
                     <button
                       type="button"
@@ -730,8 +729,8 @@ export default function AdminOccupancyPeriodsPage() {
                     )}
                     {field("name", "Tên đợt gia hạn")}
                     <div className="grid grid-cols-2 gap-3">
-                      {field("start_date", "Ngày bắt đầu nhận đơn", "date", true)}
-                      {field("end_date", "Ngày kết thúc nhận đơn", "date", true)}
+                      {field("start_date", "Ngày bắt đầu nhận đơn", "date")}
+                      {field("end_date", "Ngày kết thúc nhận đơn", "date")}
                     </div>
                     {field("extension_until_date", "Gia hạn lưu trú đến (tuỳ chọn)", "date")}
                     {field("description", "Mô tả (tuỳ chọn)", "textarea")}

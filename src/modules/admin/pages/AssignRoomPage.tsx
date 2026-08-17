@@ -683,19 +683,25 @@ export default function AssignRoomPage() {
                       )}
                     </td>
                     <td className="overflow-hidden whitespace-nowrap border-t border-[#e7eef9] px-2 py-2.5 text-center">
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/admin/assign-room/${student.id}`)}
-                        className={`auth-btn-gloss inline-flex min-w-[100px] flex-nowrap items-center justify-center whitespace-nowrap rounded-full px-4 py-2 text-[13px] font-semibold transition duration-200 ${
-                          isConfirmed
-                            ? "border border-[#c8d8ef] bg-[linear-gradient(135deg,#f0f5ff_0%,#e4edff_100%)] text-[#5a78b8] shadow-[0_6px_14px_rgba(36,76,184,0.08)] hover:-translate-y-0.5 hover:brightness-105"
-                            : "bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] hover:-translate-y-0.5 hover:brightness-110"
-                        }`}
-                      >
-                        <span className="auth-btn-gloss__content">
-                          {isConfirmed ? "Đổi phòng" : "Chọn phòng"}
+                      {isConfirmed ? (
+                        // Đã xác nhận phòng rồi thì khóa luôn, không cho đổi qua đây nữa (BE
+                        // cũng đã chặn assignRoom() tương ứng) — cần đổi phòng cho sinh viên đã
+                        // xác nhận thì dùng "Chuyển sinh viên" ở trang Quản lý phòng.
+                        <span
+                          className="inline-flex min-w-[100px] flex-nowrap items-center justify-center whitespace-nowrap rounded-full border border-[#e2e8f5] bg-[#f5f8fd] px-4 py-2 text-[13px] font-semibold text-[#9aaac4]"
+                          title='Đã xác nhận — dùng "Chuyển sinh viên" ở Quản lý phòng nếu cần đổi.'
+                        >
+                          Đã khóa
                         </span>
-                      </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/admin/assign-room/${student.id}`)}
+                          className="auth-btn-gloss inline-flex min-w-[100px] flex-nowrap items-center justify-center whitespace-nowrap rounded-full bg-[linear-gradient(135deg,#2f63da_0%,#244cb8_38%,#1f46ad_72%,#31b7d4_100%)] px-4 py-2 text-[13px] font-semibold text-white shadow-[0_16px_30px_rgba(36,76,184,0.24)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110"
+                        >
+                          <span className="auth-btn-gloss__content">Chọn phòng</span>
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

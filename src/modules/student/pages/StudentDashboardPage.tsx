@@ -429,6 +429,11 @@ function InvoiceCard({ invoice }: { invoice: CurrentInvoice }) {
   const overallStatus =
     statuses.includes("overdue") ? "overdue" : statuses.includes("unpaid") ? "unpaid" : "paid";
   const status = invoiceStatusConfig[overallStatus];
+  // Nợ thuần tiền điện (tiền phòng đã xong) -> mở sẵn tab "Tiền điện" luôn, tránh
+  // phải tự bấm qua tab như tiền phòng mặc định.
+  const roomFeeOwed = invoice.room_fee?.status === "unpaid" || invoice.room_fee?.status === "overdue" ? roomAmount : 0;
+  const electricityOwed = invoice.electricity?.status === "unpaid" || invoice.electricity?.status === "overdue" ? electricityAmount : 0;
+  const paymentTarget = roomFeeOwed === 0 && electricityOwed > 0 ? "/student/payment?tab=electricity" : "/student/payment";
 
   return (
     <Card>
@@ -462,7 +467,7 @@ function InvoiceCard({ invoice }: { invoice: CurrentInvoice }) {
             Bạn đang nợ {formatMoney(outstandingAmount)}
           </p>
           <Link
-            to="/student/payment"
+            to={paymentTarget}
             className="flex-shrink-0 rounded-[10px] bg-rose-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-600"
           >
             Thanh toán ngay

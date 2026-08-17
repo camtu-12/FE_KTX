@@ -207,6 +207,23 @@ const getNextMonthValue = (month: string | null): string | undefined => {
   return `${nextYear}-${String(nextMonth).padStart(2, "0")}`;
 };
 
+// <input type="month"> hiển thị theo ngôn ngữ trình duyệt/hệ điều hành (VD "August 2026"),
+// không có cách nào ép hiện tiếng Việt bằng CSS/HTML — nên dùng 2 <select> tự vẽ để luôn
+// hiện đúng "Tháng 8" / "2026" bất kể máy người dùng để ngôn ngữ gì.
+const parseMonthValue = (value: string): { year: number; month: number } | null => {
+  const [yearText, monthText] = value.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    return null;
+  }
+
+  return { year, month };
+};
+
+const formatMonthValue = (year: number, month: number): string => `${year}-${String(month).padStart(2, "0")}`;
+
 function StatusBadge({ status }: { status: PaymentStatus }) {
   return (
     <span className={`inline-flex items-center whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold ${statusMeta[status].className}`}>
@@ -278,6 +295,15 @@ export default function AdminElectricityPage() {
   const effectiveFormMonth = latestElectricityMonth && nextAvailableElectricityMonth && form.month <= latestElectricityMonth ? nextAvailableElectricityMonth : form.month;
   const autoOldIndex = useMemo(() => getPreviousElectricityIndex(records, form.room, effectiveFormMonth), [effectiveFormMonth, form.room, records]);
   const effectiveOldIndex = autoOldIndex === null ? form.oldIndex : String(autoOldIndex);
+  const monthPickerYearOptions = useMemo(() => {
+    const parsedForm = parseMonthValue(effectiveFormMonth);
+    const parsedMin = nextAvailableElectricityMonth ? parseMonthValue(nextAvailableElectricityMonth) : null;
+    const currentYear = new Date().getFullYear();
+    const fromYear = Math.min(currentYear - 1, parsedForm?.year ?? currentYear, parsedMin?.year ?? currentYear);
+    const toYear = Math.max(currentYear + 5, parsedForm?.year ?? currentYear);
+
+    return Array.from({ length: toYear - fromYear + 1 }, (_, index) => fromYear + index);
+  }, [effectiveFormMonth, nextAvailableElectricityMonth]);
 
   const loadData = async () => {
     const [nextBills, nextRecords, nextRooms, settings] = await Promise.all([
@@ -1148,7 +1174,47 @@ export default function AdminElectricityPage() {
                   </label>
                   <label className="block">
                     <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Tháng</span>
-                    <input type="month" value={effectiveFormMonth} min={nextAvailableElectricityMonth} onChange={(event) => setForm((current) => ({ ...current, month: event.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10" />
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <select
+                        value={parseMonthValue(effectiveFormMonth)?.month ?? 1}
+                        onChange={(event) => {
+                          const parsed = parseMonthValue(effectiveFormMonth);
+                          const year = parsed?.year ?? new Date().getFullYear();
+                          setForm((current) => ({ ...current, month: formatMonthValue(year, Number(event.target.value)) }));
+                        }}
+                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10"
+                      >
+                        {Array.from({ length: 12 }, (_, index) => index + 1).map((monthNumber) => {
+                          const parsed = parseMonthValue(effectiveFormMonth);
+                          const year = parsed?.year ?? new Date().getFullYear();
+                          const candidate = formatMonthValue(year, monthNumber);
+                          const disabled = Boolean(nextAvailableElectricityMonth) && candidate < (nextAvailableElectricityMonth as string);
+
+                          return (
+                            <option key={monthNumber} value={monthNumber} disabled={disabled}>
+                              Tháng {monthNumber}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      <select
+                        value={parseMonthValue(effectiveFormMonth)?.year ?? new Date().getFullYear()}
+                        onChange={(event) => {
+                          const parsed = parseMonthValue(effectiveFormMonth);
+                          const newYear = Number(event.target.value);
+                          const parsedMin = nextAvailableElectricityMonth ? parseMonthValue(nextAvailableElectricityMonth) : null;
+                          const month = parsedMin && newYear === parsedMin.year && (parsed?.month ?? 1) < parsedMin.month ? parsedMin.month : (parsed?.month ?? 1);
+                          setForm((current) => ({ ...current, month: formatMonthValue(newYear, month) }));
+                        }}
+                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 shadow-sm outline-none focus:border-[#244cb8] focus:ring-4 focus:ring-[#244cb8]/10"
+                      >
+                        {monthPickerYearOptions.map((year) => (
+                          <option key={year} value={year}>
+                            Năm {year}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </label>
                   <label className="block">
                     <span className="text-sm font-bold tracking-[0.12em] text-[#6f84ad]">Chỉ số cũ</span>

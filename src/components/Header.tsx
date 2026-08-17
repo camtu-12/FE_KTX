@@ -291,11 +291,10 @@ export default function Header({
     ) {
       return "/student/room";
     }
-    if (
-      item.type === "electricity_bill_created" ||
-      item.type === "payment_reminder" ||
-      item.type === "eviction"
-    ) {
+    if (item.type === "electricity_bill_created") {
+      return "/student/payment?tab=electricity";
+    }
+    if (item.type === "payment_reminder" || item.type === "eviction") {
       return "/student/payment";
     }
     if (
