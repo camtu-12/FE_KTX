@@ -103,7 +103,9 @@ export default function PaymentPage() {
   const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [paymentMessage, setPaymentMessage] = useState("");
   const [payingKey, setPayingKey] = useState("");
-  const [activeTab, setActiveTab] = useState<PaymentTab>("room_fee");
+  // Thông báo "hóa đơn tiền điện" điều hướng vào đây kèm ?tab=electricity để tự mở
+  // sẵn đúng tab, thay vì luôn mặc định tab tiền phòng bất kể vào từ đâu.
+  const [activeTab, setActiveTab] = useState<PaymentTab>(searchParams.get("tab") === "electricity" ? "electricity" : "room_fee");
 
   useEffect(() => {
     let isActive = true;
