@@ -91,6 +91,78 @@ function daysBetween(a: string, b: string): number {
   return Math.round((new Date(b).getTime() - new Date(a).getTime()) / msPerDay);
 }
 
+// ─── Date picker tự vẽ (thay cho <input type="date"> gốc) ──────────────────
+// <input type="date"> gốc của trình duyệt hiển thị placeholder/đoạn đang chọn theo locale hệ
+// điều hành (thường mm/dd/yyyy) — không thể ẩn hoàn toàn bằng CSS (color:transparent không áp
+// dụng được cho đoạn đang focus/highlight), nên lộ ra đè lên lớp chữ dd/mm/yyyy tự vẽ. Dùng hẳn
+// input text + lịch tự vẽ (giống AdminRegistrationPeriodsPage.tsx) để không phụ thuộc UI gốc.
+function isRealDate(year: number, month: number, day: number) {
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+}
+
+function toDateInputValue(value?: string | null) {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed) return "";
+
+  const apiMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|[T\s])/);
+  if (apiMatch) {
+    const [, rawYear, rawMonth, rawDay] = apiMatch;
+    const year = Number(rawYear);
+    const month = Number(rawMonth);
+    const day = Number(rawDay);
+    return isRealDate(year, month, day) ? `${rawYear}-${rawMonth}-${rawDay}` : "";
+  }
+
+  const displayMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!displayMatch) return "";
+
+  const [, day, month, year] = displayMatch.map(Number);
+  if (!isRealDate(year, month, day)) return "";
+
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function getDateFieldText(value?: string | null) {
+  const normalized = toDateInputValue(value);
+  return normalized ? formatDate(normalized) : String(value ?? "");
+}
+
+function formatDateTyping(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+function dateInputToDate(value?: string | null) {
+  const normalized = toDateInputValue(value);
+  if (!normalized) return null;
+  const [year, month, day] = normalized.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function dateToInputValue(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function addMonths(date: Date, amount: number) {
+  return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+}
+
+function getCalendarDates(monthDate: Date) {
+  const firstOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+  const mondayOffset = (firstOfMonth.getDay() + 6) % 7;
+  const start = new Date(firstOfMonth);
+  start.setDate(firstOfMonth.getDate() - mondayOffset);
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return date;
+  });
+}
+
 export default function AdminOccupancyPeriodsPage() {
   const [periods, setPeriods] = useState<OccupancyPeriod[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,6 +176,8 @@ export default function AdminOccupancyPeriodsPage() {
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const [suggestion, setSuggestion] = useState<OccupancyPeriodSuggestion | null>(null);
   const [openWarning, setOpenWarning] = useState<{ period: OccupancyPeriod; diffDays: number } | null>(null);
+  const [openDateField, setOpenDateField] = useState<keyof FormState | null>(null);
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date());
 
   const hasActiveOrDraft = periods.some((p) => p.status === "open" || p.status === "draft");
   const blockCreateReason = hasActiveOrDraft
@@ -167,6 +241,7 @@ export default function AdminOccupancyPeriodsPage() {
   const closeForm = () => {
     setShowForm(false);
     setEditingId(null);
+    setOpenDateField(null);
   };
 
   const handleSave = async () => {
@@ -180,9 +255,9 @@ export default function AdminOccupancyPeriodsPage() {
     try {
       const payload: OccupancyPeriodPayload = {
         name: form.name.trim(),
-        start_date: form.start_date,
-        end_date: form.end_date,
-        extension_until_date: form.extension_until_date || null,
+        start_date: toDateInputValue(form.start_date) || form.start_date,
+        end_date: toDateInputValue(form.end_date) || form.end_date,
+        extension_until_date: toDateInputValue(form.extension_until_date) || null,
         description: form.description.trim() || null,
       };
       if (editingId !== null) {
@@ -284,27 +359,128 @@ export default function AdminOccupancyPeriodsPage() {
           className="w-full rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-3 py-1.5 text-sm text-[#1f3152] focus:border-[#244cb8] focus:outline-none resize-none"
         />
       ) : type === "date" ? (
-        // Input type="date" của trình duyệt hiển thị theo locale HỆ ĐIỀU HÀNH (thuộc tính
-        // lang không có tác dụng trên Chrome/Edge) — che text gốc (color: transparent), đè
-        // 1 lớp text tự định dạng dd/mm/yyyy lên trên, click vẫn xuyên xuống input/lịch gốc.
+        // Lịch tự vẽ (không dùng <input type="date"> gốc) — tránh bug lộ định dạng mm/dd/yyyy
+        // theo locale hệ điều hành khi ô đang được focus/chọn (xem ghi chú ở khối hàm phía
+        // trên component). Cùng pattern với AdminRegistrationPeriodsPage.tsx.
         <div className="relative">
-          <input
-            type="date"
-            value={form[key]}
-            disabled={disabled}
-            onChange={(e) => {
-              setForm((prev) => ({ ...prev, [key]: e.target.value }));
-              setFormErrors((prev) => ({ ...prev, [key]: undefined }));
-            }}
-            className="w-full rounded-xl border border-[#cfdcf0] bg-[#f7faff] px-3 py-1.5 text-sm text-transparent caret-transparent focus:border-[#244cb8] focus:outline-none disabled:cursor-not-allowed disabled:bg-[#eef2f8]"
-          />
-          <span
-            className={`pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm ${
-              disabled ? "text-[#7c8fb5]" : form[key] ? "text-[#1f3152]" : "text-[#90a2bf]"
-            }`}
-          >
-            {form[key] ? formatDate(form[key]) : "dd/mm/yyyy"}
-          </span>
+          {disabled ? (
+            <div className="w-full cursor-not-allowed rounded-xl border border-[#cfdcf0] bg-[#eef2f8] px-3 py-1.5 text-sm text-[#7c8fb5]">
+              {form[key] ? getDateFieldText(form[key]) : "dd/mm/yyyy"}
+            </div>
+          ) : (
+            <>
+              <div
+                className={`flex w-full items-center rounded-xl border text-sm text-[#1f3152] transition ${
+                  formErrors[key]
+                    ? "border-rose-400 bg-rose-50 focus-within:border-rose-500"
+                    : "border-[#cfdcf0] bg-[#f7faff] focus-within:border-[#244cb8]"
+                }`}
+              >
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={getDateFieldText(form[key])}
+                  onChange={(e) => {
+                    const value = formatDateTyping(e.target.value);
+                    const normalized = toDateInputValue(value);
+                    setForm((prev) => ({ ...prev, [key]: normalized || value }));
+                    setFormErrors((prev) => ({ ...prev, [key]: undefined }));
+                    if (normalized) {
+                      setCalendarMonth(dateInputToDate(normalized) ?? calendarMonth);
+                    }
+                  }}
+                  placeholder="dd/mm/yyyy"
+                  className="min-w-0 flex-1 bg-transparent px-3 py-1.5 text-sm text-[#1f3152] placeholder:text-[#9aaac4] focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenDateField((current) => (current === key ? null : key));
+                    setCalendarMonth(dateInputToDate(form[key]) ?? new Date());
+                  }}
+                  className="inline-flex h-8 w-10 shrink-0 items-center justify-center border-l border-[#cfdcf0] text-[#7c8fb5] transition hover:text-[#244cb8]"
+                  aria-label={`Mở lịch ${label}`}
+                >
+                  <CalendarDays className="h-4 w-4" />
+                </button>
+              </div>
+              {openDateField === key ? (
+                <div className="absolute z-[90] top-full mt-2 w-[18rem] rounded-2xl border border-[#cfdcf0] bg-white p-3 shadow-[0_18px_36px_rgba(15,23,42,0.16)]">
+                  <div className="mb-2 flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => setCalendarMonth((current) => addMonths(current, -1))}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#d6e2f1] text-sm font-semibold text-[#244cb8] hover:bg-[#f5f9ff]"
+                    >
+                      ‹
+                    </button>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={calendarMonth.getMonth()}
+                        onChange={(e) => setCalendarMonth((current) => new Date(current.getFullYear(), Number(e.target.value), 1))}
+                        className="rounded-lg border border-[#d6e2f1] bg-white px-2 py-1 text-xs font-semibold text-[#1a2d52] focus:border-[#244cb8] focus:outline-none"
+                      >
+                        {Array.from({ length: 12 }, (_, index) => (
+                          <option key={index} value={index}>Tháng {String(index + 1).padStart(2, "0")}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        value={calendarMonth.getFullYear()}
+                        onChange={(e) => {
+                          const year = Number(e.target.value);
+                          if (Number.isFinite(year) && e.target.value.length <= 4) {
+                            setCalendarMonth((current) => new Date(year, current.getMonth(), 1));
+                          }
+                        }}
+                        className="w-20 rounded-lg border border-[#d6e2f1] bg-white px-2 py-1 text-xs font-semibold text-[#1a2d52] focus:border-[#244cb8] focus:outline-none"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCalendarMonth((current) => addMonths(current, 1))}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#d6e2f1] text-sm font-semibold text-[#244cb8] hover:bg-[#f5f9ff]"
+                    >
+                      ›
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold text-[#7c8fb5]">
+                    {["T2", "T3", "T4", "T5", "T6", "T7", "CN"].map((day) => (
+                      <span key={day} className="py-1">{day}</span>
+                    ))}
+                  </div>
+                  <div className="mt-1 grid grid-cols-7 gap-1">
+                    {getCalendarDates(calendarMonth).map((date) => {
+                      const value = dateToInputValue(date);
+                      const isCurrentMonth = date.getMonth() === calendarMonth.getMonth();
+                      const isSelected = value === toDateInputValue(form[key]);
+
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => {
+                            setForm((prev) => ({ ...prev, [key]: value }));
+                            setFormErrors((prev) => ({ ...prev, [key]: undefined }));
+                            setOpenDateField(null);
+                          }}
+                          className={`inline-flex h-8 items-center justify-center rounded-lg text-xs font-semibold transition ${
+                            isSelected
+                              ? "bg-[#244cb8] text-white shadow-[0_8px_16px_rgba(36,76,184,0.22)]"
+                              : isCurrentMonth
+                                ? "text-[#1f3152] hover:bg-[#edf4ff]"
+                                : "text-[#b3bfd4] hover:bg-[#f5f9ff]"
+                          }`}
+                        >
+                          {date.getDate()}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
       ) : (
         <input
