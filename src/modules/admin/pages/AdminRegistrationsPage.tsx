@@ -221,7 +221,7 @@ export default function AdminRegistrationsPage() {
 
   const matchSearch = (r: RegistrationRequest) =>
     !search ||
-    [r.formData?.mssv ?? "", r.formData?.fullName ?? "", r.email ?? ""].join(" ").toLowerCase().includes(search);
+    [r.formData?.mssv ?? "", r.formData?.fullName ?? ""].join(" ").toLowerCase().includes(search);
 
   // Chỉ hiện lần nộp MỚI NHẤT của mỗi sinh viên trong cùng 1 đợt ở danh sách chính — tránh
   // liệt kê trùng khi bị từ chối rồi nộp lại. Dedupe ở FE (không phải backend) để giữ

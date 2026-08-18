@@ -86,9 +86,9 @@ export default function AdminLayout() {
         ? "Tìm mã giữ chỗ, mã hồ sơ, họ tên, CCCD..."
         : isRegistrationPeriodsPage
           ? "Tìm theo năm học, học kỳ..."
-          : isAssignRoomListPage || isBedManagementPage || isOccupancyManagementPage || isViolationManagementPage || isPaymentManagementPage || isSupportRequestPage || isExtensionPage
+          : isAssignRoomListPage || isBedManagementPage || isOccupancyManagementPage || isViolationManagementPage || isPaymentManagementPage || isSupportRequestPage || isExtensionPage || isRegistrationsListPage
             ? "Tìm theo MSSV hoặc họ tên"
-            : "Tìm theo MSSV, họ tên hoặc email";
+            : "Tìm kiếm";
 
   const handleLogout = () => {
     clearAuthStorage();
