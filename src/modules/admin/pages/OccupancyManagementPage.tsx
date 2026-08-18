@@ -267,7 +267,7 @@ export default function OccupancyManagementPage() {
       const matchesYear = yearFilter === "ALL" || String(student?.currentYear ?? "") === yearFilter;
       const matchesSearch =
         !normalizedSearch ||
-        [student?.studentCode, student?.fullName, student?.email].filter(Boolean).join(" ").toLowerCase().includes(normalizedSearch);
+        [student?.studentCode, student?.fullName].filter(Boolean).join(" ").toLowerCase().includes(normalizedSearch);
 
       return matchesBuilding && matchesFloor && matchesStatus && matchesGender && matchesYear && matchesSearch;
     });
